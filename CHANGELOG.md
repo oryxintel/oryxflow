@@ -14,6 +14,10 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 
 ## [Unreleased]
 
+## [26.7.11] - 2026-07-11
+### Changed
+- Documentation rewrite and PyPI packaging updates; no API changes.
+
 ## [26.6.6] - 2026-06-06
 ### Changed
 - BREAKING: package renamed `d6tflow` -> `oryxflow`. Migration: replace `import d6tflow` with
