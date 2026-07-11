@@ -1,6 +1,5 @@
 import oryxflow
 import tensorflow as tf
-from oryxflow.targets.h5 import H5KerasTarget
 from oryxflow.tasks.h5 import TaskH5Keras
 
 
@@ -27,10 +26,11 @@ class TaskGetModel(TaskH5Keras):  # save dataframe as hdf5
 
     def run(self):
         model = tf.keras.models.Sequential([
-            tf.keras.layers.Flatten(input_shape=(28, 28)),
-            tf.keras.layers.Dense(512, activation=tf.nn.relu),
+            tf.keras.layers.Input(shape=(28, 28)),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(512, activation='relu'),
             tf.keras.layers.Dropout(0.2),
-            tf.keras.layers.Dense(10, activation=tf.nn.softmax)
+            tf.keras.layers.Dense(10, activation='softmax')
         ])
         model.compile(optimizer='adam',
                       loss='sparse_categorical_crossentropy',
@@ -38,26 +38,24 @@ class TaskGetModel(TaskH5Keras):  # save dataframe as hdf5
 
         self.save(model)
 
+@oryxflow.requires(TaskGetTrainData, TaskGetModel)
 class TaskTrainModel(TaskH5Keras): # save output as hdf5
     epochs = oryxflow.IntParameter(default=5)
 
-    def requires(self):
-        return {'data':TaskGetTrainData(), 'model':TaskGetModel()}
-
     def run(self):
-        data = self.input()['data'].load()
-        model = self.input()['model'].load()
+        data, model = self.inputLoad()
+        # or select by name with a dict requires ({'data':..., 'model':...}):
+        # data = self.inputLoad(task='data')
         model.fit(data['x'], data['y'], epochs=self.epochs)
         self.save(model)
 
+@oryxflow.requires(TaskGetTestData, TaskTrainModel)
 class TaskTestModel(oryxflow.tasks.TaskPickle): # save output as pickle
 
-    def requires(self):
-        return {'data':TaskGetTestData(), 'model':TaskTrainModel()}
-
     def run(self):
-        data = self.input()['data'].load()
-        model = self.input()['model'].load()
+        data, model = self.inputLoad()
+        # or select by name with a dict requires ({'data':..., 'model':...}):
+        # data = self.inputLoad(task='data')
         results = model.evaluate(data['x'], data['y'])
         self.save(results)
 

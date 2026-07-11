@@ -30,8 +30,9 @@ deferred.
 
 - **`docs/example.ipynb` / `docs/example-functional.ipynb`** — the stale `LuigiRunResult` /
   "Luigi Execution Summary" cell *outputs* have been cleared (the cells now carry no output
-  rather than wrong output). Still open: `example.ipynb` uses the old `self.input().load()`
-  idiom, and both notebooks need a full re-execution to regenerate fresh (correct) outputs.
+  rather than wrong output). The old `self.input().load()` idiom in `example.ipynb` has been
+  updated to `self.inputLoad()`. Still open: both notebooks need a full re-execution to
+  regenerate fresh (correct) outputs.
 
 - **`docs/source/run_legacy.rst`** — RESOLVED: retired/deleted. It was an unlinked (not in the
   toctree) near-duplicate of `run.rst`, which is a conceptual superset; the one pointer to it in

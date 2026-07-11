@@ -3,7 +3,7 @@ import pandas as pd
 
 
 # define 2 tasks that load raw data
-class Task1(oryxflow.tasks.TaskCache):
+class Task1(oryxflow.tasks.TaskPqPandas):
 
     def run(self):
         df = pd.DataFrame({'a': range(3)})
@@ -15,13 +15,12 @@ class Task2(Task1):
 
 
 # define another task that depends on data from task1 and task2
-@oryxflow.requires({'input1': Task1, 'input2': Task2})
-class Task3(oryxflow.tasks.TaskCache):
+@oryxflow.requires(Task1, Task2)
+class Task3(oryxflow.tasks.TaskPqPandas):
     multiplier = oryxflow.IntParameter(default=2)
 
     def run(self):
-        df1 = self.input()['input1'].load()  # quickly load input data
-        df2 = self.input()['input2'].load()  # quickly load input data
+        df1, df2 = self.inputLoad()  # quickly load input data
         df = df1.join(df2, lsuffix='1', rsuffix='2')
         df['b'] = df['a1'] * self.multiplier  # use task parameter
         self.save(df)

@@ -72,12 +72,12 @@ class ModelEvalAll(oryxflow.tasks.TaskPqPandas):
     def run(self):
         data = self.inputLoad()
         df_train = data['data']
-        df_trainX = data['data-train']['x']
+        df_trainX = data['data-train'][0]
 
         if cfg_run_tests:
             assert df_train.equals(self.input()['data'].load())
             assert df_train.equals(self.inputLoad(task='data'))
-            assert df_trainX.equals(self.input()['data-drain']['x'].load())
+            assert df_trainX.equals(self.input()['data-train']['x'].load())
             assert df_trainX.equals(self.inputLoad(task='data-train')[0])
             assert df_trainX.equals(self.inputLoad(task='data-train', as_dict=True)['x'])
 

@@ -133,9 +133,10 @@ print(scores)
 
 ## Example Library
 
-* [Minimal example](https://github.com/oryxintel/oryxflow/blob/master/docs/example-minimal.py)
+* [Minimal example](https://github.com/oryxintel/oryxflow/blob/main/docs/example-minimal.py)
+* [Multi-parameter example](https://github.com/oryxintel/oryxflow/blob/main/docs/example-flow-multi.py)
 * [Rapid Prototyping for Quantitative Investing with oryxflow](https://github.com/d6tdev/d6tflow-binder-interactive/blob/master/example-trading.ipynb) 
-* oryxflow with functions only: get the power of oryxflow with little change in code. **[Jupyter notebook example](https://github.com/oryxintel/oryxflow/blob/master/docs/example-functional.ipynb)**
+* oryxflow with functions only: get the power of oryxflow with little change in code. **[Jupyter notebook example](https://github.com/oryxintel/oryxflow/blob/main/docs/example-functional.ipynb)**
 
 ## Documentation
 

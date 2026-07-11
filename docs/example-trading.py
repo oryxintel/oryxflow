@@ -55,8 +55,7 @@ class Backtest(oryxflow.tasks.TaskPqPandas):
     persists = ['portfolio','pnl']
 
     def run(self):
-        df_signal = self.input()[0].load()
-        df_rtn = self.input()[1].load()
+        df_signal, df_rtn = self.inputLoad()
 
         # combine signals and returns
         df_portfolio = pd.merge_asof(df_rtn, df_signal, left_index=True, right_index=True)
