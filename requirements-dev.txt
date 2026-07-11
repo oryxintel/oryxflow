@@ -1,0 +1,8 @@
+fuckit
+pyarrow
+pandas
+toolz
+dask[dataframe]
+datatable
+tensorflow
+pytest
