@@ -1,6 +1,23 @@
 Transition to oryxflow
 ==============================================
 
+Most data-science code starts as a script: a chain of functions that read a file, transform it,
+and write the next file, wired together by hand at the bottom. It works until it doesn't — you
+change one step and have to remember which downstream files are now stale, you re-run the whole
+thing (including the slow data pull) just to test a small change, and six months later you can't
+tell which parameters produced which output.
+
+oryxflow turns that script into a pipeline of **tasks** and takes over the bookkeeping. You get
+three things you were doing in your head before:
+
+* **No wasted recomputation** — a task that has already produced its output is skipped, so
+  re-running the pipeline only runs what actually changed (a small edit no longer re-pulls the raw
+  data).
+* **Reproducibility** — every output is tied to the task and parameters that produced it, so you
+  always know how a result was made and can reproduce it exactly.
+* **Automatic parameter management** — change a parameter and oryxflow reruns exactly the tasks
+  that depend on it, and keeps the outputs for each parameter set side by side.
+
 Current Workflow Using Functions
 ------------------------------------------------------------
 
@@ -65,6 +82,13 @@ The function-based workflow example will transform to this:
     data = flow.outputLoad() # load output data
 
 Learn more about :doc:`Writing and Managing Tasks <../tasks>` and :doc:`Running Workflows <../run>`.
+
+.. tip::
+
+   The Claude Code plugin automates this transition: describe your existing
+   script in plain language and it creates the task classes and wires the
+   ``@oryxflow.requires`` dependencies. See
+   :doc:`Using oryxflow with Claude Code <claude-plugin>`.
 
 
 Design Pattern Templates for Machine Learning Workflows

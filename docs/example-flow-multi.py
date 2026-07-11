@@ -52,7 +52,8 @@ class CountryFeatures(oryxflow.tasks.TaskCachePandas):
     def run(self):
         ran.append(('CountryFeatures', self.sector, self.country))
         df = self.inputLoadConcat()          # stacks states, keeps sector/country/state columns
-        self.save(df.assign(feat=1))         # <- the "new feature" you develop below
+        df['feat'] = df['v'] * 2             # <- the "new feature" you develop below
+        self.save(df)
 
 
 class Sector(oryxflow.tasks.TaskCachePandas):

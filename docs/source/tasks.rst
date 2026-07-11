@@ -4,16 +4,24 @@ Writing and Managing Tasks
 What are tasks?
 ------------------------------------------------------------
 
-Tasks are the main object you will be interacting with. They allow you to:
+A task is one step of your analysis — load the data, clean it, train the model — packaged so
+oryxflow can manage it for you. Instead of a loose function plus a hand-written line to read its
+input file and another to write its output, you declare what a task **depends on** and what it
+**produces**, and the engine handles the rest: it runs upstream steps first, skips anything
+already computed, and hands each task its inputs already loaded. Tasks are the main object you
+will be interacting with. They let you:
 
-* define input dependency tasks
-* process data  
-    * load input data from upstream tasks
-    * save output data for downstream tasks
-* run tasks
-* load output data
+* define input dependency tasks — so you declare the pipeline order once instead of re-wiring it
+  every run
+* process data
+    * load input data from upstream tasks — already loaded, no manual file paths
+    * save output data for downstream tasks — so results are cached and reused, not recomputed
+* run tasks — the engine runs only what's missing
+* load output data — fetch any result by referencing the task that made it
 
-You write your own tasks by inheriting from one of the predefined oryxflow task formats, for example pandas dataframes saved to parquet. 
+You write your own tasks by inheriting from one of the predefined oryxflow task formats, for example pandas dataframes saved to parquet. Picking the parent class is how you choose the output
+format (parquet, CSV, pickle, in-memory, ...) without writing any save/load code yourself — see
+:doc:`Targets <../targets>`.
 
 .. code-block:: python
 
@@ -25,6 +33,12 @@ Define Upstream Dependency Tasks
 ------------------------------------------------------------
 
 You can define input dependencies by using a `@oryxflow.requires` decorator which takes input tasks. You can have no, one or multiple input tasks. This may be required when the decorator shortcut does not work.
+
+.. tip::
+
+   The :doc:`Claude Code plugin <claude-plugin>` writes this wiring for you -
+   ask it to "add a task that takes ``<Upstream>``'s output" and it emits the
+   task class with the correct ``@oryxflow.requires`` decorator.
 
 .. code-block:: python
 

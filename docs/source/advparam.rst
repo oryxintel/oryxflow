@@ -1,7 +1,13 @@
 Advanced: Parameters
 ==============================================
 
-Intelligent parameter management is one of the most powerful features of oryxflow. New users often have questions on parameter management, this is an important section to read.
+Intelligent parameter management is one of the most powerful features of oryxflow. Parameters are
+how you try different settings — a preprocessing flag, a model choice, a date range — without
+copying files or renaming outputs by hand. Give a task parameters and oryxflow keeps a **separate
+cached output per parameter set**, so you can compare runs side by side and switch between them
+instantly; change a parameter and it reruns exactly the tasks that depend on it and leaves the
+rest untouched. This is what makes experimentation cheap. New users often have questions on
+parameter management, this is an important section to read.
 
 Specifying parameters
 ------------------------------------------------------------

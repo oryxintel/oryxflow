@@ -70,7 +70,9 @@ For quick scripts and notebooks, ``oryxflow.runLoad`` builds a workflow, runs th
 How is a task marked complete?
 ------------------------------------------------------------
 
-Tasks are complete when task output exists. This is typically the existance of a file, database table or cache. See :doc:`Task I/O Formats <../targets>` how task output is stored to understand what needs to exist for a task to be complete. 
+This is the mechanism behind "don't recompute what's already done" — the thing that lets you
+re-run a pipeline freely and only pay for what changed. Tasks are complete when task output
+exists. This is typically the existance of a file, database table or cache. See :doc:`Task I/O Formats <../targets>` how task output is stored to understand what needs to exist for a task to be complete.
 
 .. code-block:: python
 
@@ -85,7 +87,7 @@ If a task has parameters, it needs to be run separately for each parameter to be
 
 .. code-block:: python
 
-    flow = oryxflow.WorkflowMult(Task1, {'flow1':{'preprocess':False},'flow2':{'preprocess':True}})
+    flow = oryxflow.WorkflowMulti(Task1, {'flow1':{'preprocess':False},'flow2':{'preprocess':True}})
     flow.run() # will run all flow with all parameters
 
 Disable Dependency Checks
@@ -141,6 +143,13 @@ Rerun Tasks When You Make Changes
 ------------------------------------------------------------
 
 You have several options to force tasks to reset and rerun. See sections below on how to handle parameter, data and code changes.
+
+.. tip::
+
+   Editing a task's code without resetting it means the next run silently skips
+   it. The :doc:`Claude Code plugin <claude-plugin>` handles this for you: after
+   it edits a task it resets it before running, so your change actually takes
+   effect.
 
 .. code-block:: python
 
@@ -228,7 +237,7 @@ As long as the parameter is defined in the task, oryxflow will automatically rer
 
 .. code-block:: python
 
-    flow = oryxflow.WorkflowMult(Task1, {'flow1':{'preprocess':False},'flow2':{'preprocess':True}})
+    flow = oryxflow.WorkflowMulti(Task1, {'flow1':{'preprocess':False},'flow2':{'preprocess':True}})
     flow.run() # executes 2 flows, one for each task
 
 For oryxflow to intelligently figure out which tasks to rerun, the parameter has to be defined in the task. The downstream task (`TaskTrain`) has to pass on the parameter to the upstream task (`TaskPreprocess`).
@@ -313,7 +322,9 @@ oryxflow records into your application's own loguru sinks.
 Cloud Storage
 ------------------------------------------------------------
 
-By default task output is written under the local data directory (``oryxflow.set_dir()``). You can instead store output in cloud storage (S3, GCS, etc.) - oryxflow uses `fsspec <https://github.com/fsspec>`_ / `universal-pathlib <https://pypi.org/project/universal-pathlib/>`_ under the hood, so task code does not change.
+Point your pipeline at cloud storage and the whole team reads and writes the same outputs — no
+one re-runs a task someone else already ran, and results are backed up off your laptop. By
+default task output is written under the local data directory (``oryxflow.set_dir()``). You can instead store output in cloud storage (S3, GCS, etc.) - oryxflow uses `fsspec <https://github.com/fsspec>`_ / `universal-pathlib <https://pypi.org/project/universal-pathlib/>`_ under the hood, so task code does not change.
 
 Install the relevant extra first, e.g. ``pip install oryxflow[gcs]`` or ``pip install oryxflow[s3]`` (``cloud-base`` for other fsspec protocols), then enable it once before running:
 

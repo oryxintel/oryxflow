@@ -2,9 +2,9 @@ Using oryxflow with Claude Code
 ===============================================
 
 Prefer to build oryxflow projects with an AI coding assistant instead of writing the task
-wiring yourself? There is an official **Claude Code plugin**, ``oryxflow``, that scaffolds
-projects, wires tasks with ``@oryxflow.requires``, and follows the house conventions
-automatically.
+wiring yourself? There is an official **Claude Code plugin**, ``oryxflow``, that sets up a
+ready-to-run project structure, wires tasks with ``@oryxflow.requires``, and follows the house
+conventions automatically.
 
 Install
 -----------------------------------------------------------
@@ -17,10 +17,15 @@ Install
 Commands
 -----------------------------------------------------------
 
-- ``/oryxflow:init-project`` - scaffold a runnable project in an empty directory.
-- ``/oryxflow:init-gitlfs`` - put ``data/`` under Git LFS.
-- ``/oryxflow:update-project`` - update an older project's scaffold floor.
-- ``/oryxflow:check-standards`` - check names, style, and docstrings against the house standards.
+- ``/oryxflow:init-project`` - set up a ready-to-run project structure in an empty directory, so
+  you start writing tasks straight away instead of building the folders, files, and conventions
+  by hand.
+- ``/oryxflow:init-gitlfs`` - put ``data/`` under Git LFS, so you version and share your data as
+  easily as your code — teammates clone the repo and get the exact datasets each run produced.
+- ``/oryxflow:update-project`` - bring an older project up to the current project structure, so you
+  pick up the latest conventions and layout without a manual migration.
+- ``/oryxflow:check-standards`` - check names, style, and docstrings against the house standards,
+  so the codebase stays consistent and easy for teammates (and the AI) to navigate and extend.
 
 Once installed, the ``oryxflow`` skill auto-activates whenever you work in a oryxflow project
 (editing ``tasks.py`` / ``flow.py`` / ``run.py`` / ``cfg.py`` / ``flow_params.py``).

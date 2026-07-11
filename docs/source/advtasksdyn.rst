@@ -10,6 +10,9 @@ If you have a fixed set parameters, you can make `requires()` "dynamic".
 
 .. code-block:: python
 
+    # cfg_params.py -- the enumeration is your own domain data, kept in a config module
+    PARAMS = ['a', 'b', 'c']
+
     class TaskInput(oryxflow.tasks.TaskPqPandas):
         param = oryxflow.Parameter()
         ...
@@ -17,21 +20,28 @@ If you have a fixed set parameters, you can make `requires()` "dynamic".
     class TaskYieldFixed(oryxflow.tasks.TaskPqPandas):
 
         def requires(self):
-            return dict([(s,TaskInput(param=s)) for s in ['a','b','c']])
+            return {s: TaskInput(param=s) for s in cfg_params.PARAMS}
 
         def run(self):
             df = self.inputLoad()
             df = pd.concat(df)
+            self.save(df)
 
 You could also use this to load an unknown number of files as a starting point for the workflow.
 
 .. code-block:: python
 
         def requires(self):
-            return dict([(s,TaskInput(param=s)) for s in glob.glob('*.csv')])
+            return {s: TaskInput(param=s) for s in glob.glob('*.csv')}
 
 Hierarchical iterate-and-aggregate
 ------------------------------------------------------------
+
+.. note::
+
+   This section is the mechanics reference. For *why* and *when* you'd reach for this pattern —
+   caching expensive granular work and resetting it selectively as you iterate — start with
+   :doc:`Managing Complex Workflows <managing-workflows>`.
 
 A common pattern is to iterate over some dimension (e.g. per-state tasks), then aggregate the
 results one level up (e.g. a per-country task that combines all of its states). Do this with a
@@ -45,18 +55,28 @@ survive the concat.
     STATES = {'US': ['CT', 'NY'], 'UK': ['London', 'Belfast']}
 
     class DataLoadState(oryxflow.tasks.TaskPqPandas):
-        country = oryxflow.Parameter(); state = oryxflow.Parameter()
-        def run(self): self.save(fetch_raw(self.country, self.state))
+        country = oryxflow.Parameter()
+        state = oryxflow.Parameter()
+
+        def run(self):
+            self.save(fetch_raw(self.country, self.state))
 
     @oryxflow.requires(DataLoadState)              # copies country+state params, wires requires()
     class ProcessState(oryxflow.tasks.TaskPqPandas):
-        def run(self): self.save(self.inputLoad().assign(processed=1))
+
+        def run(self):
+            df = self.inputLoad()                  # raw data for this state
+            df['value_norm'] = df['value'] / df['value'].sum()   # per-state feature engineering
+            self.save(df)
 
     class Country(oryxflow.tasks.TaskPqPandas):
         country = oryxflow.Parameter()
+
         def requires(self):
             return {s: ProcessState(country=self.country, state=s) for s in STATES[self.country]}
-        def run(self): self.save(self.inputLoadConcat())   # stacks states, keeps state/country cols
+
+        def run(self):
+            self.save(self.inputLoadConcat())      # stacks states, keeps state/country cols
 
 Because the whole hierarchy is now **one DAG in one** ``run()`` call (rather than a nested
 flow-within-a-flow built inside ``run()``), you get three wins for free:
@@ -107,25 +127,40 @@ sector → country → state hierarchy, add a ``Sector`` task that aggregates co
     }
 
     class DataLoadState(oryxflow.tasks.TaskPqPandas):
-        sector = oryxflow.Parameter(); country = oryxflow.Parameter(); state = oryxflow.Parameter()
-        def run(self): self.save(fetch_raw(self.sector, self.country, self.state))
+        sector = oryxflow.Parameter()
+        country = oryxflow.Parameter()
+        state = oryxflow.Parameter()
+
+        def run(self):
+            self.save(fetch_raw(self.sector, self.country, self.state))
 
     @oryxflow.requires(DataLoadState)
     class ProcessState(oryxflow.tasks.TaskPqPandas):
-        def run(self): self.save(self.inputLoad().assign(processed=1))
+
+        def run(self):
+            df = self.inputLoad()                  # raw data for this state
+            df['value_norm'] = df['value'] / df['value'].sum()   # per-state feature engineering
+            self.save(df)
 
     class Country(oryxflow.tasks.TaskPqPandas):          # aggregate states within a country
-        sector = oryxflow.Parameter(); country = oryxflow.Parameter()
+        sector = oryxflow.Parameter()
+        country = oryxflow.Parameter()
+
         def requires(self):
             return {s: ProcessState(sector=self.sector, country=self.country, state=s)
                     for s in cfg.UNIVERSE[self.sector][self.country]}
-        def run(self): self.save(self.inputLoadConcat())
+
+        def run(self):
+            self.save(self.inputLoadConcat())
 
     class Sector(oryxflow.tasks.TaskPqPandas):           # aggregate countries within a sector
         sector = oryxflow.Parameter()
+
         def requires(self):
             return {c: Country(sector=self.sector, country=c) for c in cfg.UNIVERSE[self.sector]}
-        def run(self): self.save(self.inputLoadConcat())
+
+        def run(self):
+            self.save(self.inputLoadConcat())
 
 Each level's ``inputLoadConcat()`` tags frames with that level's dependency params, so the
 ``Sector`` step re-writes the ``sector``/``country`` columns the ``Country`` frames already
@@ -145,9 +180,12 @@ whole three-level tree is a single ``build()`` — one run, one combined output,
 .. code-block:: python
 
     class AllSectors(oryxflow.tasks.TaskPqPandas):
+
         def requires(self):
             return {sec: Sector(sector=sec) for sec in cfg.UNIVERSE}
-        def run(self): self.save(self.inputLoadConcat())
+
+        def run(self):
+            self.save(self.inputLoadConcat())
 
     flow = oryxflow.Workflow(AllSectors)
     flow.run()
@@ -173,6 +211,16 @@ A complete, runnable version of this sector → country → state example — in
 where you add a feature to the country-level task, iterate on one ``(sector, country)`` first,
 then roll it out to every flow *without re-fetching the expensive per-state source* — is in
 ``docs/example-flow-multi.py``.
+
+.. tip::
+
+   These advanced dynamic-loop flows are exactly what the
+   :doc:`Claude Code plugin <claude-plugin>` is built to manage. Describe the
+   hierarchy in plain language and it writes the fan-out ``requires()`` and the
+   ``inputLoadConcat()`` aggregators; when you iterate, it scopes the reset for
+   you — resetting just the family you changed (``reset_upstream(..., only=...)``)
+   so the expensive leaf tasks are preserved. The hand-tracking this section warns
+   about is what the plugin removes.
 
 Collector Task
 ------------------------------------------------------------

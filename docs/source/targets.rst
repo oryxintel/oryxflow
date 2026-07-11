@@ -1,6 +1,12 @@
 Task I/O Targets
 ==============================================
 
+The format your task output is saved in matters more than it first appears: it decides how fast
+your pipeline reads and writes between steps, whether a result survives a restart or lives only
+for the session, and whether a teammate can open the file directly. oryxflow lets you pick that
+format by **choosing a parent class** — you never write save/load code, and you can switch a
+task from parquet to CSV (or to an in-memory cache while you iterate) by changing one base class.
+
 How is task data saved and loaded?
 ------------------------------------------------------------
 
@@ -22,7 +28,11 @@ By default file-based task output is saved in ``data/``. You can customize where
 Core task targets (Pandas)
 ------------------------------------------------------------
 
-What kind of object you want to save determines which Task class you need to use.
+What kind of object you want to save determines which Task class you need to use. A rough guide:
+reach for **parquet** (``TaskPqPandas``) for most dataframes — it's fast and compact and keeps
+dtypes; **CSV/Excel** when a human needs to open the file; the in-memory **cache** targets
+(``TaskCache*``) for intermediate results you don't need on disk between runs (fastest, but gone
+when the process exits); and **pickle** for trained models or arbitrary python objects.
 
 * pandas  
     * ``oryxflow.tasks.TaskPqPandas``: save to parquet, load as pandas 
