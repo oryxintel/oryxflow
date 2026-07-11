@@ -28,14 +28,6 @@ oryxflow.targets module
     :undoc-members:
     :show-inheritance:
 
-oryxflow.pipes module
-----------------------------
-
-.. automodule:: oryxflow.pipes
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 oryxflow.functional module
 ----------------------------
 

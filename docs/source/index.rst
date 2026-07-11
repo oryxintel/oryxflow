@@ -48,6 +48,7 @@ User Guide
    quickstart
    transition
    tasks
+   workflow
    run
    logging
    targets
