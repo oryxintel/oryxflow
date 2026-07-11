@@ -10,6 +10,11 @@ setup(
     version='26.6.6',
     packages=['oryxflow','oryxflow.targets','oryxflow.tasks'],
     url='https://github.com/oryxintel/oryxflow',
+    project_urls={
+        'Documentation': 'https://oryxflow.readthedocs.io/',
+        'Changelog': 'https://oryxflow.readthedocs.io/en/stable/changelog.html',
+        'Source': 'https://github.com/oryxintel/oryxflow',
+    },
     license='MIT',
     author='Oryx Intelligence LLC',
     author_email='dev@oryxintel.com',

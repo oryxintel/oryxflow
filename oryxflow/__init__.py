@@ -1,4 +1,11 @@
 import warnings
+
+from importlib.metadata import version as _pkg_version, PackageNotFoundError as _PkgNotFound
+try:
+    __version__ = _pkg_version("oryxflow")
+except _PkgNotFound:          # running from a source tree that was never installed
+    __version__ = "0.0.0+unknown"
+
 from oryxflow import core
 from oryxflow.core import flatten, RunResult, MultiRunResult, TaskFailure
 from oryxflow.log import logger, enable_logging, disable_logging

@@ -2,5 +2,6 @@
 # The oryxflow package itself is installed separately (see .readthedocs.yaml
 # python.install -> method: pip, path: .), which brings in its runtime deps
 # for sphinx.ext.autodoc.
-sphinx>=7,<9
-sphinx_rtd_theme>=2
+sphinx>=9
+sphinx_rtd_theme>=3
+myst-parser>=5

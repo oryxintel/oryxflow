@@ -46,6 +46,7 @@ User Guide
    :maxdepth: 2
 
    quickstart
+   claude-plugin
    transition
    tasks
    workflow
@@ -57,6 +58,7 @@ User Guide
    advparam
    modules
    functional_tasks
+   changelog
 
 
 API Docs
