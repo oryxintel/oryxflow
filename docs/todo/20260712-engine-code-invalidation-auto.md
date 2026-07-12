@@ -407,3 +407,29 @@ significance:
    the same review: CRLF-determinism and import-walk-completeness tests
    (`TestCodehash`: `__init__` re-exports, function-local imports), and the scaffold
    `cfg.py` shipping the auto knobs as commented lines (plugin repo).
+8. **Field-test round (project-agent test on a real backtest flow, post-ship)** — four
+   defects found and fixed:
+   - *Opt-in cost a recompute* (`code change (auto -> 1)` on an "edit-free" pin add): the
+     opt-in is itself a file edit, so the stored hashes could never match. Fixed at the
+     root: `codehash._strip_docstrings` also strips class-body `code_version` assignments
+     (plain and annotated) from the AST, making the pin line hash-neutral — add/remove/
+     bump is purely a token change. Cross-process verified: pin add → cached, bump →
+     `code change (1 -> 2)`, pin drop → cached.
+   - *`accept_code` couldn't clear the `output predates current code` warning it names*:
+     that state is exactly "output exists, record missing", but the instance walk skipped
+     record-less tasks and the class/bulk forms iterate existing records — all three were
+     structural no-ops there. The instance walk now stamps a fresh baseline record
+     (new `output_id`) when outputs exist and no record does; the warning text now points
+     at the instance/flow form (the class form can't create records, documented).
+   - *Warning flood* (416 warnings for 84 tasks; one build per flow re-advises shared
+     upstreams): the printed/logged channels (`warnings.warn` + loguru) now dedupe per
+     process on `(task_id, message)` via `core._code_warned`, re-armed when the message
+     changes or the task reruns / is accepted. `RunResult.warnings` and the
+     `code_warning` event stream still record every occurrence (the durable/query
+     channels are not deduped).
+   - *Silent accept*: `accept_code` prints a one-line summary (re-stamped ids, or
+     "nothing accepted" with a pointer to the instance/flow form) — visible without
+     `enable_logging()`, like the execution summary.
+   Regression tests: `test_auto_opt_in_pin_line_is_free`,
+   `test_accept_code_clears_predates_guard`, `test_accept_code_empty_reports`,
+   `test_warning_dedupe_per_process`, `TestCodehash::test_pin_line_hash_neutral`.

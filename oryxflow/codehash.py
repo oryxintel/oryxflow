@@ -3,8 +3,10 @@ AST-normalized, file-level, transitive code hashes.
 
 ``module_hashes(task)`` returns ``{relpath: md5}`` for every project-local source file
 reachable from the task's defining module via ``import`` statements. Each file is hashed
-after AST normalization (parse -> strip docstrings -> ``ast.dump``), so comments,
-docstrings and formatting edits produce no hash change.
+after AST normalization (parse -> strip docstrings and class-body ``code_version``
+pin lines -> ``ast.dump``), so comments, docstrings, formatting edits and
+adding/removing/bumping a ``code_version`` pin produce no hash change (the pin is a
+token, compared as its own record dimension -- never a source edit).
 
 Two consumers: with ``settings.code_version_auto`` (the default), ``task_code_hash``
 supplies the code-identity token for tasks that declare no explicit ``code_version``,
@@ -89,6 +91,16 @@ def _project_root(start=None):
     return root
 
 
+def _is_code_version_stmt(stmt):
+    # a class-body `code_version = ...` pin (plain or annotated assignment)
+    if isinstance(stmt, ast.Assign):
+        return (len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name)
+                and stmt.targets[0].id == 'code_version')
+    if isinstance(stmt, ast.AnnAssign):
+        return isinstance(stmt.target, ast.Name) and stmt.target.id == 'code_version'
+    return False
+
+
 def _strip_docstrings(tree):
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -97,6 +109,13 @@ def _strip_docstrings(tree):
                     and isinstance(body[0].value, ast.Constant)
                     and isinstance(body[0].value.value, str)):
                 node.body = body[1:]
+        if isinstance(node, ast.ClassDef):
+            # the pin line itself must be invisible to the hash: adding, removing or
+            # bumping `code_version` is a mode/token change (handled by the mode-aware
+            # record comparison), never a source change -- otherwise opting in could
+            # never be free (the opt-in edit would always move the hash it is
+            # compared against)
+            node.body = [s for s in node.body if not _is_code_version_stmt(s)]
     return tree
 
 

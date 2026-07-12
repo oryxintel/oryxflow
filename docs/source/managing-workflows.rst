@@ -164,9 +164,11 @@ produce a staleness *warning* instead of a rerun:
             ...
 
 ``code_version`` can be an int or a string (``'v2-log-features'``). The pin is per-task,
-free to toggle, and self-healing — the record always stores *both* the token and the source
-hashes as of the last materialization, and completeness compares the dimension that matches the
-current mode:
+free to toggle, and self-healing — the ``code_version`` line itself is stripped by the AST
+normalization (like comments and docstrings), so typing the pin in, deleting it, or bumping it
+is never a *source* change; the token is compared as its own dimension. The record always
+stores *both* the token and the source hashes as of the last materialization, and completeness
+compares the dimension that matches the current mode:
 
 * **Pinning** a task whose code is unchanged costs nothing (no recompute — the hashes prove the
   cached output matches the code). Pinning *in the same edit as a logic change* recomputes, as
@@ -194,10 +196,13 @@ current and the present code recorded as its baseline ("grandfathering") — the
 *subsequent* logic edit is what triggers a recompute. One caveat, only for output that has
 **no record at all** (pre-upgrade artifacts, or ``code_version_auto = False`` projects adding
 their first pin): if you edit the logic in the same change that first brings the task under
-tracking, the stale output gets blessed — ``reset()`` it once (a best-effort mtime guard warns
-when it can detect this, but don't rely on it — and note the guard is noisy right after
-``git checkout``/``clone``, which resets source mtimes). Once a task has a record, this trap is
-closed mechanically: the stored hashes expose the edit no matter how you toggle the pin.
+tracking, the stale output gets blessed. A best-effort mtime guard warns when it can detect
+this (``output predates current code``) and holds off stamping; answer it with ``reset()`` to
+recompute, or ``flow.accept_code()`` to confirm the outputs are current — the instance/flow
+form stamps record-less outputs a fresh baseline, which is the cheap mass-blessing after an
+upgrade (the guard fires spuriously right after ``git checkout``/``clone``, which resets source
+mtimes). Once a task has a record, this trap is closed mechanically: the stored hashes expose
+the edit no matter how you toggle the pin.
 
 Where the hash cannot see — and how you notice
 ------------------------------------------------------------
@@ -228,6 +233,12 @@ same code hash runs as an *advisory* there: if a pinned task's code changed but 
     oryxflow.accept_code(TrainModel) only if certain the output is equivalent -- when unsure,
     bump (best-effort check: can't see data files or dynamic calls).
 
+An unacknowledged warning would otherwise repeat on every build (a ``WorkflowMulti`` run is one
+build per flow over shared upstreams), so the printed/logged warning dedupes per process: the
+same message for the same task shows once, and re-arms when the condition changes or after the
+task reruns or is accepted. Every occurrence is still recorded in ``result.warnings`` and the
+event stream (``oryxflow.events.warnings()``) regardless.
+
 Every code change — whether it triggered an automatic recompute or a pin warning — has the same
 three exits, not equal in risk:
 
@@ -240,10 +251,13 @@ three exits, not equal in risk:
   would otherwise do. It accepts the task **and its whole upstream tree**, so call it on the
   most-downstream task you judge equivalent (the flow's default task covers everything).
   **This is the one exit that can silently bless a stale output** — use it only when you're
-  certain; when unsure, recompute (cheap insurance). ``accept_code(TaskX)`` with a class
-  re-stamps only that family's stored hashes, and bare ``accept_code()`` bulk-accepts warned
-  records; under automatic tracking prefer the instance/``flow`` form — the others can't reach
-  dep-folded fingerprints, and anything they miss simply recomputes (the safe direction).
+  certain; when unsure, recompute (cheap insurance). ``accept_code`` prints a one-line summary
+  of what it re-stamped (and says so when it accepted nothing), so an accept that didn't reach
+  its target is visible, not silent. ``accept_code(TaskX)`` with a class re-stamps only that
+  family's *stored* records, and bare ``accept_code()`` bulk-accepts warned records; prefer the
+  instance/``flow`` form — it is also the only form that can stamp a baseline for outputs with
+  **no record yet** (the ``output predates current code`` warning), and anything the other
+  forms miss simply recomputes (the safe direction).
 
 A pin's warning follows the *import* graph while reruns follow the *dependency* graph: a
 downstream task that consumes a changed helper's output only via ``requires()`` (without
@@ -291,6 +305,10 @@ Which verb, when
      - ``reset()`` once
      - no record exists yet, so grandfathering would bless the stale output (once a
        record exists this trap is caught automatically)
+   * - nothing — but pre-existing outputs warn ``output predates current code``
+     - ``flow.accept_code()`` if the outputs are current, else ``reset()``
+     - the mtime guard can't tell a fresh checkout from a stale cache; accepting stamps
+       record-less outputs a baseline in one call
 
 Keeping old versions side by side
 ------------------------------------------------------------
@@ -433,8 +451,12 @@ a locked-down environment), paste this snapshot of the rules into the project's 
     4. Expensive recompute you judge output-equivalent (pure refactor): `flow.accept_code()` /
        `oryxflow.accept_code(anchor_task)` re-stamps the task and its whole upstream tree
        without rerunning — only if certain; when unsure, let it rerun. `preview()` first to see
-       the pending band. Answer every pin staleness warning with one of its three exits — bump,
-       accept, or reset. Never leave one firing across runs.
+       the pending band. It prints what it re-stamped — "nothing accepted" means it didn't
+       reach the target (use the instance/flow form, not the class/bare form). An
+       `output predates current code` warning (outputs with no record yet, e.g. after an
+       upgrade) is answered the same way: `flow.accept_code()` if the outputs are current,
+       `reset()` if not. Answer every staleness warning with one of its exits — bump, accept,
+       or reset. Never leave one firing across runs.
     5. After a run, read the returned result: `result.reasons` says why each task ran;
        `result.warnings` lists unacknowledged code changes. Never hand-roll aggregation —
        `MultiRunResult` exposes `.ran`/`.complete`/`.failed`/`.reasons`/`.warnings` across

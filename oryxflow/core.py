@@ -24,13 +24,21 @@ from oryxflow.parameter import (
 
 
 class StalenessWarning(UserWarning):
-    """Code changed but code_version didn't (or can't be verified). Shown on every
-    occurrence: python's default warning filter dedups by call site, which would
-    silence the second run() in the same process -- exactly when it matters."""
+    """Code changed but code_version didn't (or can't be verified). Python's default
+    warning filter dedups by call site, which would silence the second run() in the
+    same process -- exactly when it matters -- so the filter is 'always' and build()
+    dedups itself: the SAME message for the same task prints once per process (a
+    WorkflowMulti run is one build per flow over shared upstreams -- without this,
+    each unacknowledged warning repeats per flow and floods stdout), while a CHANGED
+    condition (more files edited, version bumped) re-warns immediately. Every
+    occurrence still lands in RunResult.warnings and the event stream regardless."""
 
 
 import warnings as _warnings_mod
 _warnings_mod.simplefilter('always', StalenessWarning)
+
+# (task_id -> last message emitted) -- the process-level print/log dedupe above
+_code_warned = {}
 
 
 # Parameters of the task id. ``settings.set_parameter_len`` tunes these at import time.
@@ -692,13 +700,19 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
 
     def _warn_code(task, msg, changed_files):
         # decision 12a: the advisory must be visible without enable_logging(), so it
-        # goes out on every channel -- warnings.warn, loguru, the event, RunResult
+        # goes out on every channel -- warnings.warn, loguru, the event, RunResult.
+        # The noisy channels (warnings.warn + loguru) dedupe per process on
+        # (task, message) -- see StalenessWarning -- while RunResult and the event
+        # stream record every occurrence.
         warned.append(msg)
-        _stdwarnings.warn(msg, StalenessWarning)
+        fresh = _code_warned.get(task.task_id) != msg
+        _code_warned[task.task_id] = msg
+        if fresh:
+            _stdwarnings.warn(msg, StalenessWarning)
         _emit('code_warning',
               {'task_id': task.task_id, 'family': task.task_family,
                'changed_files': changed_files, 'code_version': task.code_version},
-              msg=msg, level='warning')
+              msg=msg if fresh else None, level='warning')
 
     def _mtime_guard_trips(task, hashes):
         # decision 12c: local-fs heuristic only -- any hashed source newer than the output
@@ -762,8 +776,9 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
             if _mtime_guard_trips(task, hashes):
                 _warn_code(task, (
                     "task {}: output predates current code; can't verify -- "
-                    "reset() or oryxflow.accept_code({}) to confirm").format(
-                        task.task_family, task.task_family),
+                    "reset() to recompute, or accept_code on a task instance / "
+                    "flow.accept_code() to confirm the output is current (stamps a "
+                    "baseline record)").format(task.task_family),
                     sorted(hashes))
             else:
                 _state.put_record(dirpath, tid,
@@ -944,6 +959,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
                'oryxflow_version': _version,
                'dirpath': str(dirpath if dirpath is not None else _settings.dirpath)},
               msg="task complete: {} in {:.3f}s".format(tid, duration))
+        _code_warned.pop(tid, None)   # condition resolved; a future recurrence re-warns
         ran.append(task)
         reasons[tid] = reason
         visited[tid] = True

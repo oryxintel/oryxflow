@@ -20,6 +20,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(oryxflow.settings, 'dirpath', datadir)
     monkeypatch.setattr(oryxflow.settings, 'eventspath', tmp_path / '.oryxflow')
     oryxflow.state.clear_cache()
+    oryxflow.core._code_warned.clear()   # process-level warning dedupe
     yield tmp_path
 
 
@@ -712,6 +713,101 @@ class TestAutoInvalidation:
         monkeypatch.setattr(oryxflow.settings, 'code_version_auto_expensive_s', None)
         assert oryxflow.run(t).did_run(mod.TaskAuto)   # guard off -> normal auto rerun
 
+    def test_auto_opt_in_pin_line_is_free(self, env, monkeypatch, recwarn):
+        # the opt-in is itself a file edit (`code_version = '1'` gets typed into the
+        # module) -- the pin line must be invisible to the hash or opting in could
+        # never be free. Field-tested sequence: pin (free) -> bump (rerun) ->
+        # unpin (free)
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_optin', AUTO_V1)
+        t = mod.TaskAuto()
+        oryxflow.run(t)
+
+        pinned = AUTO_V1.replace('    def run', "    code_version = '1'\n    def run")
+        path.write_text(pinned)                      # the on-disk edit of opting in
+        _bump_mtime(path)
+        mod.TaskAuto.code_version = '1'              # the in-memory effect of it
+        r = oryxflow.run(t)
+        assert r.ran == [] and r.warnings == []      # free opt-in, as documented
+
+        path.write_text(pinned.replace("'1'", "'2'"))
+        _bump_mtime(path, 20)
+        mod.TaskAuto.code_version = '2'
+        r2 = oryxflow.run(t)                         # a bump is a real token change
+        assert r2.did_run(mod.TaskAuto)
+        assert r2.reasons[t.task_id] == 'code change (1 -> 2)'
+
+        path.write_text(AUTO_V1)                     # drop the pin line again
+        _bump_mtime(path, 30)
+        mod.TaskAuto.code_version = None
+        r3 = oryxflow.run(t)
+        assert r3.ran == [] and r3.warnings == []    # unpin just resumes
+
+    def test_accept_code_clears_predates_guard(self, env, monkeypatch, capsys):
+        # the "output predates current code" state (output exists, no record) must be
+        # clearable without recomputing: accept_code(instance) stamps a baseline record
+        monkeypatch.setattr(oryxflow.settings, 'code_version_auto', False)
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        body = MODULE_V1.replace("code_version = '1'", 'code_version = None')
+        mod, path = _make_module(env, 'codemod_guard_accept', body)
+        t = mod.TaskHash()
+        oryxflow.run(t)                              # unversioned output, no record
+
+        _bump_mtime(path, 3600)                      # source newer than the output
+        mod.TaskHash.code_version = '1'
+        with pytest.warns(oryxflow.StalenessWarning,
+                          match='output predates current code'):
+            oryxflow.run(t)
+        assert oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id) is None
+
+        accepted = oryxflow.accept_code(t)           # the blessing the warning points at
+        assert t.task_id in accepted
+        assert 're-stamped' in capsys.readouterr().out
+        rec = oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id)
+        assert rec is not None and rec['code_version'] == '1'
+        r = oryxflow.run(t)                          # guard satisfied, no recompute
+        assert r.ran == [] and r.warnings == []
+        assert oryxflow.events.status()['pending_warnings'] == []
+
+    def test_accept_code_empty_reports(self, env, capsys):
+        assert oryxflow.accept_code() == []
+        assert 'nothing accepted' in capsys.readouterr().out
+
+    def test_warning_dedupe_per_process(self, env, monkeypatch, recwarn):
+        # an unacknowledged warning repeats per build (WorkflowMulti = one build per
+        # flow) -- the print/log channels emit the SAME message once per process, while
+        # RunResult.warnings still reports it every build; a CHANGED condition re-warns
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_dedupe', MODULE_V1)
+        t = mod.TaskHash()
+        oryxflow.run(t)
+        path.write_text(MODULE_V1_EDITED)
+        _bump_mtime(path)
+
+        def _staleness_count():
+            return sum(isinstance(w.message, oryxflow.StalenessWarning)
+                       for w in recwarn.list)
+
+        r1 = oryxflow.run(t)
+        assert _staleness_count() == 1 and r1.warnings != []
+        r2 = oryxflow.run(t)                         # same condition -> no new emission
+        assert _staleness_count() == 1
+        assert r2.warnings != []                     # but the build still reports it
+
+        # different condition (another file changed too) -> a NEW message re-warns
+        edited_more = MODULE_V1_EDITED.replace('FACTOR = 2', 'FACTOR = 3')
+        path.write_text(edited_more)
+        _bump_mtime(path, 20)
+        oryxflow.run(t)
+        # same message text (same changed-file list) stays deduped; accept then a fresh
+        # edit re-arms the emission
+        oryxflow.accept_code(t)
+        path.write_text(MODULE_V1_EDITED)
+        _bump_mtime(path, 30)
+        with pytest.warns(oryxflow.StalenessWarning,
+                          match='changed since cached run'):
+            oryxflow.run(t)
+
     def test_auto_flag_off(self, env, monkeypatch):
         monkeypatch.setattr(oryxflow.settings, 'code_version_auto', False)
         monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
@@ -745,6 +841,22 @@ class TestCodehash:
         a.write_bytes(src.encode())
         b.write_bytes(src.replace('\n', '\r\n').encode())
         assert oryxflow.codehash.file_hash(a) == oryxflow.codehash.file_hash(b)
+
+    def test_pin_line_hash_neutral(self, tmp_path):
+        base = 'class T:\n    def run(self):\n        return 1\n'
+        pinned = "class T:\n    code_version = '3'\n    def run(self):\n        return 1\n"
+        annotated = "class T:\n    code_version: str = '3'\n    def run(self):\n        return 1\n"
+        a, b, c = tmp_path / 'a.py', tmp_path / 'b.py', tmp_path / 'c.py'
+        a.write_text(base)
+        b.write_text(pinned)
+        c.write_text(annotated)
+        h = oryxflow.codehash.file_hash(a)
+        assert oryxflow.codehash.file_hash(b) == h
+        assert oryxflow.codehash.file_hash(c) == h
+        # but a module-level `code_version` (not a class pin) is normal code
+        d = tmp_path / 'd.py'
+        d.write_text("code_version = '3'\n" + base)
+        assert oryxflow.codehash.file_hash(d) != h
 
     def test_package_reexport_and_lazy_import_walked(self, env, monkeypatch):
         # blind spots are only as narrow as the walk is complete: __init__ re-exports

@@ -29,23 +29,29 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   tracking of that task's own logic — it recomputes only on a deliberate bump (the task and
   everything downstream), for expensive tasks where a refactor-triggered recompute must be a
   decision, or logic the hash can't see. Records are mode-aware (they store both the token and
-  the `source_hashes` as of the last materialization), so pinning/unpinning unchanged code never
-  recomputes ("just resumes"), an edit masked during a pinned-unbumped window is caught the
-  moment the pin comes off, and pinning in the same edit as a logic change forces a rerun
-  instead of blessing stale output.
+  the `source_hashes` as of the last materialization), and the `code_version` line itself is
+  stripped by the AST normalization (typing it in / deleting / bumping it is a token change,
+  never a source change), so pinning/unpinning unchanged code never recomputes ("just resumes"),
+  an edit masked during a pinned-unbumped window is caught the moment the pin comes off, and
+  pinning in the same edit as a logic change forces a rerun instead of blessing stale output.
 - Dependency propagation folds **output identity** (`output_id`, fresh per actual
   materialization, preserved across re-stamps and `accept_code`): downstream reruns exactly when
   an upstream rematerialized — pin toggles and accepts never ripple, and a `reset()`+rerun
   upstream propagates downstream even across separate builds.
 - Staleness advisory for pinned tasks: code changed without a bump → cached output is reused and
-  the run warns via `StalenessWarning` (a `UserWarning` subclass, shown on every occurrence,
-  visible without `enable_logging()`), a loguru record, a `code_warning` event, and
-  `RunResult.warnings`.
+  the run warns via `StalenessWarning` (a `UserWarning` subclass, visible without
+  `enable_logging()`), a loguru record, a `code_warning` event, and `RunResult.warnings`. The
+  printed/logged channels dedupe per process — the same message for the same task shows once
+  (a `WorkflowMulti` run is one build per flow over shared upstreams and would otherwise flood
+  stdout) and re-arms when the condition changes or the task reruns/is accepted;
+  `RunResult.warnings` and the event stream record every occurrence.
 - `oryxflow.accept_code(task)` / `accept_code()`: acknowledge an output-equivalent code change
   without rerunning. With a task instance it re-stamps the task **and its entire upstream dep
-  tree** (post-order); `Workflow.accept_code(task=None)` / `WorkflowMulti.accept_code(task=None,
-  flow=None)` wrap it for the flow's default task. Never touches `output_id`, so accepting never
-  triggers downstream recomputes.
+  tree** (post-order), stamping a fresh baseline record for outputs that have none yet (this is
+  what clears the `output predates current code` mtime-guard warning after an upgrade);
+  `Workflow.accept_code(task=None)` / `WorkflowMulti.accept_code(task=None, flow=None)` wrap it
+  for the flow's default task. Prints a one-line summary of what it re-stamped (or that nothing
+  was accepted). Never touches `output_id`, so accepting never triggers downstream recomputes.
 - `TaskData.keep_versions` (default `False`): with `code_version` set, outputs live under a
   readable `.../<Task>/v<version>/` segment so old versions survive bumps (explicit pins only;
   auto-tracked tasks overwrite in place).

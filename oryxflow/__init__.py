@@ -179,14 +179,19 @@ def accept_code(task=None):
             source hashes of every task importing the file, so acceptance must cover
             the whole band) -- call it on the most-downstream task you judge
             equivalent, typically the flow's default task, or use
-            ``Workflow.accept_code()``. A task CLASS re-stamps every record of that
-            family in ``settings.dirpath``. With no argument, bulk-accepts: every
-            record in ``settings.dirpath`` whose stored hashes differ from the current
-            files is re-stamped. Accepting never touches a record's ``output_id``, so
-            it never triggers downstream recomputes.
+            ``Workflow.accept_code()``. This is also the form that clears the
+            "output predates current code" warning: an output with no stored record
+            gets a fresh baseline record stamped at current. A task CLASS re-stamps
+            every EXISTING record of that family in ``settings.dirpath`` (it cannot
+            create missing records -- use the instance/flow form for that). With no
+            argument, bulk-accepts: every record in ``settings.dirpath`` whose stored
+            hashes differ from the current files is re-stamped. Accepting never
+            touches a record's ``output_id``, so it never triggers downstream
+            recomputes.
 
     Returns: list of task_ids re-stamped
     """
+    import uuid as _uuid
     from datetime import datetime, timezone
     from oryxflow import state, codehash
 
@@ -204,6 +209,7 @@ def accept_code(task=None):
         rec['v'] = state.RECORD_V
         rec['ts'] = now
         state.put_record(dirpath, task_id, rec)
+        core._code_warned.pop(task_id, None)   # accepted; a future recurrence re-warns
         events.append('code_accepted',
                       {'task_id': task_id, 'family': family, 'source_hashes': hashes})
         logger.info("accepted code change for {}", task_id)
@@ -228,10 +234,21 @@ def accept_code(task=None):
             dirpath = t._resolved_dirpath() if hasattr(t, '_resolved_dirpath') \
                 else oryxflow.settings.dirpath
             rec = state.get_record(dirpath, t.task_id)
-            if rec is not None:
-                _restamp(dirpath, t.task_id, rec, codehash.module_hashes(type(t)),
-                         t.task_family, fingerprint=fp,
-                         dep_state=t._dep_state() if hasattr(t, '_dep_state') else None)
+            if rec is None:
+                # no record but the output exists (grandfathered output held back by
+                # the "predates current code" mtime guard): accepting IS the blessing
+                # -- stamp a fresh baseline so the guard is satisfied from here on
+                try:
+                    outputs = core.flatten(t.output())
+                    if not outputs or not all(o.exists() for o in outputs):
+                        return
+                except Exception:
+                    return
+                rec = {'output_id': _uuid.uuid4().hex[:16],
+                       'code_version': t.code_version, 'duration_s': None}
+            _restamp(dirpath, t.task_id, rec, codehash.module_hashes(type(t)),
+                     t.task_family, fingerprint=fp,
+                     dep_state=t._dep_state() if hasattr(t, '_dep_state') else None)
 
         _walk(task)
     elif task is not None:
@@ -256,6 +273,15 @@ def accept_code(task=None):
                     changed = True
             if changed:
                 _restamp(dirpath, tid, rec, current, tid.split('_')[0])
+    # visible without enable_logging(), like the execution summary: silence here
+    # reads as false confidence that something was accepted
+    if accepted:
+        shown = ', '.join(accepted[:5]) + ('...' if len(accepted) > 5 else '')
+        print('accept_code: re-stamped {} record(s): {}'.format(len(accepted), shown))
+    else:
+        print('accept_code: nothing accepted (no matching stored records -- to bless '
+              'outputs that have no record yet, pass a task instance or use '
+              'flow.accept_code())')
     return accepted
 
 
