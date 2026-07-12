@@ -150,18 +150,22 @@ of the experiment matrix — the traits that define a hard project.
 Overselling this would be a disservice, and the sharp edges matter most on exactly the
 complex projects where the library otherwise shines.
 
-1. **Code-change invalidation is a one-token discipline, not fully automatic.** *(Largely
-   addressed as of oryxflow 26.7.12.)* oryxflow caches a task's output by its class and
+1. **Code-change invalidation is automatic — but its blind spots are mine to watch.**
+   *(Addressed as of oryxflow 26.7.12.)* oryxflow caches a task's output by its class and
    parameters — so editing the code inside `run()` used to silently reuse the stale output.
-   Now each task carries a `code_version`: bump it in the same edit as the logic change and
-   the task **and everything downstream** recomputes on the next run, no `reset()` chains.
-   And if I *forget* to bump, the library watches my code as an advisory — it hashes the
-   task's module and its transitively imported project files (AST-normalized, so cosmetic
-   edits never warn) and fires a visible `StalenessWarning` naming the changed file and the
-   three exits (bump / `accept_code` / reset). The residual honesty: the bump is still an
-   act of memory (the warning is the net under forgetting, not the elimination of it), and
-   the hash can't see data files, external APIs or dynamic dispatch — where it can't see,
-   it stays silent rather than pretending to verify. For those, `reset()` remains the verb.
+   Now the library fingerprints every task's code for me: it hashes the task's module and
+   its transitively imported project files (AST-normalized, so comment and formatting edits
+   never count), and a real logic change reruns the task **and everything downstream** on
+   the next run — no attribute to maintain, no `reset()` chains, no act of memory. Two
+   deliberate exceptions hold their cache and *warn* instead: tasks I pin with an explicit
+   `code_version` (recompute only on my bump — for logic the hash can't see, or where a
+   recompute must be a decision), and expensive tasks whose last run exceeded a threshold,
+   so a refactor can't silently burn a 40-minute backtest. The residual honesty: the hash
+   can't see data files, external APIs or dynamic dispatch — where it can't see, it stays
+   silent rather than pretending to verify. So my remaining discipline is *verification,
+   not invalidation*: after an edit, the next run must show the edited band in
+   `result.ran` with reason `code change (auto: <files>)`; a `ran=0` after an edit means
+   the change lives in a blind spot, and `reset()` is the verb there.
 
 2. **The multi-input API is a fumble surface.** Simple single-parent, single-output tasks are
    clean. But complex tasks have multiple parents and multiple named outputs, and unpacking
@@ -182,21 +186,23 @@ leaves open. Which is the whole point of pairing the library with an agent-side 
 
 ## Library plus plugin: a matched pair
 
-The two residual mechanical risks — *remember to bump `code_version` in the same edit as a
-logic change* and *get the multi-input wiring right* — are precisely what an
+The two residual mechanical risks — *verify that an edit's rerun actually happened* (the
+blind-spot net) and *get the multi-input wiring right* — are precisely what an
 editor-integrated skill can carry. The
 [oryxflow Claude Code plugin](https://github.com/oryxintel/oryxflow-claude-plugin) exists
 for this: it activates when an agent touches pipeline files and front-loads the correct
-idioms — including "you edited this task's logic, bump its `code_version` now" and the right
-patterns for selecting named inputs from multi-parent tasks.
+idioms — the session-start `events.print_status()` habit, the verify-the-rerun check after
+every edit, answering staleness and expensive-recompute warnings with the right exit
+(recompute / `accept_code` / pin), and the right patterns for selecting named inputs from
+multi-parent tasks.
 
 That produces a clean division of labor:
 
 - **The library** carries the state-tracking an agent is structurally bad at — the
-  dependency graph, the caching, the parameter-keyed reruns, the downstream propagation of
-  a code bump, and the staleness warning when a bump was forgotten.
-- **The plugin** carries the remaining disciplines — bumping at the moment of the edit,
-  answering warnings with the right exit, and the multi-input API.
+  dependency graph, the caching, the parameter-keyed reruns, automatic code invalidation
+  with downstream propagation, and the warnings on pinned or expensive tasks.
+- **The plugin** carries the remaining disciplines — verifying reruns landed, answering
+  warnings with the right exit, and the multi-input API.
 
 And this pairing gets *more* valuable as complexity rises, not less — the opposite of most
 tooling, which buckles under scale.
@@ -206,12 +212,15 @@ tooling, which buckles under scale.
 Working from the failure modes above, the highest-leverage improvements are the ones that
 would close the mechanical gaps automatically instead of relying on discipline:
 
-1. **Code-aware invalidation.** ✅ *Shipped in 26.7.12.* `code_version` bumps propagate
-   downstream automatically; an AST-normalized, transitive advisory hash warns (visibly,
-   with named exits) when code changed without a bump. Explicit-token-plus-advisory rather
-   than hash-driven reruns was deliberate: an automatic hash has blind spots (data files,
-   dynamic dispatch) that would become false confidence if it drove reruns — as a warning,
-   a blind spot just means "no warning," which degrades to the old behavior, never below it.
+1. **Code-aware invalidation.** ✅ *Shipped in 26.7.12 — fully automatic.* The
+   AST-normalized, transitive hash *drives* reruns by default: edit a task or a helper it
+   imports and the affected band recomputes, cosmetic edits never do. `code_version` is the
+   opt-in pin for logic the hash can't see or recomputes that must be deliberate (with
+   mode-aware records, so pinning/unpinning unchanged code never recomputes), and an
+   expensive-recompute guard keeps a refactor from silently burning a long run. Blind spots
+   (data files, dynamic dispatch) degrade to parameters-only caching — never a false rerun,
+   never a false "verified unchanged" — which is why the one remaining discipline is
+   verifying the rerun landed.
 
 2. **First-class ergonomics for multi-parent, multi-output tasks.** Reduce the fumble
    surface: prefer named-dictionary input selection over positional unpacking everywhere in
