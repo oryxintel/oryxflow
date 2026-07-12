@@ -7,7 +7,7 @@ except _PkgNotFound:          # running from a source tree that was never instal
     __version__ = "0.0.0+unknown"
 
 from oryxflow import core
-from oryxflow.core import flatten, RunResult, MultiRunResult, TaskFailure
+from oryxflow.core import flatten, RunResult, MultiRunResult, TaskFailure, StalenessWarning
 from oryxflow.log import logger, enable_logging, disable_logging
 from oryxflow.parameter import (
     Parameter,
@@ -19,6 +19,9 @@ from pathlib import Path
 
 import oryxflow.targets, oryxflow.tasks, oryxflow.settings
 import oryxflow.utils
+import oryxflow.events as events
+import oryxflow.state
+import oryxflow.codehash
 from oryxflow.cache import data as data
 import oryxflow.cache
 
@@ -159,6 +162,71 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
         raise RuntimeError(
             'Exception found running flow, check trace. For more details see https://oryxflow.readthedocs.io/en/latest/run.html#debugging-failures') from result.first_exception
     return result
+
+
+def accept_code(task=None):
+    """
+    Acknowledge an output-equivalent code change: re-stamp the stored source hashes at
+    current without rerunning, so the "code changed but code_version didn't" warning
+    stops firing. The three exits from every warning: bump ``code_version`` (semantic
+    change), ``accept_code`` (equivalent refactor), or ``reset()`` (recompute regardless).
+
+    Args:
+        task (obj, class): task instance (re-stamps that task's record in its data dir)
+            or task class (re-stamps every record of that family in ``settings.dirpath``).
+            With no argument, bulk-accepts: every record in ``settings.dirpath`` whose
+            stored hashes differ from the current files is re-stamped.
+
+    Returns: list of task_ids re-stamped
+    """
+    from datetime import datetime, timezone
+    from oryxflow import state, codehash
+
+    now = datetime.now(timezone.utc).isoformat()
+    accepted = []
+
+    def _restamp(dirpath, task_id, rec, hashes, family):
+        rec = dict(rec)
+        rec['source_hashes'] = hashes
+        rec['py'] = codehash.PY_TAG
+        rec['ts'] = now
+        state.put_record(dirpath, task_id, rec)
+        events.append('code_accepted',
+                      {'task_id': task_id, 'family': family, 'source_hashes': hashes})
+        logger.info("accepted code change for {}", task_id)
+        accepted.append(task_id)
+
+    if task is not None:
+        cls = task if isinstance(task, type) else type(task)
+        family = cls.task_family
+        hashes = codehash.module_hashes(cls)
+        if not isinstance(task, type):
+            dirpath = task._resolved_dirpath() if hasattr(task, '_resolved_dirpath') \
+                else oryxflow.settings.dirpath
+            targets = [(dirpath, task.task_id, state.get_record(dirpath, task.task_id))]
+        else:
+            dirpath = oryxflow.settings.dirpath
+            targets = [(dirpath, tid, rec)
+                       for tid, rec in state.all_records(dirpath).items()
+                       if tid.split('_')[0] == family]
+        for dirpath, tid, rec in targets:
+            if rec is not None:
+                _restamp(dirpath, tid, rec, hashes, family)
+    else:
+        dirpath = oryxflow.settings.dirpath
+        root = codehash._project_root()
+        for tid, rec in state.all_records(dirpath).items():
+            stored = rec.get('source_hashes') or {}
+            current = {}
+            changed = False
+            for rel, digest in stored.items():
+                cur = codehash.file_hash(root / rel)
+                current[rel] = cur if cur is not None else digest
+                if cur is not None and cur != digest:
+                    changed = True
+            if changed:
+                _restamp(dirpath, tid, rec, current, tid.split('_')[0])
+    return accepted
 
 
 def taskflow_upstream(task, only_complete=False):
@@ -644,12 +712,16 @@ class WorkflowMulti(object):
                                                 forced_all_upstream=forced_all_upstream, confirm=confirm,
                                                 workers=workers,
                                                 abort=abort,
-                                                execution_summary=execution_summary, **kwargs)
+                                                execution_summary=execution_summary,
+                                                **{**{'flow': flow}, **kwargs})
         result = MultiRunResult()
         for exp_name in self.params.keys():
+            # each per-flow build gets its own run_id and carries the flow name in its
+            # event envelopes (kwargs['flow'] rides through run() into core.build)
             result[exp_name] = self.workflow_objs[exp_name].run(tasks, forced, forced_all, forced_all_upstream,
                                                                 confirm, workers, abort,
-                                                                execution_summary, **kwargs)
+                                                                execution_summary,
+                                                                **{**{'flow': exp_name}, **kwargs})
         return result
 
     def outputLoad(self, task=None, flow=None, keys=None, as_dict=False, cached=False):

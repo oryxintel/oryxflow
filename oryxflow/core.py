@@ -23,6 +23,16 @@ from oryxflow.parameter import (
 )
 
 
+class StalenessWarning(UserWarning):
+    """Code changed but code_version didn't (or can't be verified). Shown on every
+    occurrence: python's default warning filter dedups by call site, which would
+    silence the second run() in the same process -- exactly when it matters."""
+
+
+import warnings as _warnings_mod
+_warnings_mod.simplefilter('always', StalenessWarning)
+
+
 # Parameters of the task id. ``settings.set_parameter_len`` tunes these at import time.
 TASK_ID_INCLUDE_PARAMS = 3
 TASK_ID_TRUNCATE_PARAMS = 16
@@ -146,6 +156,12 @@ class Task(metaclass=Register):
     Subclasses declare :py:class:`~oryxflow.parameter.Parameter` members and override
     :py:meth:`run`, :py:meth:`requires` and :py:meth:`output`.
     """
+
+    # Code identity token (str or int): bump it whenever you change this task's logic
+    # (its run() or a helper it calls) -- the task and everything downstream reruns on
+    # the next run(), overwriting in place. None (the default) leaves caching purely
+    # parameter-based, byte-for-byte today's behavior.
+    code_version = None
 
     @classmethod
     def get_params(cls):
@@ -288,7 +304,15 @@ class Task(metaclass=Register):
         return self.__class__ == other.__class__ and self.task_id == other.task_id
 
     def complete(self):
-        """``True`` if all of this task's outputs exist."""
+        """``True`` if all of this task's outputs exist.
+
+        Note: ``TaskData`` OVERRIDES this to ALSO require the stored code
+        fingerprint to match the current one (``TaskData._code_ok``), so a
+        ``code_version`` bump makes a task incomplete and forces a rerun -- the
+        fingerprint is authoritative here, not merely advisory. The AST
+        source-hash is a SEPARATE, warn-only advisory (fires when code changed
+        but ``code_version`` did not); it does not gate completeness.
+        """
         import warnings
         outputs = flatten(self.output())
         if len(outputs) == 0:
@@ -314,6 +338,21 @@ class Task(metaclass=Register):
     def deps(self):
         """Flattened list of required tasks."""
         return flatten(self.requires())
+
+    @property
+    def _code_fingerprint(self):
+        """Recursive code identity; None when no code_version is set here or upstream
+        (feature inert). Compared against the state store by TaskData.complete() --
+        a mismatch forces a rerun (authoritative). Distinct from the warn-only AST
+        source-hash advisory in codehash.py, which never gates completeness."""
+        # Not memoized: instances are process-long-lived via the Register cache, so a
+        # cached fingerprint would go stale on runtime bumps; recompute is a cheap md5
+        # over a small DAG.
+        dep_fps = [d._code_fingerprint for d in self.deps()]
+        if self.code_version is None and all(f is None for f in dep_fps):
+            return None
+        parts = [self.task_family, str(self.code_version)] + sorted(f or '' for f in dep_fps)
+        return hashlib.md5('|'.join(parts).encode('utf-8')).hexdigest()[:16]
 
     def run(self):
         """The task computation, to be overridden in a subclass."""
@@ -462,11 +501,15 @@ class TaskFailure:
 
 class RunResult:
     """What happened to the DAG in one build: identities, status, failure context."""
-    def __init__(self, success, ran, complete, failed):
+    def __init__(self, success, ran, complete, failed, run_id=None, reasons=None,
+                 warnings=None):
         self.success = success          # bool: no failures
         self.ran = ran                  # list[Task]  actually recomputed
         self.complete = complete        # list[Task]  cache hits (skipped)
         self.failed = failed            # list[TaskFailure]
+        self.run_id = run_id            # id shared by this build's events
+        self.reasons = reasons or {}    # {task_id: why it ran} for tasks in `ran`
+        self.warnings = warnings or []  # unacknowledged code-change warning strings
 
     # --- back-compat aliases ---
     @property
@@ -521,6 +564,27 @@ class MultiRunResult(dict):
         return all(bool(r) for r in self.values())
     def __bool__(self):
         return self.success
+
+    # --- aggregates across flows, so callers never hand-roll them ---
+    @property
+    def ran(self):
+        return [t for r in self.values() for t in r.ran]
+    @property
+    def complete(self):
+        return [t for r in self.values() for t in r.complete]
+    @property
+    def failed(self):
+        return [f for r in self.values() for f in r.failed]
+    @property
+    def reasons(self):
+        merged = {}
+        for r in self.values():
+            merged.update(r.reasons)
+        return merged
+    @property
+    def warnings(self):
+        return [w for r in self.values() for w in r.warnings]
+
     def summary(self):
         """Per-flow execution summaries, each under a ``===== <flow> =====`` header."""
         return "\n\n".join(
@@ -529,7 +593,31 @@ class MultiRunResult(dict):
         return self.summary()
 
 
-def build(tasks, workers=1, detailed_summary=False, **ignored):
+_git_info_cache = None  # (expires_at, sha, dirty) -- subprocesses are too slow per build
+
+
+def _git_info():
+    """(sha, dirty) of the working tree, best-effort; (None, None) outside a repo.
+    Cached for a few seconds: builds are often issued in tight loops (WorkflowMulti,
+    tests) and two subprocess calls per build dominate small-DAG runtimes."""
+    global _git_info_cache
+    now = time.monotonic()
+    if _git_info_cache is not None and now < _git_info_cache[0]:
+        return _git_info_cache[1], _git_info_cache[2]
+    import subprocess
+    try:
+        sha = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True,
+                             text=True, timeout=5).stdout.strip() or None
+        status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True,
+                                text=True, timeout=5).stdout.strip()
+        sha, dirty = sha, (bool(status) if sha else None)
+    except Exception:
+        sha, dirty = None, None
+    _git_info_cache = (now + 10, sha, dirty)
+    return sha, dirty
+
+
+def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
     """
     Run ``tasks`` and their dependencies sequentially, in dependency order.
 
@@ -539,9 +627,21 @@ def build(tasks, workers=1, detailed_summary=False, **ignored):
     External tasks (``external=True`` or ``run is None``) are never executed; if still
     incomplete after their dependencies, they are marked failed.
 
+    :param flow: flow name when launched via ``Workflow``/``WorkflowMulti``; stamped into
+        this build's event envelopes.
     :returns: a :py:class:`RunResult` with ``.ran``/``.complete``/``.failed`` task identities,
-        ``.success`` and the ``did_run``/``ran_of``/``failure_of`` queries.
+        ``.success``, ``.run_id``, per-task ``.reasons`` and code-change ``.warnings``.
     """
+    import os
+    import uuid
+    import warnings as _stdwarnings
+    from datetime import datetime, timezone
+    from oryxflow import events as _events
+    from oryxflow import state as _state
+    from oryxflow import codehash as _codehash
+    from oryxflow import log as _log
+    from oryxflow import settings as _settings
+
     if not isinstance(tasks, (list,)):
         tasks = [tasks]
 
@@ -549,6 +649,147 @@ def build(tasks, workers=1, detailed_summary=False, **ignored):
     ran = []              # tasks executed this build
     already_complete = []  # tasks already complete
     failed = []           # TaskFailure for tasks that failed (run error, failed dep, missing external)
+    reasons = {}          # task_id -> why it ran
+    warned = []           # unacknowledged code-change warning strings
+    advised = set()       # task_ids already checked by the code advisory this build
+
+    run_id = uuid.uuid4().hex
+    git_sha, git_dirty = _git_info()
+
+    def _emit(event_type, payload, msg=None, level='info'):
+        # single call site per engine fact: the event and the human loguru line
+        # come from the same data and can't disagree
+        _events.append(event_type, payload, run_id=run_id, flow=flow)
+        if msg is not None:
+            getattr(logger, level)("{}", msg)
+
+    def _code_state(task):
+        # (fingerprint, dirpath) when the code-invalidation feature applies, else (None, None)
+        fp = task._code_fingerprint
+        if fp is None or not hasattr(task, '_resolved_dirpath'):
+            return None, None
+        return fp, task._resolved_dirpath()
+
+    def _hashes(task):
+        try:
+            return _codehash.module_hashes(task)
+        except Exception:
+            return {}
+
+    def _warn_code(task, msg, changed_files):
+        # decision 12a: the advisory must be visible without enable_logging(), so it
+        # goes out on every channel -- warnings.warn, loguru, the event, RunResult
+        warned.append(msg)
+        _stdwarnings.warn(msg, StalenessWarning)
+        _emit('code_warning',
+              {'task_id': task.task_id, 'family': task.task_family,
+               'changed_files': changed_files, 'code_version': task.code_version},
+              msg=msg, level='warning')
+
+    def _mtime_guard_trips(task, hashes):
+        # decision 12c: local-fs heuristic only -- any hashed source newer than the output
+        if _settings.cloud_fs_enabled:
+            return False
+        try:
+            root = _codehash._project_root()
+            src = [os.stat(str(root / rel)).st_mtime for rel in hashes]
+            out = [os.stat(str(o.path)).st_mtime for o in flatten(task.output())
+                   if getattr(o, 'path', None) is not None]
+            return bool(src) and bool(out) and max(src) > min(out)
+        except Exception:
+            return False
+
+    def _advise(task):
+        # advisory sweep over a complete subtree: grandfather-stamp missing records and
+        # warn when code changed without a code_version bump
+        tid = task.task_id
+        if tid in advised:
+            return
+        advised.add(tid)
+        fp = task._code_fingerprint
+        if fp is None:
+            # fingerprint folds deps, so None means the entire upstream subtree is
+            # unversioned too -- nothing to advise anywhere above this task
+            return
+        dirpath = task._resolved_dirpath() if hasattr(task, '_resolved_dirpath') else None
+        if dirpath is not None:
+            try:
+                outputs = flatten(task.output())
+                outputs_exist = bool(outputs) and all(o.exists() for o in outputs)
+            except Exception:
+                outputs_exist = False
+            if outputs_exist:
+                rec = _state.get_record(dirpath, tid)
+                if rec is None:
+                    # grandfathering: output exists, record missing -> treat as current and
+                    # stamp a baseline (state-only, no event), unless the output predates
+                    # the code on disk
+                    hashes = _hashes(task)
+                    if _mtime_guard_trips(task, hashes):
+                        _warn_code(task, (
+                            "task {}: output predates current code; can't verify -- "
+                            "reset() or oryxflow.accept_code({}) to confirm").format(
+                                task.task_family, task.task_family),
+                            sorted(hashes))
+                    else:
+                        _state.put_record(dirpath, tid, {
+                            'fingerprint': fp, 'code_version': task.code_version,
+                            'source_hashes': hashes, 'py': _codehash.PY_TAG,
+                            'ts': datetime.now(timezone.utc).isoformat()})
+                elif rec.get('fingerprint') == fp:
+                    stored = rec.get('source_hashes') or {}
+                    current = _hashes(task)
+                    if rec.get('py') != _codehash.PY_TAG:
+                        # interpreter changed -> normalized hashes aren't comparable;
+                        # re-stamp silently (same trust level as grandfathering) instead
+                        # of firing a mass false-alarm wave after a Python upgrade
+                        _state.put_record(dirpath, tid, {
+                            'fingerprint': fp, 'code_version': task.code_version,
+                            'source_hashes': current, 'py': _codehash.PY_TAG,
+                            'ts': datetime.now(timezone.utc).isoformat()})
+                    elif stored and current and stored != current:
+                        changed = sorted(k for k in set(stored) | set(current)
+                                         if stored.get(k) != current.get(k))
+                        _warn_code(task, (
+                            "task {}: {} changed since cached run; code_version still {} -- "
+                            "reusing cached output. Bump code_version to recompute, or "
+                            "oryxflow.accept_code({}) only if certain the output is "
+                            "equivalent -- when unsure, bump (best-effort check: can't "
+                            "see data files or dynamic calls).").format(
+                                task.task_family, ', '.join(changed),
+                                task.code_version, task.task_family),
+                            changed)
+        for dep in flatten(task.requires()):
+            _advise(dep)
+
+    def _reason_for(task):
+        # why is this (incomplete) task about to run? deps were processed first, so a
+        # rerun upstream is already in `ran`.
+        try:
+            outputs = flatten(task.output())
+            if not outputs or not all(o.exists() for o in outputs):
+                return 'output missing'
+        except Exception:
+            return 'output missing'
+        fp, dirpath = _code_state(task)
+        if fp is not None:
+            rec = _state.get_record(dirpath, task.task_id)
+            if rec is not None:
+                if rec.get('code_version') != task.code_version:
+                    return 'code change ({} -> {})'.format(
+                        rec.get('code_version'), task.code_version)
+                if rec.get('fingerprint') != fp:
+                    return 'upstream rerun'
+        if any(d.task_id in reasons or d in ran for d in flatten(task.requires())):
+            return 'upstream rerun'
+        return 'upstream rerun' if flatten(task.requires()) else 'output missing'
+
+    def _emit_failed(task, error, tb, duration):
+        _emit('task_failed',
+              {'task_id': task.task_id, 'family': task.task_family,
+               'params': task.to_str_params(only_significant=False),
+               'error': error, 'traceback': tb[-4096:] if tb else None,
+               'duration_s': duration})
 
     def _process(task):
         tid = task.task_id
@@ -556,6 +797,7 @@ def build(tasks, workers=1, detailed_summary=False, **ignored):
             return visited[tid]
 
         if task.complete():
+            _advise(task)
             logger.debug("task skipped (already complete): {}", tid)
             already_complete.append(task)
             visited[tid] = True
@@ -569,6 +811,7 @@ def build(tasks, workers=1, detailed_summary=False, **ignored):
         if not dep_ok:
             logger.error("task failed (dependency failed): {}", tid)
             failed.append(TaskFailure(task, reason="dependency failed"))
+            _emit_failed(task, 'dependency failed', None, None)
             visited[tid] = False
             return False
 
@@ -581,9 +824,11 @@ def build(tasks, workers=1, detailed_summary=False, **ignored):
                 return True
             logger.warning("external task missing output: {}", tid)
             failed.append(TaskFailure(task, reason="external missing output"))
+            _emit_failed(task, 'external missing output', None, None)
             visited[tid] = False
             return False
 
+        reason = _reason_for(task)
         logger.info("task start: {} ({})", task.task_family, tid)
         t0 = time.perf_counter()
         try:
@@ -591,17 +836,47 @@ def build(tasks, workers=1, detailed_summary=False, **ignored):
             if inspect.isgenerator(result):
                 if not _drive_generator(result):
                     failed.append(TaskFailure(task, reason="dependency failed"))
+                    _emit_failed(task, 'dependency failed', None,
+                                 time.perf_counter() - t0)
                     visited[tid] = False
                     return False
         except Exception as e:
             logger.opt(exception=True).error("task failed: {}", tid)
-            failed.append(TaskFailure(task, exception=e, traceback=traceback.format_exc(),
+            tb = traceback.format_exc()
+            failed.append(TaskFailure(task, exception=e, traceback=tb,
                                       reason="run error"))
+            _emit_failed(task, '{}: {}'.format(type(e).__name__, e), tb,
+                         time.perf_counter() - t0)
             visited[tid] = False
             return False
 
-        logger.info("task complete: {} in {:.3f}s", tid, time.perf_counter() - t0)
+        duration = time.perf_counter() - t0
+        fp, dirpath = _code_state(task)
+        hashes = _hashes(task) if (fp is not None
+                                   or getattr(_settings, 'events', True)) else {}
+        if fp is not None:
+            try:
+                _state.put_record(dirpath, tid, {
+                    'fingerprint': fp, 'code_version': task.code_version,
+                    'source_hashes': hashes, 'py': _codehash.PY_TAG,
+                    'ts': datetime.now(timezone.utc).isoformat()})
+            except Exception as e:
+                logger.debug("state record write failed for {}: {}", tid, e)
+        try:
+            from oryxflow import __version__ as _version
+        except Exception:
+            _version = None
+        _emit('task_ran',
+              {'task_id': tid, 'family': task.task_family,
+               'params': task.to_str_params(only_significant=False),
+               'code_version': task.code_version, 'fingerprint': fp,
+               'source_hashes': hashes, 'reason': reason, 'duration_s': duration,
+               'git_sha': git_sha, 'git_dirty': git_dirty,
+               'oryxflow_version': _version,
+               'dirpath': str(dirpath if dirpath is not None else _settings.dirpath)},
+              msg="task complete: {} in {:.3f}s".format(tid, duration))
         ran.append(task)
+        reasons[tid] = reason
         visited[tid] = True
         return True
 
@@ -623,11 +898,40 @@ def build(tasks, workers=1, detailed_summary=False, **ignored):
         except StopIteration:
             return True
 
-    for task in tasks:
-        _process(task)
+    _emit('run_started',
+          {'tasks': sorted({t.task_family for t in tasks})},
+          msg="run started: {} (run_id={})".format(
+              ', '.join(sorted({t.task_family for t in tasks})), run_id))
+
+    def _capture_task_log(level, message, context):
+        extra = {}
+        for k, v in list(context.items())[:20]:
+            extra[k] = v if isinstance(v, (int, float, bool, type(None))) else str(v)[:512]
+        _events.append('task_log',
+                       {'task_id': context.get('task_id'),
+                        'family': context.get('task_family'),
+                        'level': level, 'message': str(message)[:4096], 'extra': extra},
+                       run_id=run_id, flow=flow)
+
+    previous_capture = _log.set_task_log_capture(_capture_task_log)
+    try:
+        for task in tasks:
+            _process(task)
+    finally:
+        _log.set_task_log_capture(previous_capture)
 
     success = len(failed) == 0
-    result = RunResult(success, ran, already_complete, failed)
+    _emit('run_finished',
+          {'counts': {'ran': len(ran), 'complete': len(already_complete),
+                      'failed': len(failed)}, 'success': success},
+          msg="run finished: {} ran, {} complete, {} failed, success={}".format(
+              len(ran), len(already_complete), len(failed), success))
+    try:
+        _events.flush()   # events are written async; the run's story is durable on return
+    except Exception:
+        pass
+    result = RunResult(success, ran, already_complete, failed,
+                       run_id=run_id, reasons=reasons, warnings=warned)
     if detailed_summary:                       # gated by execution_summary
         logger.info("run summary:\n{}", result.summary())
     return result

@@ -305,8 +305,10 @@ See real-life project template https://github.com/d6t/d6tflow-template
 Advanced: task attribute overrides
 ------------------------------------------------------------
 
-`persist`: data items to save, see above  
+`persist`: data items to save, see above
 `external`: do check dependencies, good for sharing tasks without providing code
-`target_dir`: specify directory  
+`code_version`: bump (str or int) when this task's logic changes so it and everything downstream recompute; see :ref:`code-versioning`
+`keep_versions`: with ``code_version`` set, keep old versions at readable ``.../<Task>/v<version>/`` paths
+`target_dir`: specify directory
 `target_ext`: specify extension  
 `save_attrib`: include taskid in filename

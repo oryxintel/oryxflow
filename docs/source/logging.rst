@@ -100,6 +100,15 @@ record's ``extra`` dict; include them in a custom format to display them:
 If you would rather log independently of oryxflow's on/off switch, just use your own
 ``from loguru import logger`` directly in your task code instead of ``self.logger``.
 
+.. note::
+
+   Lines you emit with ``self.logger`` are also captured to oryxflow's event stream as
+   ``task_log`` events during a run — independently of whether ``enable_logging()`` is on. So
+   logging a decision-relevant scalar (``self.logger.info("corr_avg={}", corr)``) does double
+   duty: it shows in the live log *and* becomes durable, queryable memory
+   (``oryxflow.events.runs(...)``) for a later session that no longer has the original stderr.
+   See :ref:`Managing Complex Workflows <managing-complex-workflows>` for the event stream.
+
 Routing oryxflow logs into your application's logging
 ------------------------------------------------------------
 

@@ -1,5 +1,11 @@
 # Data-trust / semantic catalog for task outputs
 
+> **Superseded by `20260622-sys-catalog2.md`** — v2 rebases the storage substrate onto the
+> unified event stream of `20260712-engine-code-invalidation.md` (drops the private
+> SQLAlchemy DB, moves to `.oryxflow/`, enrichment becomes events). The semantics model,
+> capture/profile logic, enrichment seam, and MCP/plugin/docs/tests sections here remain
+> the referenced spec for v2 — read both.
+
 > Executable spec. Self-contained — written so a clean session can implement it without the
 > planning conversation. High-level design rationale is condensed into Context + Design
 > decisions below.

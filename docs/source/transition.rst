@@ -17,6 +17,10 @@ three things you were doing in your head before:
   always know how a result was made and can reproduce it exactly.
 * **Automatic parameter management** — change a parameter and oryxflow reruns exactly the tasks
   that depend on it, and keeps the outputs for each parameter set side by side.
+* **Provenance you can query** — oryxflow records what ran, when, and why, and (when you set a
+  ``code_version``) catches the classic trap of editing a task's code while the cache serves the
+  old output. "Is this stale?" and "did I already run this?" stop being things you track in your
+  head.
 
 Current Workflow Using Functions
 ------------------------------------------------------------

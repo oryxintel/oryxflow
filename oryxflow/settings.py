@@ -6,7 +6,14 @@ from pathlib import Path
 dir = 'data'
 dirpath = Path(dir)
 
-db=dirpath/'.oryxflow.json'
+# code-invalidation record store (see oryxflow/state.py): one JSON file with this name
+# lives in every data directory and travels with its artifacts (not a database)
+state_filename = '.oryxflow-code-status.json'
+
+# event stream (see oryxflow/events.py): run records are always on; set events=False to
+# make every append a complete no-op (no dir created, no index touched)
+events = True
+eventspath = Path('.oryxflow')
 
 check_dependencies = True
 check_crc = False

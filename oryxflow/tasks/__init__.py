@@ -30,6 +30,9 @@ class TaskData(core.Task):
     # canonical internal attribute; users declare it as `persists` (see __init__)
     persist = ['data']
     metadata = None
+    # keep outputs of previous code_versions at readable paths (.../Task/v1/...) instead
+    # of overwriting in place; only takes effect when code_version is set
+    keep_versions = False
 
     def __init__(self, *args, path=None, flows=None, **kwargs):
         kwargs_ = {k: v for k, v in kwargs.items(
@@ -91,23 +94,43 @@ class TaskData(core.Task):
 
     def complete(self, cascade=True):
         """
-        Check if a task is complete by checking if output exists, eg if output file exists
+        Check if a task is complete: output exists AND the stored code fingerprint
+        matches the current one (``_code_ok`` -- a ``code_version`` bump makes the
+        task incomplete and forces a rerun; authoritative, unlike the warn-only AST
+        source-hash advisory). With ``check_dependencies``, cascades upstream.
         """
         complete = super().complete()
+        if complete and not getattr(self, 'external', False):
+            complete = self._code_ok()
         if oryxflow.settings.check_dependencies and cascade and not getattr(self, 'external', False):
             complete = complete and all(
                 [t.complete() for t in core.flatten(self.requires())])
         return complete
 
+    def _code_ok(self):
+        # record-based completeness: outputs count as complete only while the stored code
+        # fingerprint matches the current one. Inert (True) when no code_version is set
+        # here or upstream, and grandfathering (no record yet) also passes -- build()
+        # stamps the baseline.
+        fp = self._code_fingerprint
+        if fp is None:
+            return True
+        from oryxflow import state
+        rec = state.get_record(self._resolved_dirpath(), self.task_id)
+        if rec is None:
+            return True          # grandfathered; build() stamps it
+        return rec.get('fingerprint') == fp
+
+    def _resolved_dirpath(self):
+        # the data directory this task's artifacts (and code-invalidation records) live in
+        if self.path is not None:
+            return pathlib.Path(self.path)
+        return settings.dirpath
+
     # Private Get Path Function
     def _getpath(self, k, subdir=True):
         # Get Output dir
-        # Class has set Path
-        if self.path is not None:
-            dirpath = pathlib.Path(self.path)
-        # Default Settings
-        else:
-            dirpath = settings.dirpath
+        dirpath = self._resolved_dirpath()
 
         # Add Group
         if hasattr(self, 'task_group'):
@@ -115,6 +138,9 @@ class TaskData(core.Task):
 
         # Get Path
         tidroot = getattr(self, 'target_dir', self.task_id.split('_')[0])
+        if getattr(self, 'keep_versions', False) and self.code_version is not None:
+            tidroot = '{}/v{}'.format(
+                tidroot, core.TASK_ID_INVALID_CHAR_REGEX.sub('_', str(self.code_version)))
         fname = '{}-{}'.format(self.task_id, k) if (settings.save_with_param and getattr(
             self, 'save_attrib', True)) else '{}'.format(k)
         fname += '.{}'.format(self.target_ext)
@@ -546,6 +572,11 @@ class TaskAggregator(core.Task):
 
     def reset(self, confirm=False):
         return self.invalidate(confirm=confirm)
+
+    def deps(self):
+        # aggregator contract: run() only yields tasks. Folding them into deps() lets
+        # code_version bumps propagate through the aggregator's fingerprint.
+        return core.flatten([t for t in self.run()])
 
     def invalidate(self, confirm=False):
         [t.invalidate(confirm) for t in self.run()]

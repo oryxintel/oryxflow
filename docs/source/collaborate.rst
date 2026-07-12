@@ -43,6 +43,13 @@ do it by hand, install Git LFS and track the data directory::
     git add .gitattributes data/
     git commit -m "Track data outputs with Git LFS"
 
+Tracking ``data/**`` also picks up the small ``.oryxflow-code-status.json`` record oryxflow keeps
+*inside* the data directory (the code fingerprints behind :ref:`code-versioning`), so it travels
+with the outputs it describes — move or restore a data directory whole and the freshness
+information comes along. The separate ``.oryxflow/`` event log (run history) is high-frequency
+exhaust, not a shared output: keep it gitignored and export history deliberately if a teammate
+needs it.
+
 The next section refines this — splitting ``data/`` by ``env=`` so you share only part of it. The
 later Export/Import and Attach sections cover the cases Git LFS doesn't: handing off the *task
 code* to another project, or reading one flow's outputs from inside another flow.

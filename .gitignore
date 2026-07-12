@@ -1,4 +1,6 @@
 .idea/
+# oryxflow run records (event stream + index); high-frequency exhaust, never commit
+.oryxflow/
 *.csv
 *.pq
 *.json

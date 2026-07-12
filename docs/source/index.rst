@@ -8,10 +8,12 @@ Welcome to oryxflow documentation!
 
 For data scientists and data engineers, oryxflow is a python library which makes it easier to
 build data workflows. You declare each step of your analysis as a task; oryxflow runs them in the
-right order, skips anything already computed, reruns exactly what a parameter or data change
-affects, and lets you load any result by name. The payoff: no wasted recomputation, reproducible
-outputs, and pipelines that are easy to share — instead of a fragile chain of scripts and files
-you manage by hand.
+right order, skips anything already computed, reruns exactly what a parameter, data, or **code**
+change affects, and lets you load any result by name. It also records **what ran, when, and why**,
+so "is this result stale?", "was it produced by the current code?", and "did I already run this?"
+are queries, not guesses. The payoff: no wasted recomputation, reproducible outputs you can trust,
+and pipelines that are easy to share — instead of a fragile chain of scripts and files you manage
+by hand.
 
 
 Installation
