@@ -166,16 +166,24 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
 
 def accept_code(task=None):
     """
-    Acknowledge an output-equivalent code change: re-stamp the stored source hashes at
-    current without rerunning, so the "code changed but code_version didn't" warning
-    stops firing. The three exits from every warning: bump ``code_version`` (semantic
-    change), ``accept_code`` (equivalent refactor), or ``reset()`` (recompute regardless).
+    Acknowledge an output-equivalent code change: re-stamp the stored code records at
+    current without rerunning, so neither the auto rerun nor the "code changed but
+    code_version didn't" warning fires. The three exits from every code change: bump
+    ``code_version`` / let auto rerun (semantic change), ``accept_code`` (equivalent
+    refactor -- only if certain; when unsure, recompute), or ``reset()`` (recompute
+    regardless).
 
     Args:
-        task (obj, class): task instance (re-stamps that task's record in its data dir)
-            or task class (re-stamps every record of that family in ``settings.dirpath``).
-            With no argument, bulk-accepts: every record in ``settings.dirpath`` whose
-            stored hashes differ from the current files is re-stamped.
+        task (obj, class): task INSTANCE re-stamps that task AND its entire upstream
+            dependency tree in its data dir (a shared-helper edit changes the stored
+            source hashes of every task importing the file, so acceptance must cover
+            the whole band) -- call it on the most-downstream task you judge
+            equivalent, typically the flow's default task, or use
+            ``Workflow.accept_code()``. A task CLASS re-stamps every record of that
+            family in ``settings.dirpath``. With no argument, bulk-accepts: every
+            record in ``settings.dirpath`` whose stored hashes differ from the current
+            files is re-stamped. Accepting never touches a record's ``output_id``, so
+            it never triggers downstream recomputes.
 
     Returns: list of task_ids re-stamped
     """
@@ -185,10 +193,15 @@ def accept_code(task=None):
     now = datetime.now(timezone.utc).isoformat()
     accepted = []
 
-    def _restamp(dirpath, task_id, rec, hashes, family):
-        rec = dict(rec)
+    def _restamp(dirpath, task_id, rec, hashes, family, fingerprint=None, dep_state=None):
+        rec = dict(rec)   # preserves output_id: accepting must not ripple downstream
+        if fingerprint is not None:
+            rec['fingerprint'] = fingerprint
+        if dep_state is not None:
+            rec['dep_state'] = dep_state
         rec['source_hashes'] = hashes
         rec['py'] = codehash.PY_TAG
+        rec['v'] = state.RECORD_V
         rec['ts'] = now
         state.put_record(dirpath, task_id, rec)
         events.append('code_accepted',
@@ -196,21 +209,38 @@ def accept_code(task=None):
         logger.info("accepted code change for {}", task_id)
         accepted.append(task_id)
 
-    if task is not None:
-        cls = task if isinstance(task, type) else type(task)
+    if task is not None and not isinstance(task, type):
+        # instance: walk the task and its upstream dep tree POST-ORDER (deps first, so
+        # dep_state folds re-stamped dep records), re-stamping each existing record's
+        # own dimension (hashes) to current
+        seen = set()
+
+        def _walk(t):
+            if t.task_id in seen:
+                return
+            seen.add(t.task_id)
+            fp = t._code_fingerprint
+            if fp is None:
+                # None folds upward: the entire upstream subtree is untracked too
+                return
+            for dep in core.flatten(t.requires()):
+                _walk(dep)
+            dirpath = t._resolved_dirpath() if hasattr(t, '_resolved_dirpath') \
+                else oryxflow.settings.dirpath
+            rec = state.get_record(dirpath, t.task_id)
+            if rec is not None:
+                _restamp(dirpath, t.task_id, rec, codehash.module_hashes(type(t)),
+                         t.task_family, fingerprint=fp,
+                         dep_state=t._dep_state() if hasattr(t, '_dep_state') else None)
+
+        _walk(task)
+    elif task is not None:
+        cls = task
         family = cls.task_family
         hashes = codehash.module_hashes(cls)
-        if not isinstance(task, type):
-            dirpath = task._resolved_dirpath() if hasattr(task, '_resolved_dirpath') \
-                else oryxflow.settings.dirpath
-            targets = [(dirpath, task.task_id, state.get_record(dirpath, task.task_id))]
-        else:
-            dirpath = oryxflow.settings.dirpath
-            targets = [(dirpath, tid, rec)
-                       for tid, rec in state.all_records(dirpath).items()
-                       if tid.split('_')[0] == family]
-        for dirpath, tid, rec in targets:
-            if rec is not None:
+        dirpath = oryxflow.settings.dirpath
+        for tid, rec in state.all_records(dirpath).items():
+            if tid.split('_')[0] == family and rec is not None:
                 _restamp(dirpath, tid, rec, hashes, family)
     else:
         dirpath = oryxflow.settings.dirpath
@@ -611,6 +641,19 @@ class Workflow(object):
         task_inst = self.get_task(task)
         return invalidate_upstream(task_inst, confirm, only=only)
 
+    def accept_code(self, task=None):
+        """
+        Accept an output-equivalent code change for a task and its entire upstream
+        dependency tree (see :func:`oryxflow.accept_code`). Defaults to the flow's
+        default task, so a bare ``flow.accept_code()`` accepts the whole flow.
+
+        Args:
+            task (class): task class (defaults to the flow's default task)
+
+        Returns: list of task_ids re-stamped
+        """
+        return accept_code(self.get_task(task))
+
     def set_default(self, task):
         """
         Set default task for the workflow object
@@ -845,6 +888,22 @@ class WorkflowMulti(object):
             return False
 
         return {self.workflow_objs[exp_name].reset_downstream(task, task_downstream, confirm=False) for exp_name in self.params.keys()}
+
+    def accept_code(self, task=None, flow=None):
+        """
+        Accept an output-equivalent code change for a task and its upstream tree
+        (see :func:`oryxflow.accept_code`), for one flow or all flows.
+
+        Args:
+            task (class): task class (defaults to the flow's default task)
+            flow (string): flow name; if not passed, accepts across all flows
+
+        Returns: list of task_ids re-stamped (dict of lists when run for all flows)
+        """
+        if flow is not None:
+            return self.workflow_objs[flow].accept_code(task)
+        return {exp_name: self.workflow_objs[exp_name].accept_code(task)
+                for exp_name in self.params.keys()}
 
     def reset_upstream(self, task=None, flow=None, confirm=False, only=None):
         if flow is not None:

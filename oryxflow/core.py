@@ -157,10 +157,13 @@ class Task(metaclass=Register):
     :py:meth:`run`, :py:meth:`requires` and :py:meth:`output`.
     """
 
-    # Code identity token (str or int): bump it whenever you change this task's logic
-    # (its run() or a helper it calls) -- the task and everything downstream reruns on
-    # the next run(), overwriting in place. None (the default) leaves caching purely
-    # parameter-based, byte-for-byte today's behavior.
+    # Explicit code identity token (str or int), OPT-IN: when set it is the authority
+    # for this task's own logic -- bump it to rerun this task and everything downstream
+    # (code edits without a bump only warn). None (the default) with
+    # settings.code_version_auto (the default) derives the token automatically from the
+    # AST hash of the task's module + repo-local imports, so logic edits rerun with no
+    # attribute to maintain; with code_version_auto=False, None leaves caching purely
+    # parameter-based.
     code_version = None
 
     @classmethod
@@ -341,17 +344,28 @@ class Task(metaclass=Register):
 
     @property
     def _code_fingerprint(self):
-        """Recursive code identity; None when no code_version is set here or upstream
-        (feature inert). Compared against the state store by TaskData.complete() --
-        a mismatch forces a rerun (authoritative). Distinct from the warn-only AST
-        source-hash advisory in codehash.py, which never gates completeness."""
+        """Recursive code identity, compared against the state store by
+        TaskData.complete() -- a mismatch forces a rerun (authoritative). The own
+        token is the explicit ``code_version`` when declared; otherwise, with
+        ``settings.code_version_auto`` (the default), the AST hash of the task's
+        module + transitively imported repo-local files, so logic edits rerun
+        automatically. None when neither applies here or upstream (feature inert).
+        For tasks WITH an explicit code_version the AST source-hash stays a
+        warn-only advisory and never gates completeness."""
         # Not memoized: instances are process-long-lived via the Register cache, so a
         # cached fingerprint would go stale on runtime bumps; recompute is a cheap md5
-        # over a small DAG.
+        # over a small DAG (module_hashes carries its own mtime-revalidated cache).
         dep_fps = [d._code_fingerprint for d in self.deps()]
-        if self.code_version is None and all(f is None for f in dep_fps):
+        own = self.code_version
+        if own is None:
+            from oryxflow import settings as _settings_
+            if _settings_.code_version_auto:
+                from oryxflow import codehash as _codehash_
+                h = _codehash_.task_code_hash(self)
+                own = 'auto:{}'.format(h) if h is not None else None
+        if own is None and all(f is None for f in dep_fps):
             return None
-        parts = [self.task_family, str(self.code_version)] + sorted(f or '' for f in dep_fps)
+        parts = [self.task_family, str(own)] + sorted(f or '' for f in dep_fps)
         return hashlib.md5('|'.join(parts).encode('utf-8')).hexdigest()[:16]
 
     def run(self):
@@ -699,9 +713,25 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         except Exception:
             return False
 
+    def _make_record(task, hashes, output_id, duration=None):
+        # one shape for every stamp: both dimensions (own hashes + dep output-identity
+        # fold) recorded on every write regardless of mode, plus the live fingerprint
+        # (informational), the last materialization cost (drives the
+        # expensive-recompute guard) and the schema/interpreter tags
+        return {'fingerprint': task._code_fingerprint,
+                'code_version': task.code_version,
+                'source_hashes': hashes, 'output_id': output_id,
+                'dep_state': task._dep_state() if hasattr(task, '_dep_state') else None,
+                'duration_s': duration,
+                'py': _codehash.PY_TAG, 'v': _state.RECORD_V,
+                'ts': datetime.now(timezone.utc).isoformat()}
+
     def _advise(task):
-        # advisory sweep over a complete subtree: grandfather-stamp missing records and
-        # warn when code changed without a code_version bump
+        # advisory sweep over a complete subtree, POST-ORDER (deps first, so re-stamped
+        # dep records exist before this task's dep_state folds their output_ids):
+        # grandfather-stamp missing records, converge records across mode flips and
+        # schema/interpreter migrations (preserving output_id so nothing ripples
+        # downstream), and warn when a pinned task's code changed without a bump
         tid = task.task_id
         if tid in advised:
             return
@@ -709,58 +739,85 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         fp = task._code_fingerprint
         if fp is None:
             # fingerprint folds deps, so None means the entire upstream subtree is
-            # unversioned too -- nothing to advise anywhere above this task
+            # untracked too -- nothing to advise anywhere above this task
             return
-        dirpath = task._resolved_dirpath() if hasattr(task, '_resolved_dirpath') else None
-        if dirpath is not None:
-            try:
-                outputs = flatten(task.output())
-                outputs_exist = bool(outputs) and all(o.exists() for o in outputs)
-            except Exception:
-                outputs_exist = False
-            if outputs_exist:
-                rec = _state.get_record(dirpath, tid)
-                if rec is None:
-                    # grandfathering: output exists, record missing -> treat as current and
-                    # stamp a baseline (state-only, no event), unless the output predates
-                    # the code on disk
-                    hashes = _hashes(task)
-                    if _mtime_guard_trips(task, hashes):
-                        _warn_code(task, (
-                            "task {}: output predates current code; can't verify -- "
-                            "reset() or oryxflow.accept_code({}) to confirm").format(
-                                task.task_family, task.task_family),
-                            sorted(hashes))
-                    else:
-                        _state.put_record(dirpath, tid, {
-                            'fingerprint': fp, 'code_version': task.code_version,
-                            'source_hashes': hashes, 'py': _codehash.PY_TAG,
-                            'ts': datetime.now(timezone.utc).isoformat()})
-                elif rec.get('fingerprint') == fp:
-                    stored = rec.get('source_hashes') or {}
-                    current = _hashes(task)
-                    if rec.get('py') != _codehash.PY_TAG:
-                        # interpreter changed -> normalized hashes aren't comparable;
-                        # re-stamp silently (same trust level as grandfathering) instead
-                        # of firing a mass false-alarm wave after a Python upgrade
-                        _state.put_record(dirpath, tid, {
-                            'fingerprint': fp, 'code_version': task.code_version,
-                            'source_hashes': current, 'py': _codehash.PY_TAG,
-                            'ts': datetime.now(timezone.utc).isoformat()})
-                    elif stored and current and stored != current:
-                        changed = sorted(k for k in set(stored) | set(current)
-                                         if stored.get(k) != current.get(k))
-                        _warn_code(task, (
-                            "task {}: {} changed since cached run; code_version still {} -- "
-                            "reusing cached output. Bump code_version to recompute, or "
-                            "oryxflow.accept_code({}) only if certain the output is "
-                            "equivalent -- when unsure, bump (best-effort check: can't "
-                            "see data files or dynamic calls).").format(
-                                task.task_family, ', '.join(changed),
-                                task.code_version, task.task_family),
-                            changed)
         for dep in flatten(task.requires()):
             _advise(dep)
+        dirpath = task._resolved_dirpath() if hasattr(task, '_resolved_dirpath') else None
+        if dirpath is None:
+            return
+        try:
+            outputs = flatten(task.output())
+            outputs_exist = bool(outputs) and all(o.exists() for o in outputs)
+        except Exception:
+            outputs_exist = False
+        if not outputs_exist:
+            return
+        rec = _state.get_record(dirpath, tid)
+        if rec is None:
+            # grandfathering: output exists, record missing -> treat as current and
+            # stamp a baseline (state-only, no event), unless the output predates
+            # the code on disk
+            hashes = _hashes(task)
+            if _mtime_guard_trips(task, hashes):
+                _warn_code(task, (
+                    "task {}: output predates current code; can't verify -- "
+                    "reset() or oryxflow.accept_code({}) to confirm").format(
+                        task.task_family, task.task_family),
+                    sorted(hashes))
+            else:
+                _state.put_record(dirpath, tid,
+                                  _make_record(task, hashes, uuid.uuid4().hex[:16]))
+            return
+        if rec.get('v') != _state.RECORD_V or rec.get('py') != _codehash.PY_TAG:
+            # schema/interpreter changed -> stored hashes aren't comparable; converge
+            # silently at grandfather trust level, PRESERVING output_id (and the
+            # recorded run cost) so downstream dep_state folds don't move
+            _state.put_record(dirpath, tid,
+                              _make_record(task, _hashes(task),
+                                           rec.get('output_id') or uuid.uuid4().hex[:16],
+                                           duration=rec.get('duration_s')))
+            return
+        stored = rec.get('source_hashes') or {}
+        current = _hashes(task)
+        if stored and current and stored != current:
+            # code changed but the task is (deliberately) still complete: pinned by an
+            # explicit code_version, or held by the expensive-recompute guard. Warn at
+            # the decision point with the exits; never re-stamp here (that would bless
+            # the change) -- accept_code is the explicit blessing.
+            changed = sorted(k for k in set(stored) | set(current)
+                             if stored.get(k) != current.get(k))
+            if task.code_version is not None:
+                _warn_code(task, (
+                    "task {}: {} changed since cached run; code_version still {} -- "
+                    "reusing cached output. Bump code_version to recompute, or "
+                    "oryxflow.accept_code({}) only if certain the output is "
+                    "equivalent -- when unsure, bump (best-effort check: can't "
+                    "see data files or dynamic calls).").format(
+                        task.task_family, ', '.join(changed),
+                        task.code_version, task.task_family),
+                    changed)
+            else:
+                _warn_code(task, (
+                    "task {}: {} changed since cached run; last run took {:.0f}s -- "
+                    "reusing cached output (expensive-recompute guard, "
+                    "settings.code_version_auto_expensive_s={}). reset() to recompute, "
+                    "oryxflow.accept_code({}) if output-equivalent, or set "
+                    "code_version to manage this task explicitly.").format(
+                        task.task_family, ', '.join(changed),
+                        rec.get('duration_s') or 0,
+                        getattr(_settings, 'code_version_auto_expensive_s', None),
+                        task.task_family),
+                    changed)
+        elif (rec.get('fingerprint') != fp
+                or rec.get('code_version') != task.code_version):
+            # hashes match but the record predates a mode flip (pin added/removed with
+            # unchanged code) or an upstream toggle -- converge silently, preserving
+            # output_id and run cost
+            _state.put_record(dirpath, tid,
+                              _make_record(task, current,
+                                           rec.get('output_id') or uuid.uuid4().hex[:16],
+                                           duration=rec.get('duration_s')))
 
     def _reason_for(task):
         # why is this (incomplete) task about to run? deps were processed first, so a
@@ -777,9 +834,19 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
             if rec is not None:
                 if rec.get('code_version') != task.code_version:
                     return 'code change ({} -> {})'.format(
-                        rec.get('code_version'), task.code_version)
-                if rec.get('fingerprint') != fp:
-                    return 'upstream rerun'
+                        rec.get('code_version') if rec.get('code_version') is not None
+                        else 'auto',
+                        task.code_version if task.code_version is not None else 'auto')
+                if task.code_version is None:
+                    # own dimension moved (auto): name the changed files
+                    stored = rec.get('source_hashes') or {}
+                    current = _hashes(task)
+                    changed = sorted(k for k in set(stored) | set(current)
+                                     if stored.get(k) != current.get(k))
+                    if changed:
+                        shown = ', '.join(changed[:3]) + ('...' if len(changed) > 3 else '')
+                        return 'code change (auto: {})'.format(shown)
+                return 'upstream rerun'
         if any(d.task_id in reasons or d in ran for d in flatten(task.requires())):
             return 'upstream rerun'
         return 'upstream rerun' if flatten(task.requires()) else 'output missing'
@@ -856,10 +923,11 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
                                    or getattr(_settings, 'events', True)) else {}
         if fp is not None:
             try:
-                _state.put_record(dirpath, tid, {
-                    'fingerprint': fp, 'code_version': task.code_version,
-                    'source_hashes': hashes, 'py': _codehash.PY_TAG,
-                    'ts': datetime.now(timezone.utc).isoformat()})
+                # fresh output_id: this task actually rematerialized, downstream
+                # dep_state folds must move
+                _state.put_record(dirpath, tid,
+                                  _make_record(task, hashes, uuid.uuid4().hex[:16],
+                                               duration=duration))
             except Exception as e:
                 logger.debug("state record write failed for {}: {}", tid, e)
         try:
@@ -870,6 +938,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
               {'task_id': tid, 'family': task.task_family,
                'params': task.to_str_params(only_significant=False),
                'code_version': task.code_version, 'fingerprint': fp,
+               'auto': task.code_version is None and _settings.code_version_auto,
                'source_hashes': hashes, 'reason': reason, 'duration_s': duration,
                'git_sha': git_sha, 'git_dirty': git_dirty,
                'oryxflow_version': _version,
@@ -914,10 +983,12 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
                        run_id=run_id, flow=flow)
 
     previous_capture = _log.set_task_log_capture(_capture_task_log)
+    _codehash.freeze()   # code can't change mid-build: skip per-complete() mtime re-stats
     try:
         for task in tasks:
             _process(task)
     finally:
+        _codehash.unfreeze()
         _log.set_task_log_capture(previous_capture)
 
     success = len(failed) == 0

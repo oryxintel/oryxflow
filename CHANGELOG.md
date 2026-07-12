@@ -16,20 +16,50 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 
 ## [26.7.12] - 2026-07-12
 ### Added
-- `Task.code_version` (str or int, default `None`): bump it when a task's logic changes and the
-  task **and everything downstream** reruns on the next `run()`, overwriting in place. No version
-  set anywhere → behavior is unchanged (feature inert); first-time adoption grandfathers existing
-  output instead of invalidating it. Records live in `<dirpath>/.oryxflow-code-status.json` and travel with
-  the data dir.
-- Staleness advisory: each run hashes the task's module and transitively imported project-local
-  files (AST-normalized — comment/docstring/formatting edits never warn). Code changed without a
-  bump → `StalenessWarning` (a `UserWarning` subclass, shown on every occurrence, visible without
-  `enable_logging()`), a loguru record, a `code_warning` event, and `RunResult.warnings`.
-- `oryxflow.accept_code(task_or_cls)` / `accept_code()`: acknowledge an output-equivalent code
-  change by re-stamping stored hashes without rerunning (the third exit of every warning: bump /
-  accept / reset).
+- Automatic code invalidation, on by default (`settings.code_version_auto = True`): every task
+  derives its code identity from the AST hash of its defining module plus transitively imported
+  project-local files, so a real logic edit (in the task **or a helper it imports**) reruns the
+  task and everything downstream on the next `run()`, overwriting in place — no attribute to
+  maintain, and comment/docstring/formatting edits never rerun (AST normalization). Existing
+  caches are grandfathered on first contact (baseline stamped, zero reruns). Set
+  `settings.code_version_auto = False` for explicit-only tracking. The functional API is covered
+  automatically (auto is ambient, no per-task surface). Records live in
+  `<dirpath>/.oryxflow-code-status.json` and travel with the data dir.
+- `Task.code_version` (str or int, default `None`): a per-task **pin** that suspends automatic
+  tracking of that task's own logic — it recomputes only on a deliberate bump (the task and
+  everything downstream), for expensive tasks where a refactor-triggered recompute must be a
+  decision, or logic the hash can't see. Records are mode-aware (they store both the token and
+  the `source_hashes` as of the last materialization), so pinning/unpinning unchanged code never
+  recomputes ("just resumes"), an edit masked during a pinned-unbumped window is caught the
+  moment the pin comes off, and pinning in the same edit as a logic change forces a rerun
+  instead of blessing stale output.
+- Dependency propagation folds **output identity** (`output_id`, fresh per actual
+  materialization, preserved across re-stamps and `accept_code`): downstream reruns exactly when
+  an upstream rematerialized — pin toggles and accepts never ripple, and a `reset()`+rerun
+  upstream propagates downstream even across separate builds.
+- Staleness advisory for pinned tasks: code changed without a bump → cached output is reused and
+  the run warns via `StalenessWarning` (a `UserWarning` subclass, shown on every occurrence,
+  visible without `enable_logging()`), a loguru record, a `code_warning` event, and
+  `RunResult.warnings`.
+- `oryxflow.accept_code(task)` / `accept_code()`: acknowledge an output-equivalent code change
+  without rerunning. With a task instance it re-stamps the task **and its entire upstream dep
+  tree** (post-order); `Workflow.accept_code(task=None)` / `WorkflowMulti.accept_code(task=None,
+  flow=None)` wrap it for the flow's default task. Never touches `output_id`, so accepting never
+  triggers downstream recomputes.
 - `TaskData.keep_versions` (default `False`): with `code_version` set, outputs live under a
-  readable `.../<Task>/v<version>/` segment so old versions survive bumps.
+  readable `.../<Task>/v<version>/` segment so old versions survive bumps (explicit pins only;
+  auto-tracked tasks overwrite in place).
+- Expensive-recompute guard (`settings.code_version_auto_expensive_s`, default 600): an
+  auto-tracked task whose last materialization (recorded as `duration_s`) took longer is held
+  complete when its code changes and the run warns (`StalenessWarning`, all channels) with the
+  three exits — `reset()` to recompute, `accept_code` if output-equivalent, or pin with
+  `code_version` — so a refactor can't silently burn a long run. `None`/`0` disables the guard.
+- Records carry schema/interpreter tags (`state.RECORD_V`, `py`): a record with a
+  different/missing `v` or Python minor is treated as unverifiable — complete, then silently
+  re-stamped (grandfather trust level, `output_id` preserved) — never a mass rerun after an
+  upgrade.
+- `build()` mtime-revalidates code hashes at most once per module per build
+  (`codehash.freeze()`/`unfreeze()`), keeping the auto-hash overhead on small DAGs low.
 - Event stream `oryxflow.events`: every run appends `run_started` / `task_ran` / `task_failed` /
   `run_finished` / `code_warning` / `code_accepted` / `task_log` events to
   `.oryxflow/events.jsonl` (stable head; earlier months offload to `events-YYYYMM.jsonl`,
@@ -38,11 +68,12 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   pending warnings, last run per family, recent failures), `events.runs(task_family=, flow=,
   last=)`, `events.iter_events()` — all return data and print nothing; `events.print_status()` prints
   the status summary (the session-start orientation call for scripts and `python -c`).
-- `RunResult.run_id`, `RunResult.reasons` (`{task_id: 'output missing' | 'code change (a -> b)' |
-  'upstream rerun'}`), `RunResult.warnings`. `MultiRunResult` gains aggregate
+- `RunResult.run_id`, `RunResult.reasons` (`{task_id: 'output missing' |
+  'code change (auto: <files>)' | 'code change (a -> b)' | 'upstream rerun'}`),
+  `RunResult.warnings`. `MultiRunResult` gains aggregate
   `.ran`/`.complete`/`.failed`/`.reasons`/`.warnings` across flows. `task_ran` events carry
-  params, code fingerprint, source hashes, git SHA/dirty, duration and the rerun reason;
-  `WorkflowMulti` stamps each per-flow build's events with its flow name.
+  params, code fingerprint, source hashes, `auto` flag, git SHA/dirty, duration and the rerun
+  reason; `WorkflowMulti` stamps each per-flow build's events with its flow name.
 - Task-authored `self.logger.*(...)` lines are captured as `task_log` events during a build
   (works with logging disabled), so in-run scalars become queryable memory.
 - New settings: `settings.events`, `settings.eventspath`, `settings.state_filename`.

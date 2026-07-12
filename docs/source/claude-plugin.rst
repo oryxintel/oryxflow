@@ -26,9 +26,21 @@ Commands
   pick up the latest conventions and layout without a manual migration.
 - ``/oryxflow:check-standards`` - check names, style, and docstrings against the house standards,
   so the codebase stays consistent and easy for teammates (and the AI) to navigate and extend.
+- ``/oryxflow:migrate`` - restructure an existing ad-hoc analysis (monolithic notebooks, linear
+  scripts, hardcoded paths) into a cached, parameterized oryxflow pipeline, one task at a time.
 
 Once installed, the ``oryxflow`` skill auto-activates whenever you work in a oryxflow project
 (editing ``tasks.py`` / ``flow.py`` / ``run.py`` / ``cfg.py`` / ``flow_params.py``).
+
+Beyond scaffolding, the skill makes the agent a disciplined *user of the cache*: it starts every
+session with ``oryxflow.events.print_status()`` (pending warnings, last runs, recent failures),
+verifies after each code edit that the intended tasks actually reran (``result.reasons`` /
+``events.runs()``) so a hash blind spot never passes silently, answers every staleness or
+expensive-recompute warning with the right exit (recompute / ``accept_code`` / pin — see
+:ref:`code-versioning`), and logs decision-relevant scalars via ``self.logger`` so they persist
+as ``task_log`` events across sessions. These are exactly the rules in the
+:ref:`CLAUDE.md snippet <claude-md-snippet>` — shipped as a skill so they load automatically and
+stay current with the library.
 
 Learn more
 -----------------------------------------------------------

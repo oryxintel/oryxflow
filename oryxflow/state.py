@@ -16,6 +16,13 @@ import json
 import tempfile
 from pathlib import Path, PurePosixPath
 
+# record schema version, stamped as 'v' in every record. Bump when the fingerprint
+# formula changes: _code_ok treats a record with a different/missing v as unverifiable
+# (complete) and build()'s advisory sweep silently re-stamps it -- a one-time
+# re-baseline at the trust level of grandfathering, never a mass rerun.
+# v2: code_version_auto (fingerprint may fold the AST auto token).
+RECORD_V = 2
+
 # str(store path) -> dict of records, invalidated on write
 _cache = {}
 

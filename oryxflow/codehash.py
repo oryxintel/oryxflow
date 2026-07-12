@@ -1,12 +1,18 @@
 """
-AST-normalized, file-level, transitive code hashes (advisory only).
+AST-normalized, file-level, transitive code hashes.
 
 ``module_hashes(task)`` returns ``{relpath: md5}`` for every project-local source file
 reachable from the task's defining module via ``import`` statements. Each file is hashed
 after AST normalization (parse -> strip docstrings -> ``ast.dump``), so comments,
-docstrings and formatting edits produce no hash change. Hashing never drives reruns --
-it only powers the "code changed but code_version didn't" warning. Blind spots (data
-files, dynamic imports, external APIs) mean "no warning", never a false rerun.
+docstrings and formatting edits produce no hash change.
+
+Two consumers: with ``settings.code_version_auto`` (the default), ``task_code_hash``
+supplies the code-identity token for tasks that declare no explicit ``code_version``,
+so a real logic edit reruns them automatically. For tasks WITH an explicit
+``code_version``, the hash stays advisory only -- it powers the "code changed but
+code_version didn't" warning and never drives a rerun. Blind spots (data files, dynamic
+imports, external APIs, modules outside the project root) mean "inert / no warning",
+never a false rerun and never a false green claim.
 """
 
 import ast
@@ -38,6 +44,26 @@ _module_cache = {}
 
 # str(start dir) -> resolved project root
 _root_cache = {}
+
+# >0 while a build is in flight (core.build brackets processing with freeze/unfreeze):
+# module_hashes then mtime-revalidates each module's walk at most ONCE per build and
+# trusts it for the rest -- code must not change mid-build, and the per-complete() stat
+# storm dominates small-DAG runtimes otherwise. Calls outside a build always revalidate.
+_freeze_depth = 0
+_freeze_gen = 0
+_freeze_validated = {}   # (modname, root) -> generation it was last (re)validated in
+
+
+def freeze():
+    global _freeze_depth, _freeze_gen
+    if _freeze_depth == 0:
+        _freeze_gen += 1
+    _freeze_depth += 1
+
+
+def unfreeze():
+    global _freeze_depth
+    _freeze_depth = max(0, _freeze_depth - 1)
 
 
 def _project_root(start=None):
@@ -180,11 +206,16 @@ def module_hashes(task_or_cls):
 
     # full-walk result cache, revalidated cheaply by file mtimes (a changed file also
     # changes its own mtime when it gains/loses imports, so the file set stays honest)
-    cached = _module_cache.get((modname, str(root)))
+    cache_key = (modname, str(root))
+    cached = _module_cache.get(cache_key)
     if cached is not None:
         files_key, cached_hashes = cached
+        if _freeze_depth and _freeze_validated.get(cache_key) == _freeze_gen:
+            return dict(cached_hashes)
         try:
             if all(os.stat(p).st_mtime_ns == m for p, m in files_key):
+                if _freeze_depth:
+                    _freeze_validated[cache_key] = _freeze_gen
                 return dict(cached_hashes)
         except OSError:
             pass
@@ -220,5 +251,17 @@ def module_hashes(task_or_cls):
                     if fr not in seen:
                         # reconstruct the resolved module name for package context
                         queue.append((fr, cand if not lvl else '{}.{}'.format(pkg, cand)))
-    _module_cache[(modname, str(root))] = (tuple(file_mtimes), dict(hashes))
+    _module_cache[cache_key] = (tuple(file_mtimes), dict(hashes))
+    if _freeze_depth:
+        _freeze_validated[cache_key] = _freeze_gen
     return hashes
+
+
+def task_code_hash(task_or_cls):
+    """Single md5 over the module_hashes set; None when nothing is hashable
+    (module not project-local) so auto degrades to inert, never false-green."""
+    hashes = module_hashes(task_or_cls)
+    if not hashes:
+        return None
+    blob = '|'.join('{}={}'.format(k, hashes[k]) for k in sorted(hashes))
+    return hashlib.md5(blob.encode('utf-8')).hexdigest()[:16]

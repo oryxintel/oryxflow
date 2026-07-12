@@ -108,6 +108,8 @@ If you would rather log independently of oryxflow's on/off switch, just use your
    duty: it shows in the live log *and* becomes durable, queryable memory
    (``oryxflow.events.runs(...)``) for a later session that no longer has the original stderr.
    See :ref:`Managing Complex Workflows <managing-complex-workflows>` for the event stream.
+   The :doc:`Claude Code plugin <claude-plugin>` makes this a habit: the agent logs its
+   decision-relevant scalars inside every ``run()`` so the next session inherits them.
 
 Routing oryxflow logs into your application's logging
 ------------------------------------------------------------

@@ -1,5 +1,12 @@
 # Code-aware invalidation + event log
 
+> **Partially superseded** by `20260712-engine-code-invalidation-auto.md` (same release,
+> before v4 was ever published): decision 1's "explicit `code_version` is the correctness
+> authority; hashing is advisory only" is inverted — the AST hash drives reruns by default
+> (`settings.code_version_auto`), `code_version` is the opt-in per-task pin, records are
+> two-dimensional (token + source hashes) and dep propagation folds output identity. The
+> event stream, state store, warning channels, and agent-UX decisions here remain accurate.
+
 The final (v4) revision of this plan; the superseded v1–v3 drafts were deleted before this
 was committed. v4 keeps v3's record-based
 invalidation core and replaces its history subsystem with a **unified append-only event

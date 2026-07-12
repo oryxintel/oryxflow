@@ -1,6 +1,7 @@
 import pickle
 import pathlib
 import json
+import hashlib
 
 from oryxflow import core
 from oryxflow.log import logger
@@ -108,18 +109,70 @@ class TaskData(core.Task):
         return complete
 
     def _code_ok(self):
-        # record-based completeness: outputs count as complete only while the stored code
-        # fingerprint matches the current one. Inert (True) when no code_version is set
-        # here or upstream, and grandfathering (no record yet) also passes -- build()
-        # stamps the baseline.
+        # record-based, two-dimensional completeness: outputs count as complete only while
+        # (a) the task's OWN code identity is unchanged -- the explicit code_version when
+        # pinned, the stored source hashes when auto (mode-aware, see _own_code_ok) -- and
+        # (b) no dependency has rematerialized since this record (_dep_state folds dep
+        # output_ids). Both dimensions live in every record, so pinning/unpinning a task
+        # with genuinely unchanged code "just resumes" instead of recomputing, and never
+        # ripples downstream. Inert (True) when no code identity applies here or upstream,
+        # and grandfathering (no record yet) also passes -- build() stamps the baseline.
         fp = self._code_fingerprint
         if fp is None:
             return True
-        from oryxflow import state
+        from oryxflow import state, codehash
         rec = state.get_record(self._resolved_dirpath(), self.task_id)
         if rec is None:
             return True          # grandfathered; build() stamps it
-        return rec.get('fingerprint') == fp
+        if rec.get('v') != state.RECORD_V or rec.get('py') != codehash.PY_TAG:
+            # record schema or interpreter changed -> not comparable; treat as complete
+            # (grandfather trust level), build()'s advisory sweep re-stamps
+            return True
+        if not self._own_code_ok(rec):
+            return False
+        return rec.get('dep_state') == self._dep_state()
+
+    def _own_code_ok(self, rec):
+        # own dimension, mode-aware: a pin (code_version) is THE version while present;
+        # auto compares the source hashes as of the last materialization. Because the
+        # hashes are stored on every stamp regardless of mode, removing a pin "just
+        # resumes" (no recompute when the code is genuinely unchanged) yet an edit made
+        # while pinned-and-unbumped is caught the moment the pin comes off -- and pinning
+        # a task in the same change that edits its code forces a rerun instead of
+        # blessing the stale output.
+        from oryxflow import codehash
+        if self.code_version is not None:
+            if rec.get('code_version') == self.code_version:
+                return True
+            if rec.get('code_version') is None and settings.code_version_auto:
+                # opting in: free iff the code really is what produced the output
+                return rec.get('source_hashes') == codehash.module_hashes(self)
+            return False         # pin bump (or unverifiable flip) -> recompute
+        if not settings.code_version_auto:
+            return True          # own logic untracked in explicit-only mode
+        if rec.get('source_hashes') == codehash.module_hashes(self):
+            return True
+        # expensive-recompute guard: don't silently burn a long run on a code change --
+        # stay complete; build()'s advisory warns with the exits (reset/accept/pin)
+        thresh = getattr(settings, 'code_version_auto_expensive_s', None)
+        if thresh and (rec.get('duration_s') or 0) > thresh:
+            return True
+        return False
+
+    def _dep_state(self):
+        # folded output identity of the direct deps: each dep's record output_id, a fresh
+        # id per actual materialization that re-stamps and accept_code PRESERVE. Downstream
+        # therefore reruns when an upstream actually recomputed -- and only then: mode
+        # toggles and accepts upstream don't ripple, while a reset+rerun upstream
+        # propagates even across separate builds.
+        from oryxflow import state
+        ids = []
+        for d in self.deps():
+            dirpath = d._resolved_dirpath() if hasattr(d, '_resolved_dirpath') \
+                else settings.dirpath
+            rec = state.get_record(dirpath, d.task_id)
+            ids.append((rec or {}).get('output_id') or '')
+        return hashlib.md5('|'.join(sorted(ids)).encode('utf-8')).hexdigest()[:16]
 
     def _resolved_dirpath(self):
         # the data directory this task's artifacts (and code-invalidation records) live in

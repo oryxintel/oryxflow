@@ -61,7 +61,7 @@ For quick scripts and notebooks, ``oryxflow.runLoad`` builds a workflow, runs th
     model = oryxflow.runLoad(TaskTrain, params={'do_preprocess': True})
 
     # reset=True forces a rerun first (for a data/input change or a suspect cache;
-    # for a *code* change, bump the task's code_version instead — see "Handling Code Change")
+    # a *code* change needs nothing — it invalidates automatically; see "Handling Code Change")
     df = oryxflow.runLoad(TaskPreprocess, params={'do_preprocess': True}, reset=True)
 
     # runIt runs without loading the output (same as runLoad(..., load=False))
@@ -81,14 +81,16 @@ exists. This is typically the existance of a file, database table or cache. See 
     flow.get_task().output().path # where is output saved?
     flow.get_task().output()['output1'].path # multiple outputs
 
-A task with a ``code_version`` set carries one more completeness condition: its stored *code
-fingerprint* must still match its current code. Bump ``code_version`` — or edit the code and let
-the staleness advisory catch it — and the task is no longer complete even though its output file
-is still on disk, so "the output exists" never silently masks a code change. Tasks without a
-``code_version`` behave exactly as described here. Be honest about the limit: the fingerprint sees
-your task code and the project-local modules it imports, but **not** data-file contents or
-external APIs — a cache hit is not proof of freshness for those (reset is the verb there). See
-:ref:`Code changes: bump code_version <code-versioning>` for the full model.
+Every task also carries one more completeness condition: its stored *code fingerprint* must still
+match its current code. By default the fingerprint is computed automatically (an AST hash of the
+task's module and its project-local imports), so editing a task's logic — or a helper it imports —
+makes it incomplete even though its output file is still on disk: "the output exists" never
+silently masks a code change. A task that declares an explicit ``code_version`` is pinned instead:
+only bumping the token moves its fingerprint (edits without a bump produce a staleness warning).
+Be honest about the limit: the fingerprint sees your task code and the project-local modules it
+imports, but **not** data-file contents or external APIs — a cache hit is not proof of freshness
+for those (reset is the verb there). See
+:ref:`Code changes: handled automatically <code-versioning>` for the full model.
 
 Task Completion with Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -160,13 +162,16 @@ You have several options to force tasks to reset and rerun. See sections below o
 
 .. tip::
 
-   Editing a task's code with unchanged parameters would otherwise let the cache
-   serve the stale output. The modern fix is to bump the task's ``code_version``
-   in the same edit — the task and everything downstream then recompute (see
-   :ref:`Code changes: bump code_version <code-versioning>`), and if you forget,
-   the staleness advisory warns you. The :doc:`Claude Code plugin <claude-plugin>`
-   does this for you: when it edits a task it bumps ``code_version`` so your change
-   actually takes effect.
+   Editing a task's code with unchanged parameters is handled for you: the code
+   fingerprint moves and the task plus everything downstream recompute on the next
+   run — no reset, no version to bump (see
+   :ref:`Code changes: handled automatically <code-versioning>`). Only tasks pinned
+   with an explicit ``code_version`` need a bump in the same edit; the staleness
+   advisory warns if you forget. Resets remain for what the hash can't see (data
+   files, external APIs, a suspect cache). The :doc:`Claude Code plugin
+   <claude-plugin>` bakes this loop in for AI-driven projects: after each edit it
+   verifies the intended tasks actually reran and answers warnings with the right
+   exit.
 
 .. code-block:: python
 
@@ -246,8 +251,10 @@ one of them:
 
 * **parameters changed** → nothing to do; a new parameter is a new identity and reruns
   automatically, keeping the outputs for each parameter set side by side.
-* **code changed** (this task's ``run()`` or a helper it imports) → **bump** ``code_version`` so
-  the task and everything downstream recompute. Don't hand-chain resets for code changes.
+* **code changed** (this task's ``run()`` or a helper it imports) → nothing to do; the code
+  fingerprint moves and the task plus everything downstream recompute. Don't hand-chain resets
+  for code changes. (A task pinned with an explicit ``code_version`` is the exception: bump its
+  token in the same edit.)
 * **data or an external input changed** (a raw file, an API response — things the code
   fingerprint can't see) → **reset** the task that ingests it.
 
@@ -305,14 +312,18 @@ input.
 Handling Code Change
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Prefer ``code_version`` over a manual reset: bump the task's ``code_version`` in the same edit as
-the logic change and the task *and everything downstream* recompute on the next run, with no
-resets to chain. Forget to bump and oryxflow's staleness advisory warns you (it hashes the task
-and the project-local modules it imports, ignoring comment/formatting-only edits). Reset stays
-valid — it recomputes regardless — but it is per-task and doesn't propagate the way a bump does.
-See :ref:`Code changes: bump code_version <code-versioning>` for the full workflow, the staleness
-warning and its three exits (bump / ``accept_code`` / reset), and ``keep_versions`` for keeping
-old versions side by side.
+Code changes need no action: oryxflow hashes each task's module and the project-local modules it
+imports (ignoring comment/docstring/formatting-only edits), and a real logic change reruns the
+task *and everything downstream* on the next run, with no resets to chain. Verify it took —
+``result.reasons`` shows ``code change (auto: <file>)`` — and if an expected rerun didn't happen,
+the change is in a hash blind spot (data file, installed package, dynamic call): reset it. Two
+deliberate exceptions hold their cache and **warn** instead of rerunning: tasks pinned with an
+explicit ``code_version`` (recompute only on a bump) and expensive tasks whose last run exceeded
+``settings.code_version_auto_expensive_s`` (default 600s — answer with reset / ``accept_code`` /
+pin).
+See :ref:`Code changes: handled automatically <code-versioning>` for the full model, the pin
+workflow, the three exits (recompute / ``accept_code`` / reset), and ``keep_versions`` for
+keeping old versions side by side.
 
 Forcing a Single Task to Run
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

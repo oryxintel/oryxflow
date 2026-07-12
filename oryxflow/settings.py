@@ -10,6 +10,19 @@ dirpath = Path(dir)
 # lives in every data directory and travels with its artifacts (not a database)
 state_filename = '.oryxflow-code-status.json'
 
+# auto code invalidation: tasks without an explicit code_version derive their code
+# identity from the AST hash of their module + transitively imported repo-local files,
+# so logic edits rerun automatically. False -> only explicit code_version drives reruns;
+# a task-level code_version always overrides auto for that task.
+code_version_auto = True
+
+# expensive-recompute guard: an auto-tracked task whose LAST materialization took longer
+# than this (seconds) does not silently recompute on a code change -- it stays complete
+# and warns with the three exits (reset to recompute / accept_code / pin with
+# code_version), so burning a long run is a decision, not a side effect of a refactor.
+# None or 0 disables the guard (every auto code change recomputes).
+code_version_auto_expensive_s = 600
+
 # event stream (see oryxflow/events.py): run records are always on; set events=False to
 # make every append a complete no-op (no dir created, no index touched)
 events = True

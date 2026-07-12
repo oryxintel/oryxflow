@@ -169,6 +169,12 @@ This is the **top-level** grid — the flows to run. It is distinct from any nes
 index inside a task's ``requires()`` (see "Hierarchical iterate-and-aggregate" in
 :doc:`advtasksdyn <advtasksdyn>`), which is your own domain data, not a ``WorkflowMulti`` grid.
 
+.. tip::
+
+   Projects scaffolded by the :doc:`Claude Code plugin <claude-plugin>` keep this wiring in two
+   conventional homes — the grid in ``flow_params.py``, the flow objects in ``flow.py`` — so
+   experiments stay organized as the grid grows, and the AI extends them in the right place.
+
 
 Operations on multi experiment workflow
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
