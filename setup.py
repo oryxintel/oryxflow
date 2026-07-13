@@ -48,7 +48,7 @@ pip install -e .
 # publish
 # pip install setuptools wheel twine
 python -m build
-python -m twine upload dist/*
+python -m twine upload --skip-existing dist/*
 
 # python -m twine upload --repository testpypi dist/*
 # pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ --no-deps oryxflow
