@@ -64,7 +64,7 @@ The function-based workflow example will transform to this:
 
         # no dependency
 
-        def run(): # from `def get_data()`
+        def run(self): # from `def get_data()`
             data = pd.read_csv('rawdata.csv')
             data = clean(data)
             self.save(data) # save output data

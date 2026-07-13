@@ -261,7 +261,7 @@ If you want to run the workflow with multiple parameters at the same time, you c
 Fully Dynamic
 ------------------------------------------------------------
 
-This doesn't work yet... It's actually quite rare though that you need that though. Parameters normally fall in a fixed range which can be solved with the approaches above. Another typical reason you would want to do this is to load an unknown number of input files which you can do manually, see "Load External Files" in :doc:`tasks <../tasks>`.
+This doesn't work yet, and it's actually quite rare that you need it. Parameters normally fall in a fixed range which can be solved with the approaches above. Another typical reason you would want to do this is to load an unknown number of input files which you can do manually, see "Load External Files" in :doc:`tasks <../tasks>`.
 
 .. code-block:: python
 

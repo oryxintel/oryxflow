@@ -502,7 +502,8 @@ class TestAutoInvalidation:
         _bump_mtime(path)
         r2 = oryxflow.run(t)                         # logic edit -> rerun, no bump needed
         assert r2.did_run(mod.TaskAuto)
-        assert r2.reasons[t.task_id] == 'code change (auto: codemod_auto1.py)'
+        # the reason names the changed SYMBOL, not just the file
+        assert r2.reasons[t.task_id] == 'code change (auto: codemod_auto1.py::FACTOR)'
         assert oryxflow.run(t).ran == []             # re-baselined
         assert any(e['type'] == 'task_ran' and e.get('auto')
                    for e in oryxflow.events.iter_events())
@@ -657,7 +658,9 @@ class TestAutoInvalidation:
         oryxflow.run(b)
 
         helper_path = env / 'helper_accept.py'
-        helper_path.write_text('FACTOR = 1  # equivalent refactor\nUNUSED = 2\n')
+        # the edit must touch the referenced symbol's own statement: unrelated
+        # additions and comments are invisible at symbol granularity
+        helper_path.write_text('FACTOR = 2 - 1\n')
         _bump_mtime(helper_path)
         assert not b.complete()
 
@@ -873,3 +876,296 @@ class TestCodehash:
         assert 'mypkg/__init__.py' in hashes
         assert 'mypkg/impl.py' in hashes          # reached via the __init__ re-export
         assert 'lazyhelper.py' in hashes          # function-local import still walked
+        # symbol level keeps the same coverage: the re-exported helper resolves to its
+        # defining file, the lazy import narrows to the attribute used
+        sym = oryxflow.codehash.task_hashes(mod.TaskPkg)
+        assert 'mypkg/impl.py::helper' in sym
+        assert 'lazyhelper.py::X' in sym
+
+
+SIBLINGS = '''
+import oryxflow
+
+def helper_a():
+    return 1
+
+class TaskSibA(oryxflow.tasks.TaskPickle):
+    def run(self):
+        self.save({'value': helper_a()})
+
+class TaskSibB(oryxflow.tasks.TaskPickle):
+    def run(self):
+        self.save({'value': 2})
+'''
+
+PIN_CHAIN = '''
+import oryxflow
+
+class TaskUp(oryxflow.tasks.TaskPickle):
+    code_version = '1'
+    def run(self):
+        self.save({'a': 1})
+
+class TaskDn(oryxflow.tasks.TaskPickle):
+    def requires(self):
+        return TaskUp()
+    def run(self):
+        self.save(self.inputLoad())
+'''
+
+PARAM_PINNED = '''
+import oryxflow
+
+class TaskPar(oryxflow.tasks.TaskPickle):
+    idx = oryxflow.IntParameter(default=0)
+    code_version = '1'
+    def run(self):
+        self.save({'value': self.idx})
+'''
+
+
+# the def is later rebound (`helper = _wrap(helper)`, the decorate-after-def idiom):
+# BOTH binding statements are part of the symbol's hash
+REBIND = '''
+import oryxflow
+
+def _wrap(f):
+    return f
+
+def helper():
+    return 1
+
+helper = _wrap(helper)
+
+class TaskRebind(oryxflow.tasks.TaskPickle):
+    def run(self):
+        self.save({'value': helper()})
+'''
+
+
+class TestPerTaskGranularity:
+    """The hash unit is the task's own class + the symbols it references -- editing one
+    task (or an unused helper) must never invalidate unrelated siblings in the same
+    file. This is the sibling-isolation property the file-level v2 hashing lacked."""
+
+    def test_sibling_edit_isolated(self, env, monkeypatch):
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_sib1', SIBLINGS)
+        ta, tb = mod.TaskSibA(), mod.TaskSibB()
+        oryxflow.run([ta, tb])
+
+        path.write_text(SIBLINGS.replace("'value': 2", "'value': 3"))
+        _bump_mtime(path)
+        r = oryxflow.run([ta, tb])
+        assert r.did_run(mod.TaskSibB)
+        assert not r.did_run(mod.TaskSibA)           # sibling untouched
+        assert r.reasons[tb.task_id] == 'code change (auto: codemod_sib1.py::TaskSibB)'
+
+    def test_helper_edit_hits_only_referencing_task(self, env, monkeypatch):
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_sib2', SIBLINGS)
+        ta, tb = mod.TaskSibA(), mod.TaskSibB()
+        oryxflow.run([ta, tb])
+
+        path.write_text(SIBLINGS.replace('return 1', 'return 10'))
+        _bump_mtime(path)
+        r = oryxflow.run([ta, tb])
+        assert r.did_run(mod.TaskSibA)               # references helper_a
+        assert not r.did_run(mod.TaskSibB)           # doesn't
+        assert '::helper_a' in r.reasons[ta.task_id]
+
+    def test_pinned_upstream_edit_does_not_ripple_via_reference(self, env, monkeypatch):
+        # TaskDn's requires() names TaskUp, but Task references are wiring, not code:
+        # a pinned-unbumped edit to TaskUp holds TaskUp (warn) AND must not rerun
+        # TaskDn -- under file-level hashing the shared module would have dragged
+        # TaskDn along
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_pinchain', PIN_CHAIN)
+        dn = mod.TaskDn()
+        oryxflow.run(dn)
+
+        path.write_text(PIN_CHAIN.replace("{'a': 1}", "{'a': 2}"))
+        _bump_mtime(path)
+        with pytest.warns(oryxflow.StalenessWarning, match='TaskUp'):
+            r = oryxflow.run(dn)
+        assert r.ran == []                           # neither TaskUp nor TaskDn
+
+    def test_v2_record_migrates_silently(self, env, monkeypatch):
+        # a stored file-level (v2) record isn't comparable to symbol keys: it must
+        # converge silently at grandfather trust (no rerun, output_id preserved)
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_v2mig', AUTO_V1)
+        t = mod.TaskAuto()
+        oryxflow.run(t)
+        rec = dict(oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id))
+        oid = rec['output_id']
+        rec['v'] = 2
+        rec['source_hashes'] = {'codemod_v2mig.py': oryxflow.codehash.file_hash(path)}
+        oryxflow.state.put_record(oryxflow.settings.dirpath, t.task_id, rec)
+
+        r = oryxflow.run(t)
+        assert r.ran == [] and r.warnings == []
+        rec2 = oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id)
+        assert rec2['v'] == oryxflow.state.RECORD_V
+        assert rec2['output_id'] == oid
+        assert all('::' in k for k in rec2['source_hashes'])
+
+    def test_warning_dedupe_family_level(self, env, monkeypatch, recwarn):
+        # parameterized instances of one pinned family produce IDENTICAL warning text
+        # (it names only the family): one printed warning, and RunResult.warnings
+        # carries the deduped message set -- len() is "how many pending conditions",
+        # it must not scale with the instance count
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_parpin', PARAM_PINNED)
+        tasks = [mod.TaskPar(idx=0), mod.TaskPar(idx=1)]
+        oryxflow.run(tasks)
+
+        path.write_text(PARAM_PINNED.replace('self.idx', 'self.idx + 0'))
+        _bump_mtime(path)
+        r = oryxflow.run(tasks)
+        assert len(r.warnings) == 1                  # deduped per build
+        printed = [w for w in recwarn.list
+                   if isinstance(w.message, oryxflow.StalenessWarning)]
+        assert len(printed) == 1                     # deduped on the message
+
+    def test_accept_walk_fault_isolated(self, env, monkeypatch, capsys):
+        # a broken requires() (e.g. it needs inputs to enumerate) poisons the
+        # recursive fingerprint too -- the node must STILL get blessed (secondary
+        # record fields keep their stored values) instead of aborting the walk
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, _ = _make_module(env, 'codemod_acceptfault', PIN_CHAIN)
+        dn = mod.TaskDn()
+        oryxflow.run(dn)
+
+        def _boom(self):
+            raise RuntimeError('requires needs inputs')
+        monkeypatch.setattr(mod.TaskDn, 'requires', _boom)
+        accepted = oryxflow.accept_code(dn)
+        assert dn.task_id in accepted                # blessed despite broken requires
+        out = capsys.readouterr().out
+        assert 're-stamped' in out
+
+    def test_rebound_symbol_edit_detected(self, env, monkeypatch):
+        # a name bound by several top-level statements (def + rebind) hashes ALL of
+        # them: editing only the rebind line must rerun the referencing task
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_rebind', REBIND)
+        t = mod.TaskRebind()
+        oryxflow.run(t)
+
+        path.write_text(REBIND.replace('helper = _wrap(helper)',
+                                       'helper = _wrap(_wrap(helper))'))
+        _bump_mtime(path)
+        r = oryxflow.run(t)
+        assert r.did_run(mod.TaskRebind)
+        assert '::helper' in r.reasons[t.task_id]
+
+
+# two finals sharing one root: a pipeline where the flow's configured default task
+# does NOT reach everything (field-reported bulk-accept gap)
+MULTI_FINAL = '''
+import oryxflow
+
+class TaskRoot(oryxflow.tasks.TaskPickle):
+    def run(self):
+        self.save({'value': 1})
+
+class TaskFinalA(oryxflow.tasks.TaskPickle):
+    def requires(self):
+        return TaskRoot()
+    def run(self):
+        self.save(self.inputLoad())
+
+class TaskFinalB(oryxflow.tasks.TaskPickle):
+    def requires(self):
+        return TaskRoot()
+    def run(self):
+        self.save({'value': 2})
+'''
+
+
+class TestHardening:
+    """Failure-mode behavior: advisory warnings under hostile warning filters, and
+    bulk accept_code facing records whose keys no longer resolve."""
+
+    def test_flow_accept_covers_all_run_finals(self, env, monkeypatch, recwarn):
+        # field-reported gap: flow configured with ONE default final but driven as
+        # flow.run([finals...]) -- a bare flow.accept_code() must persist baseline
+        # records for EVERY final's subtree (creating records for grandfathered
+        # outputs), so a fresh process warns zero and recomputes nothing. The
+        # bless call itself runs on a FRESH Workflow with no run history (the
+        # one-shot post-upgrade bless script), so coverage must come from the
+        # imported task families, not from what this process happened to run.
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_multifinal', MULTI_FINAL)
+        finals = [mod.TaskFinalA, mod.TaskFinalB]
+        oryxflow.Workflow(task=mod.TaskFinalA).run(finals)
+
+        # simulate the post-upgrade state: outputs on disk, no records, source newer
+        (oryxflow.settings.dirpath / oryxflow.settings.state_filename).unlink()
+        oryxflow.state.clear_cache()
+        oryxflow.core._code_warned.clear()
+        _bump_mtime(path, 3600)
+        with pytest.warns(oryxflow.StalenessWarning, match='predates current code'):
+            r = oryxflow.Workflow(task=mod.TaskFinalA).run(finals)
+        assert r.ran == []
+
+        flow = oryxflow.Workflow(task=mod.TaskFinalA)   # the bless script's flow
+        accepted = flow.accept_code()                   # bare bulk form, no args
+        want = {flow.get_task(c).task_id
+                for c in (mod.TaskRoot, mod.TaskFinalA, mod.TaskFinalB)}
+        assert want <= set(accepted)
+        # persisted, not in-memory suppression: with state cache and warning dedupe
+        # cleared (a fresh process), the full finals set is silent
+        oryxflow.state.clear_cache()
+        oryxflow.core._code_warned.clear()
+        recwarn.clear()
+        r2 = oryxflow.Workflow(task=mod.TaskFinalA).run(finals)
+        assert r2.ran == [] and r2.warnings == []
+        assert not any(isinstance(w.message, oryxflow.StalenessWarning)
+                       for w in recwarn.list)
+        for tid in want:
+            assert oryxflow.state.get_record(oryxflow.settings.dirpath, tid) is not None
+
+    def test_multi_result_warnings_deduped(self, env):
+        # MultiRunResult.warnings is the deduped union across flows: per-flow builds
+        # re-warn the same message for shared upstreams
+        r1 = oryxflow.core.RunResult(True, [], [], [], warnings=['w1', 'w2'])
+        r2 = oryxflow.core.RunResult(True, [], [], [], warnings=['w1'])
+        m = oryxflow.core.MultiRunResult(a=r1, b=r2)
+        assert m.warnings == ['w1', 'w2']
+
+    def test_warn_survives_error_filter(self, env, monkeypatch):
+        # an app-level `warnings.simplefilter('error')` turns warn() into a raise;
+        # the advisory must not abort the build -- RunResult still carries it
+        import warnings
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, path = _make_module(env, 'codemod_werror', MODULE_V1)
+        t = mod.TaskHash()
+        oryxflow.run(t)
+
+        path.write_text(MODULE_V1_EDITED)
+        _bump_mtime(path)
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', oryxflow.StalenessWarning)
+            r = oryxflow.run(t)                      # must not raise
+        assert r.ran == []
+        assert any('changed since cached run' in w for w in r.warnings)
+
+    def test_bulk_accept_reports_unresolvable_keys(self, env, monkeypatch, capsys):
+        # a stored key whose file/symbol vanished (rename, move) can't be re-keyed
+        # from the record alone: the bulk form must say so instead of silently
+        # reading as "verified current"
+        monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
+        mod, _ = _make_module(env, 'codemod_bulkgone', AUTO_V1)
+        t = mod.TaskAuto()
+        oryxflow.run(t)
+        rec = dict(oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id))
+        rec['source_hashes'] = dict(rec['source_hashes'],
+                                    **{'gone.py::vanished': 'deadbeef'})
+        oryxflow.state.put_record(oryxflow.settings.dirpath, t.task_id, rec)
+
+        accepted = oryxflow.accept_code()
+        out = capsys.readouterr().out
+        assert 'no longer exist' in out
+        assert t.task_id not in accepted             # live keys unchanged: no restamp

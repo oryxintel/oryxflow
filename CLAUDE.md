@@ -205,6 +205,14 @@ baseline: **73 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`,
 
 ## Conventions
 
+- **User docs (`docs/source/*.rst`) are written for data scientists, not library developers.**
+  They were deliberately rewritten from a user-benefits perspective (commit 316a9fb): say what
+  the reader gets and what to type ("lists each distinct warning once, so its length answers
+  'how many pending warnings do I have?'"), never how it's computed. No jargon or library
+  internals ("deduped message set", "enumeration root", "record schema") — internals belong in
+  code comments, `docs/todo/` plans, and contributor-facing docstrings. The CLAUDE.md snippet /
+  plugin skill text is agent-facing and may be more technical, but still favors verbs over
+  mechanisms.
 - Platform is Windows (PowerShell); tests compare against `pathlib.Path(...)` (not raw strings)
   so they pass cross-OS. Keep new path assertions OS-agnostic.
 - Match surrounding style; the codebase is plain, comment-light, no type annotations.

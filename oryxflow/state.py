@@ -21,7 +21,9 @@ from pathlib import Path, PurePosixPath
 # (complete) and build()'s advisory sweep silently re-stamps it -- a one-time
 # re-baseline at the trust level of grandfathering, never a mass rerun.
 # v2: code_version_auto (fingerprint may fold the AST auto token).
-RECORD_V = 2
+# v3: symbol-level source_hashes ('<relpath>::<symbol>' keys, codehash.task_hashes) --
+#     v2 file-level records converge silently via the mismatch path above.
+RECORD_V = 3
 
 # str(store path) -> dict of records, invalidated on write
 _cache = {}

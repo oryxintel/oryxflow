@@ -17,10 +17,15 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 ## [26.7.12] - 2026-07-12
 ### Added
 - Automatic code invalidation, on by default (`settings.code_version_auto = True`): every task
-  derives its code identity from the AST hash of its defining module plus transitively imported
-  project-local files, so a real logic edit (in the task **or a helper it imports**) reruns the
-  task and everything downstream on the next `run()`, overwriting in place — no attribute to
-  maintain, and comment/docstring/formatting edits never rerun (AST normalization). Existing
+  derives its code identity from the AST hash of its own class plus the project-local symbols it
+  transitively references (`codehash.task_hashes`, `'<relpath>::<symbol>'` granularity), so a
+  real logic edit (in the task **or a helper it calls**) reruns the task and everything
+  downstream on the next `run()`, overwriting in place — while editing an unrelated sibling task
+  in the same file reruns nothing (one monolithic `tasks.py` stays cheap). References to other
+  Task classes are dependency wiring, never a code dependency (a pinned upstream's unbumped edit
+  can't ripple through `requires()` mentions); unresolvable constructs degrade conservatively to
+  whole-module granularity. No attribute to maintain, and comment/docstring/formatting edits
+  never rerun (AST normalization). Existing
   caches are grandfathered on first contact (baseline stamped, zero reruns). Set
   `settings.code_version_auto = False` for explicit-only tracking. The functional API is covered
   automatically (auto is ambient, no per-task surface). Records live in
@@ -41,17 +46,26 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - Staleness advisory for pinned tasks: code changed without a bump → cached output is reused and
   the run warns via `StalenessWarning` (a `UserWarning` subclass, visible without
   `enable_logging()`), a loguru record, a `code_warning` event, and `RunResult.warnings`. The
-  printed/logged channels dedupe per process — the same message for the same task shows once
-  (a `WorkflowMulti` run is one build per flow over shared upstreams and would otherwise flood
-  stdout) and re-arms when the condition changes or the task reruns/is accepted;
-  `RunResult.warnings` and the event stream record every occurrence.
+  printed/logged channels dedupe per process on the message — parameterized instances of one
+  family produce identical text, and a `WorkflowMulti` run is one build per flow over shared
+  upstreams, so per-task dedupe would still flood stdout — re-arming when the condition changes
+  or the affected tasks rerun/are accepted; `RunResult.warnings` lists each distinct message once
+  per run (`MultiRunResult.warnings` dedupes across flows), and only the event stream records
+  every occurrence.
 - `oryxflow.accept_code(task)` / `accept_code()`: acknowledge an output-equivalent code change
   without rerunning. With a task instance it re-stamps the task **and its entire upstream dep
   tree** (post-order), stamping a fresh baseline record for outputs that have none yet (this is
   what clears the `output predates current code` mtime-guard warning after an upgrade);
-  `Workflow.accept_code(task=None)` / `WorkflowMulti.accept_code(task=None, flow=None)` wrap it
-  for the flow's default task. Prints a one-line summary of what it re-stamped (or that nothing
-  was accepted). Never touches `output_id`, so accepting never triggers downstream recomputes.
+  `Workflow.accept_code(task=None)` / `WorkflowMulti.accept_code(task=None, flow=None)` wrap it;
+  called bare they cover **every imported task family that resolves with the flow's parameters**
+  (a multi-final pipeline is fully blessed in one call, from a fresh process — no prior run
+  needed), and a list of tasks is accepted everywhere (on `WorkflowMulti` prefer the flow
+  method — the module-level bulk
+  form doesn't know the flows' parameters). Prints a one-line summary of what it re-stamped (or
+  that nothing was accepted). The tree walk is fault-isolated: a task whose `requires()`/
+  `output()` raises is skipped and reported instead of aborting the walk (a broken `requires()`
+  also can't poison the node's own blessing). Never touches `output_id`, so accepting never
+  triggers downstream recomputes.
 - `TaskData.keep_versions` (default `False`): with `code_version` set, outputs live under a
   readable `.../<Task>/v<version>/` segment so old versions survive bumps (explicit pins only;
   auto-tracked tasks overwrite in place).
@@ -75,7 +89,7 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   last=)`, `events.iter_events()` — all return data and print nothing; `events.print_status()` prints
   the status summary (the session-start orientation call for scripts and `python -c`).
 - `RunResult.run_id`, `RunResult.reasons` (`{task_id: 'output missing' |
-  'code change (auto: <files>)' | 'code change (a -> b)' | 'upstream rerun'}`),
+  'code change (auto: <file>::<symbol>)' | 'code change (a -> b)' | 'upstream rerun'}`),
   `RunResult.warnings`. `MultiRunResult` gains aggregate
   `.ran`/`.complete`/`.failed`/`.reasons`/`.warnings` across flows. `task_ran` events carry
   params, code fingerprint, source hashes, `auto` flag, git SHA/dirty, duration and the rerun

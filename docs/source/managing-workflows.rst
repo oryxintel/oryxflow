@@ -16,32 +16,10 @@ reach for constantly:
 #. **Iterate granular** — one task per item (per hyperparameter, per state, per input file), each
    cached on its own.
 #. **Aggregate** — combine those outputs one level up into a single result.
-#. **Selectively reset** — when you change one part of the pipeline, invalidate just that family
-   of tasks and let everything downstream recompute. The expensive leaves stay cached.
-
-Why this is (mostly) automatic
-------------------------------------------------------------
-
-A task is "complete" when its output exists **for its current parameters**. The task id is derived
-from the task's parameters, so:
-
-* **Change a parameter** and you get a new id → no output yet → the task runs. Old outputs for the
-  old parameters are untouched.
-* **Add a new item to the grid** (a new hyperparameter value, a new state) and only that new task
-  runs; every existing one is already complete and is skipped.
-
-Both cases are handled for you — this is oryxflow's parameter management. Because completeness is
-checked recursively down the dependency graph, an aggregating task automatically recomputes when
-any of its inputs change or a new input appears, with no bookkeeping on your part.
-
-Completeness also keys on your **code**: by default oryxflow fingerprints each task's defining
-module and every project-local module it transitively imports (AST-normalized, so comments,
-docstrings and formatting never count), and a real logic change reruns the task *and everything
-downstream* on the next run — no version attribute to maintain, no resets to chain (see
-:ref:`code-versioning` below). Tasks that declare an explicit ``code_version`` opt out of the
-automatic tracking: there, only bumping the token recomputes. ``reset()`` remains for the cases
-no code hash covers: deleting outputs, or forcing a recompute when something the system can't see
-changed (a data file, an external API).
+#. **Selectively reset** — when something the engine *can't* see changes (a data file, an external
+   API), invalidate just that family of tasks and let everything downstream recompute. The
+   expensive leaves stay cached. (Parameter and code changes need no reset — they rerun on their
+   own; see below.)
 
 Worked example: hyperparameter tuning
 ------------------------------------------------------------
@@ -108,161 +86,176 @@ Only ``TrainModel(alpha=100.0)`` runs — the four you already trained are compl
 and the expensive ``LoadData`` is not touched at all. ``Tune`` recomputes because it now has a new
 input. You didn't reset anything; adding a parameter value is enough.
 
-.. _code-versioning:
-
-Code changes: handled automatically
+What reruns, and when you do nothing
 ------------------------------------------------------------
 
-Suppose you improve ``TrainModel`` — say you add a second scoring metric to its ``run()``.
-Parameters didn't change, so a parameter-only cache would happily serve the stale output. With
-oryxflow you do **nothing**: on the next ``run()`` every ``TrainModel`` recomputes **and so does
-everything downstream of it** (``Tune`` here), overwriting in place at the same paths.
-``LoadData`` is untouched. The same holds when you edit a *helper module* the task imports — the
-fingerprint covers the task's defining module and everything it transitively imports inside your
-project, so the change is caught where it actually lives, not just in ``run()``.
+A task is "complete" when its output exists **for its current parameters and its current code**.
+Two of the three things that can make a result stale are handled for you, no action required:
 
-Two properties make this safe to leave on:
+* **You changed a parameter.** The task id is derived from the parameters, so a new value is a new
+  id — no output yet, the task runs, and the old output for the old parameters is left untouched
+  beside it. Add a value to the grid (a new ``alpha``) and *only* that new task runs.
+* **You changed the code.** oryxflow fingerprints each task's logic (next section). Edit a task's
+  ``run()`` — or a helper it calls — and the task plus everything downstream recomputes on the next
+  run.
+
+The third — a change the engine *can't* see, like a new data file or an API response — is the only
+one you drive by hand, with ``reset()`` (see :ref:`reset-no-code-token` below). Because completeness
+is checked recursively down the graph, an aggregator recomputes automatically whenever any of its
+inputs changes or a new one appears, with no bookkeeping on your part.
+
+.. _code-versioning:
+
+Automatic code invalidation
+------------------------------------------------------------
+
+Suppose you improve ``TrainModel`` — add a second scoring metric to its ``run()``. The parameters
+didn't change, so a parameters-only cache would happily serve the stale output. oryxflow instead
+**fingerprints the code**: on the next run every ``TrainModel`` recomputes, and so does everything
+downstream of it (``Tune``), overwriting in place at the same paths. ``LoadData`` is untouched. You
+did nothing — no reset, no version to bump.
+
+The fingerprint covers each task's own class **and every project-local symbol it references**,
+followed transitively across your modules — so editing a *helper function* the task calls is caught
+too, where the change actually lives, not just in ``run()``. Two properties make this safe to leave
+on:
 
 * **Cosmetic edits never recompute.** Files are hashed after AST normalization, so comments,
-  docstrings and formatting changes produce no fingerprint change at all.
-* **Propagation is automatic.** Each task's fingerprint folds its dependencies' fingerprints, so
-  a change upstream invalidates the whole band below it — the granular equivalent of
-  ``reset_upstream(..., only=...)`` with zero bookkeeping — and the fold is stored per task, so
-  it works across separate runs and sessions, not just within one build.
+  docstrings, and formatting produce no fingerprint change at all.
+* **Granularity is per symbol, not per file.** One monolithic ``tasks.py`` is fine: editing one
+  task's ``run()`` reruns that task alone, and editing a shared helper recomputes exactly the tasks
+  that reference it (directly or through other helpers). The rerun reason even names the changed
+  symbol — ``code change (auto: tasks.py::TrainModel)``.
 
-The trade-off is coarseness: hashing is file-level, so editing one function in a shared
-``utils.py`` recomputes every task that imports that file. Before an expensive run,
-``flow.preview()`` shows exactly which band is pending; if you judge the edit output-equivalent
-(a rename, an extracted function, a log line), ``flow.accept_code()`` re-stamps the current code
-as accepted without recomputing (see the three exits below). When unsure, let it rerun —
-recompute is cheap insurance, a wrongly-blessed cache is not.
+Referencing another *task* in ``requires()`` is dependency wiring, not a code reference — it never
+pulls that task's body into your fingerprint; the dependency cascade carries that staleness instead.
+What symbol analysis can't split apart (module-level side effects, star imports, dynamically created
+classes) falls back to whole-file granularity — extra reruns at worst, never a missed one.
 
-**Expensive tasks don't recompute silently.** A rerun overwrites the old output, so burning a
-long run must be a decision, not a side effect of a refactor: an auto-tracked task whose *last*
-materialization took longer than ``settings.code_version_auto_expensive_s`` (default 600
-seconds) is held complete when its code changes and the run **warns** instead — with the same
-three exits (``reset()`` to recompute, ``accept_code`` if output-equivalent, or pin it with
-``code_version`` to manage it by deliberate bumps). Set the threshold to ``None`` to make every
-auto code change recompute.
+**Expensive tasks warn instead of silently recomputing.** A rerun overwrites the old output, so
+burning a long computation should be a decision, not a side effect of a refactor. A task whose last
+run took longer than ``settings.code_version_auto_expensive_s`` (default 600 seconds) is held
+complete when its code changes, and the run **warns** instead — answer it with one of the
+:ref:`three exits <code-three-exits>` (reset, ``accept_code``, or pin it with ``code_version``). Set
+the threshold to ``None`` to make every code change recompute.
+
+To turn automatic tracking off entirely — parameters-only identity plus explicit pins — set
+``oryxflow.settings.code_version_auto = False``.
+
+.. _code-blind-spots:
+
+When you changed something but nothing reran
+------------------------------------------------------------
+
+The fingerprint follows Python ``import`` statements under your project root. It **cannot** see:
+data-file contents, external APIs, installed packages, dynamic imports or monkeypatching, and tasks
+defined in a notebook or REPL (which aren't hashable at all). A change in any of those is invisible
+to the hash, so the task keeps its cache.
+
+The symptom is a **skip you didn't expect**: you changed something, ran, and the summary says
+``0 ran``. Make this one check a habit — after any change you expect to recompute, confirm the
+affected tasks appear in ``result.ran`` (or ``oryxflow.events.runs()``) with a matching reason such
+as ``code change (auto: pipeline/train.py::TrainModel)``:
+
+* ``ran=0`` **after a change** means the change is in a blind spot. ``reset()`` the task that
+  ingests it, or give that task an explicit ``code_version`` if it happens repeatedly.
+* ``ran=0`` **on an untouched pipeline** is the healthy "cache is trusted" signal.
+
+A blind spot never produces a *false* rerun or a false "verified unchanged" — it just degrades to
+parameters-only identity, the same trust level every cache file has always had.
 
 Pinning a task: the explicit ``code_version``
 ------------------------------------------------------------
 
-Sometimes automatic is the wrong sensitivity — a training task so expensive that a
-refactor-triggered recompute must be a deliberate decision, or logic the hash can't see (dynamic
-dispatch, behavior driven by a config file). Declare an explicit ``code_version`` and that task's
-own logic is **pinned**: it recomputes only when you bump the token, and code edits without a bump
-produce a staleness *warning* instead of a rerun:
+Sometimes automatic is the wrong sensitivity — a training task so expensive that a refactor-triggered
+recompute must be a deliberate decision, or logic the hash can't see (behavior driven by a config
+file, dynamic dispatch). Declare an explicit ``code_version`` and that task's own logic is
+**pinned**: it recomputes only when you bump the token, and a code edit *without* a bump produces a
+staleness warning instead of a rerun.
 
 .. code-block:: python
 
     @oryxflow.requires(LoadData)
     class TrainModel(oryxflow.tasks.TaskCachePandas):
-        code_version = 2          # pinned: was 1; bump deliberately to recompute
+        code_version = 2          # pinned: bump deliberately to recompute
         alpha = oryxflow.FloatParameter()
         def run(self):
             ...
 
-``code_version`` can be an int or a string (``'v2-log-features'``). The pin is per-task,
-free to toggle, and self-healing — the ``code_version`` line itself is stripped by the AST
-normalization (like comments and docstrings), so typing the pin in, deleting it, or bumping it
-is never a *source* change; the token is compared as its own dimension. The record always
-stores *both* the token and the source hashes as of the last materialization, and completeness
-compares the dimension that matches the current mode:
+The token can be an int or a string (``'v2-log-features'``). Pins are **free to toggle**: the
+``code_version`` line is itself stripped by AST normalization (like a comment), so adding, removing,
+or bumping it is never itself a source change. Under the hood oryxflow stores both the token and the
+code hash at each run and compares whichever matches the current mode — which is what gives the
+toggle these useful properties:
 
-* **Pinning** a task whose code is unchanged costs nothing (no recompute — the hashes prove the
-  cached output matches the code). Pinning *in the same edit as a logic change* recomputes, as
-  it should — the hash comparison catches what the pin would otherwise have blessed.
-* **Unpinning** just resumes: if the code is unchanged since the output was materialized, no
-  recompute. If you edited while pinned and never bumped (the pin's accepted risk), the resume
-  catches exactly that masked edit and recomputes once.
-* Neither direction of the toggle ripples downstream: dependents key on whether an upstream
-  actually *rematerialized* (its output identity), not on which mode tracked it.
+* Pinning a task whose code is unchanged costs nothing — no recompute.
+* Pinning *in the same edit as a logic change* still recomputes: the hash catches what the pin would
+  otherwise have blessed.
+* Unpinning just resumes automatic tracking; if you edited while pinned and never bumped, that one
+  masked edit is caught and recomputes once.
+* Toggling never ripples downstream — dependents key on whether an upstream actually
+  *rematerialized*, not on which mode tracked it.
 
-Pinned and automatic tasks coexist freely in one pipeline, and a pinned task still reruns when
-its *upstream* recomputes — the pin covers its own logic, not its inputs.
+Pinned and automatic tasks mix freely in one pipeline, and a pinned task still reruns when its
+*upstream* recomputes — the pin covers its own logic, not its inputs. Why pin at all, if automatic
+needs nothing? The token makes the cache decision — "this logic changed, downstream must recompute" —
+an explicit, diffable part of the same edit, visible in code review and ``git log``. That's why
+AI-agent projects often prefer pins on their key tasks.
 
-The token also buys you a diffable record: the cache decision ("this logic changed, downstream
-must recompute") becomes an explicit part of the same edit, visible in code review and
-``git log``. That's why AI-agent projects often prefer pins on key tasks even though automatic
-mode needs nothing.
+.. note::
 
-To turn automatic tracking off entirely — parameters-only identity plus explicit pins — set
-``oryxflow.settings.code_version_auto = False``.
+   **One first-time trap.** Bringing an output under tracking for the *first* time — a pre-upgrade
+   artifact, or the first pin in a ``code_version_auto = False`` project — in the *same edit* that
+   changes its logic can bless the stale output, because there is no prior record to compare
+   against. oryxflow warns when it can detect this (``output predates current code``); answer it
+   with ``reset()`` to recompute, or ``flow.accept_code()`` if the outputs really are current. Once
+   a task has one record on disk, the trap is closed for good — the stored hashes expose any edit no
+   matter how you toggle the pin.
 
-**Adoption / upgrade is invisible.** Existing caches are never invalidated by turning this on
-(or upgrading into it): output that predates the tracking has no record yet, so it is treated as
-current and the present code recorded as its baseline ("grandfathering") — the first
-*subsequent* logic edit is what triggers a recompute. One caveat, only for output that has
-**no record at all** (pre-upgrade artifacts, or ``code_version_auto = False`` projects adding
-their first pin): if you edit the logic in the same change that first brings the task under
-tracking, the stale output gets blessed. A best-effort mtime guard warns when it can detect
-this (``output predates current code``) and holds off stamping; answer it with ``reset()`` to
-recompute, or ``flow.accept_code()`` to confirm the outputs are current — the instance/flow
-form stamps record-less outputs a fresh baseline, which is the cheap mass-blessing after an
-upgrade (the guard fires spuriously right after ``git checkout``/``clone``, which resets source
-mtimes). Once a task has a record, this trap is closed mechanically: the stored hashes expose
-the edit no matter how you toggle the pin.
+.. _code-three-exits:
 
-Where the hash cannot see — and how you notice
+The three exits for any code change
 ------------------------------------------------------------
 
-Automatic tracking follows Python ``import`` statements under your project root. It cannot see:
-data-file contents, external APIs, installed packages, dynamic imports or monkeypatching, and
-tasks defined outside the project (a notebook kernel, a REPL) aren't hashable at all — those
-degrade silently to parameters-only identity, never to a false rerun *or* a false "verified
-unchanged".
+Every code change — whether it auto-recomputed or a pin warned — has the same three exits, and they
+are **not** equal in risk:
 
-The observable symptom is a **skip you didn't expect**: you changed something, ran, and the run
-reports ``0 ran``. Make checking that a habit — after any change you expect to recompute, the
-next run must show the affected tasks in ``result.ran`` (or ``oryxflow.events.runs()``) with a
-matching reason (``code change (auto: pipeline/train.py)``). ``ran=0`` after a change means the
-change is invisible to the hash: ``reset()`` the task that consumes it, or give that task an
-explicit ``code_version`` if it happens repeatedly. ``ran=0`` on an *untouched* pipeline is the
-healthy "cache is trusted" signal.
-
-The staleness warning and its three exits
-------------------------------------------------------------
-
-For **pinned** tasks, editing code without bumping the token is the failure mode to catch, so the
-same code hash runs as an *advisory* there: if a pinned task's code changed but its
-``code_version`` didn't, the run warns — visibly, without ``enable_logging()``::
-
-    StalenessWarning: task TrainModel: pipeline/train.py changed since cached run; code_version
-    still 2 -- reusing cached output. Bump code_version to recompute, or
-    oryxflow.accept_code(TrainModel) only if certain the output is equivalent -- when unsure,
-    bump (best-effort check: can't see data files or dynamic calls).
-
-An unacknowledged warning would otherwise repeat on every build (a ``WorkflowMulti`` run is one
-build per flow over shared upstreams), so the printed/logged warning dedupes per process: the
-same message for the same task shows once, and re-arms when the condition changes or after the
-task reruns or is accepted. Every occurrence is still recorded in ``result.warnings`` and the
-event stream (``oryxflow.events.warnings()``) regardless.
-
-Every code change — whether it triggered an automatic recompute or a pin warning — has the same
-three exits, not equal in risk:
-
-* **Recompute** — for automatic tasks just run (it already happens); for pinned tasks bump
+* **Recompute** — for automatic tasks, just run (it already happens); for pinned tasks, bump
   ``code_version``. Safe by default.
-* **Reset** (``flow.reset(...)``) — recompute regardless, no version bookkeeping. Also safe.
-* **Accept** — the change is output-equivalent (rename, refactor, added log line):
-  ``flow.accept_code()`` (or ``oryxflow.accept_code(task)``) re-stamps the current code as
-  accepted without rerunning — for an automatic task this is how you *skip* the recompute it
-  would otherwise do. It accepts the task **and its whole upstream tree**, so call it on the
-  most-downstream task you judge equivalent (the flow's default task covers everything).
-  **This is the one exit that can silently bless a stale output** — use it only when you're
-  certain; when unsure, recompute (cheap insurance). ``accept_code`` prints a one-line summary
-  of what it re-stamped (and says so when it accepted nothing), so an accept that didn't reach
-  its target is visible, not silent. ``accept_code(TaskX)`` with a class re-stamps only that
-  family's *stored* records, and bare ``accept_code()`` bulk-accepts warned records; prefer the
-  instance/``flow`` form — it is also the only form that can stamp a baseline for outputs with
-  **no record yet** (the ``output predates current code`` warning), and anything the other
-  forms miss simply recomputes (the safe direction).
+* **Reset** — ``flow.reset(...)`` recomputes regardless, with no version bookkeeping. Also safe.
+* **Accept** — the change is output-equivalent (a rename, an extracted function, an added log line):
+  ``flow.accept_code()`` (or ``oryxflow.accept_code(task)``) re-stamps the current code as accepted
+  *without* rerunning. For an automatic task this is how you *skip* a recompute it would otherwise
+  do.
 
-A pin's warning follows the *import* graph while reruns follow the *dependency* graph: a
-downstream task that consumes a changed helper's output only via ``requires()`` (without
-importing the file) won't warn — propagation through the folded fingerprints is what carries
-staleness across a pure data dependency.
+**Accept is the one exit that can silently bless a stale output** — use it only when you're certain;
+when unsure, recompute (cheap insurance; a wrongly-blessed cache is not). It accepts the task **and
+its whole upstream tree**, so call it on the most-downstream task you judge equivalent, and it
+prints a one-line summary of what it re-stamped — "nothing accepted" means it didn't reach the
+target. A bare ``flow.accept_code()`` covers your whole pipeline — every task it can compute,
+whichever final it hangs from — so one call blesses a multi-final pipeline, and it works from a
+fresh script (a one-shot bless after an upgrade needs no prior run). You can also name the tasks
+yourself, one or several: ``flow.accept_code([FinalA, FinalB])``. Prefer the instance/``flow`` form over the bare/class
+form: it is the only one that can stamp a baseline for record-less outputs, and anything the other
+forms miss simply recomputes (the safe direction). On a ``WorkflowMulti`` use
+``flow.accept_code()`` (all flows, or one with ``flow=...``) — the module-level form doesn't know
+your flows' parameters. Tasks a flow reaches only *dynamically* (yielded inside a ``run()``) aren't
+in the static tree; accept those with an explicit instance if they warn.
+
+.. note::
+
+   The staleness warning for a pinned task prints without ``enable_logging()``::
+
+       StalenessWarning: task TrainModel: pipeline/train.py::TrainModel changed since cached run;
+       code_version still 2 -- reusing cached output. Bump code_version to recompute, or
+       oryxflow.accept_code(TrainModel) only if certain the output is equivalent.
+
+   It dedupes per process — one line per distinct message, however many flows or parameter values
+   hit it — and re-arms when the condition changes or the tasks rerun. ``result.warnings`` lists
+   each distinct warning once, so its length answers "how many pending warnings do I have?" no
+   matter how many flows or parameter values are involved. ``oryxflow.events.warnings()`` still
+   records every occurrence, so even if your environment suppresses the print the record is never
+   lost, and a strict ``-W error`` setup won't turn the advisory into a failed build.
 
 Which verb, when
 ------------------------------------------------------------
@@ -307,7 +300,7 @@ Which verb, when
        record exists this trap is caught automatically)
    * - nothing — but pre-existing outputs warn ``output predates current code``
      - ``flow.accept_code()`` if the outputs are current, else ``reset()``
-     - the mtime guard can't tell a fresh checkout from a stale cache; accepting stamps
+     - the guard can't tell a fresh checkout from a stale cache; accepting stamps
        record-less outputs a baseline in one call
 
 Keeping old versions side by side
@@ -329,61 +322,88 @@ Bumping then writes to a new ``v.../`` directory and the old one stays on disk.
 existing task relocates its output path (it gains the version segment), so the task recomputes
 once and the old non-versioned artifact is left behind — it's not a transparent toggle.
 
-How the records travel
+.. _reset-no-code-token:
+
+Selectively reset when code versioning doesn't apply
 ------------------------------------------------------------
 
-The code fingerprints live in one small JSON file per data directory
-(``<dirpath>/.oryxflow-code-status.json``). It describes those exact artifacts, so **move or restore a data
-directory whole** — file and artifacts together, always via the same channel. An artifact without
-a record is simply grandfathered as current (the same trust level every file has today); partial
-restores are on you. Correctness depends only on this file, never on the event log.
+``reset`` remains the right tool when there's no code token to move: a data file changed, you
+suspect a corrupt cache, or you simply want outputs deleted. The point is to reset **only** the
+family that changed, so the shared ``LoadData`` stays cached:
+
+.. code-block:: python
+
+    flow = oryxflow.Workflow(Tune)
+    flow.reset_upstream(Tune, only=TrainModel)   # every TrainModel in the DAG, nothing else
+    flow.run()
+
+``reset_upstream(Tune, only=TrainModel)`` walks the whole graph upstream of ``Tune`` and
+invalidates just the ``TrainModel`` instances — every ``alpha`` at once, found via the DAG so you
+never hand-list them. ``LoadData`` is a *different* family and is left complete, so the slow data
+pull does **not** repeat. On the next ``run()`` all four models retrain and ``Tune`` recomputes on
+top (recursive completeness), while ``LoadData`` is served from cache.
+
+Contrast the three reset scopes you'll actually use:
+
+* ``flow.reset(TrainModel(alpha=0.1))`` — one specific instance. Use when you're debugging a single
+  case.
+* ``flow.reset_upstream(Tune, only=TrainModel)`` — one *family*, everywhere it appears upstream.
+  Use when something the code hash can't see changed for that family and you want every instance
+  recomputed, cheap dependencies preserved.
+* ``flow.reset_upstream(Tune)`` — the whole upstream, including ``LoadData``. Use only when the raw
+  inputs themselves are stale.
+
+This is the core discipline: **reset at the level you changed, not above it.** It's what keeps a
+tweak to a fast step from triggering hours of expensive re-fetching or re-computation.
 
 The event stream: what ran, when, and why
 ------------------------------------------------------------
 
-Every run appends structured events to a plain-text JSONL stream — always on, costing
-microseconds (writes are asynchronous), so the record exists even when your script discards the
-run result. The file layout is a contract you can script against:
+Every run appends structured events to a plain-text JSONL stream — always on, written asynchronously
+(microseconds), so the record exists even when your script discards the run result. The file layout
+is a contract you can script against:
 
-* current month: ``.oryxflow/events.jsonl`` (a stable head — ``tail -30 .oryxflow/events.jsonl``
-  always shows the latest activity)
+* current month: ``.oryxflow/events.jsonl`` (a stable head — ``tail -30`` always shows the latest)
 * offloaded months: ``.oryxflow/events-YYYYMM.jsonl`` (immutable once offloaded)
 * all history: glob ``.oryxflow/events*.jsonl``
 
 Events include ``run_started`` / ``task_ran`` / ``task_failed`` / ``run_finished`` /
 ``code_warning`` / ``code_accepted`` / ``task_log``. Each ``task_ran`` carries the full recipe —
-params, ``code_version``, code fingerprint, source hashes, git SHA, duration — and the **reason**
-it ran (``output missing`` / ``code change (auto: pipeline/train.py)`` / ``code change (1 -> 2)``
-/ ``upstream rerun``), so "why did this recompute?" and "was this produced by current code?" are
-queries, not guesses. Anything a task
-logs via ``self.logger`` is captured as ``task_log`` events — log your decision-relevant scalars
-(``self.logger.info("corr_avg={}", corr)``) and they become next session's memory.
-
-From Python:
+params, ``code_version``, code fingerprint, source hashes, git SHA, duration — and the **reason** it
+ran (``output missing`` / ``code change (auto: pipeline/train.py)`` / ``code change (1 -> 2)`` /
+``upstream rerun``), so "why did this recompute?" and "was this produced by current code?" are
+queries, not guesses. Anything a task logs via ``self.logger`` is captured as a ``task_log`` event —
+log your decision-relevant scalars (``self.logger.info("corr_avg={}", corr)``) and they become next
+session's memory.
 
 .. code-block:: python
 
     oryxflow.events.print_status()   # session-start orientation, printed: pending code
                                      # warnings, last run per family, recent failures
-    oryxflow.events.status()      # the same as data (a dict) -- it returns, doesn't print
+    oryxflow.events.status()         # the same as data (a dict) -- it returns, doesn't print
     oryxflow.events.runs(task_family='TrainModel', last=2)   # diff params/code_version/hashes
     oryxflow.events.runs(flow='Retail')                      # per-flow when using WorkflowMulti
 
-From the shell (no Python needed)::
+From the shell, no Python needed::
 
     tail -30 .oryxflow/events.jsonl
     grep TrainModel .oryxflow/events*.jsonl
     jq 'select(.type=="task_ran") | {task_id, reason, duration_s}' .oryxflow/events.jsonl
 
 ``run()`` returns the same story in memory: ``result.reasons`` maps each task that ran to why, and
-``result.warnings`` lists unacknowledged code changes. **Verify your invalidations took**: after a
-code edit (or a pin bump), the next run must show the intended tasks in ``result.ran`` with a
-matching reason (``code change (auto: pipeline/train.py)`` / ``code change (1 -> 2)``) —
-``ran=0`` after an intended change means it didn't reach the cache (a hash blind spot, or a pin
-that wasn't bumped); ``ran=0`` on an untouched pipeline is the healthy "cache is trusted" signal.
+``result.warnings`` lists unacknowledged code changes.
 
 Add ``.oryxflow/`` to your ``.gitignore`` — run records are high-frequency exhaust, not source.
 Disable entirely with ``oryxflow.settings.events = False``.
+
+Where the freshness records live
+------------------------------------------------------------
+
+The code fingerprints live in one small JSON file per data directory
+(``<dirpath>/.oryxflow-code-status.json``). It describes those exact artifacts, so **move or restore
+a data directory whole** — file and artifacts together, always via the same channel. An artifact
+without a record is simply treated as current (the same trust level every file has today); partial
+restores are on you. Correctness depends only on this file, never on the event log.
 
 What caching does *not* protect against
 ------------------------------------------------------------
@@ -434,8 +454,10 @@ a locked-down environment), paste this snapshot of the rules into the project's 
        cache state (`events.status()` returns the same as a dict for filtering; it prints
        nothing). No-Python fallback: `tail -30 .oryxflow/events.jsonl`.
     2. Editing task or helper logic needs NO cache action — code invalidation is automatic
-       (AST-hash of the task's module + repo-local imports; comments/formatting never count)
-       and propagates downstream. Do not hand-chain `reset()` calls for code changes.
+       (AST-hash of the task's own class + the repo-local symbols it references, transitively;
+       comments/formatting never count, and editing an unrelated task in the same file never
+       reruns its siblings — one monolithic tasks.py is fine) and propagates downstream. Do not
+       hand-chain `reset()` calls for code changes.
        Expensive tasks (last run > `settings.code_version_auto_expensive_s`, default 600s)
        warn instead of silently recomputing — answer with reset / accept_code / pin.
        Exception: a task that declares `code_version` is PINNED — automatic tracking of its own
@@ -444,21 +466,26 @@ a locked-down environment), paste this snapshot of the rules into the project's 
        masked while pinned is caught the moment the pin comes off.
     3. **Verify the rerun happened.** After any code edit, the next run must show the edited
        band in `result.ran` (or `oryxflow.events.runs()`) with a matching reason —
-       `code change (auto: <files>)` or `code change (1 -> 2)`. `ran=0` after an edit means the
+       `code change (auto: <file>::<symbol>)` or `code change (1 -> 2)`. `ran=0` after an edit means the
        hash didn't see the change (data file, installed package, dynamic call, notebook-defined
        task): `reset()` the affected task, or pin it with `code_version` if it recurs. `ran=0`
        on an untouched pipeline is the healthy signal.
     4. Expensive recompute you judge output-equivalent (pure refactor): `flow.accept_code()` /
        `oryxflow.accept_code(anchor_task)` re-stamps the task and its whole upstream tree
        without rerunning — only if certain; when unsure, let it rerun. `preview()` first to see
-       the pending band. It prints what it re-stamped — "nothing accepted" means it didn't
-       reach the target (use the instance/flow form, not the class/bare form). An
-       `output predates current code` warning (outputs with no record yet, e.g. after an
-       upgrade) is answered the same way: `flow.accept_code()` if the outputs are current,
-       `reset()` if not. Answer every staleness warning with one of its exits — bump, accept,
-       or reset. Never leave one firing across runs.
+       the pending band. A bare `flow.accept_code()` covers the whole pipeline — every task
+       the flow can compute, multi-final pipelines included, from a fresh process; a list
+       also works (`flow.accept_code([FinalA, FinalB])`). It prints what it re-stamped — "nothing
+       accepted" means it didn't reach the target (use the instance/flow form, not the
+       class/bare form). An `output predates current code` warning (outputs with no record
+       yet, e.g. after an upgrade) is answered the same way: `flow.accept_code()` if the
+       outputs are current, `reset()` if not. On WorkflowMulti use `flow.accept_code()`
+       (all flows) — the module-level bulk form doesn't know the flows' parameters. Answer
+       every staleness warning with one of its exits — bump, accept, or reset. Never leave one
+       firing across runs.
     5. After a run, read the returned result: `result.reasons` says why each task ran;
-       `result.warnings` lists unacknowledged code changes. Never hand-roll aggregation —
+       `result.warnings` lists unacknowledged code changes (each distinct warning once, so its
+       length is the pending count). Never hand-roll aggregation —
        `MultiRunResult` exposes `.ran`/`.complete`/`.failed`/`.reasons`/`.warnings` across
        flows, and the per-build verdict is logged durably as `run_finished` events.
     6. "The numbers changed and I don't know why": compare the last two runs —
@@ -472,38 +499,6 @@ a locked-down environment), paste this snapshot of the rules into the project's 
        all history = glob `events*.jsonl`. Prefer `events.runs()`/`status()` in Python.
     10. Data-file or external-API changes are invisible to the code hash — `reset()` the task
         that ingests them (a downstream reset re-loads the cached old input).
-
-Selectively reset when code versioning doesn't apply
-------------------------------------------------------------
-
-``reset`` remains the right tool when there's no code token to move: a data file changed, you
-suspect a corrupt cache, or you simply want outputs deleted. The point is still to reset **only**
-the family that changed, so the shared ``LoadData`` stays cached:
-
-.. code-block:: python
-
-    flow = oryxflow.Workflow(Tune)
-    flow.reset_upstream(Tune, only=TrainModel)   # every TrainModel in the DAG, nothing else
-    flow.run()
-
-``reset_upstream(Tune, only=TrainModel)`` walks the whole graph upstream of ``Tune`` and
-invalidates just the ``TrainModel`` instances — every ``alpha`` at once, found via the DAG so you
-never hand-list them. ``LoadData`` is a *different* family and is left complete, so the slow data
-pull does **not** repeat. On the next ``run()`` all four models retrain and ``Tune`` recomputes on
-top (recursive completeness), while ``LoadData`` is served from cache.
-
-Contrast the three reset scopes you'll actually use:
-
-* ``flow.reset(TrainModel(alpha=0.1))`` — one specific instance. Use when you're debugging a single
-  case.
-* ``flow.reset_upstream(Tune, only=TrainModel)`` — one *family*, everywhere it appears upstream.
-  Use when something the code hash can't see changed for that family and you want every instance
-  recomputed, cheap dependencies preserved.
-* ``flow.reset_upstream(Tune)`` — the whole upstream, including ``LoadData``. Use only when the raw
-  inputs themselves are stale.
-
-This is the core discipline: **reset at the level you changed, not above it.** It's what keeps a
-tweak to a fast step from triggering hours of expensive re-fetching or re-computation.
 
 Scaling up: hierarchies and independent experiments
 ------------------------------------------------------------

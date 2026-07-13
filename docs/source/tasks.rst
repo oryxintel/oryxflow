@@ -169,7 +169,7 @@ You probably want to load external data which is not the output of a task. There
             from d6tstack.combine_csv import CombinerCSV
             def do_stuff(df):
                 return df
-            df = CombinerCSV(glob.glob('*.csv'), apply_after_read=do_stuff).to_pandas)
+            df = CombinerCSV(glob.glob('*.csv'), apply_after_read=do_stuff).to_pandas()
 
 
 For more advanced options see :doc:`Sharing Workflows and Outputs <../collaborate>`

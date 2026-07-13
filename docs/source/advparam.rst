@@ -107,7 +107,7 @@ You often need to pass parameters between classes. With oryxflow, you do not nee
 
 Note that you can pass parameters for upstream tasks directly to the terminal task, they will be automatically passed to upstream tasks. `do_preprocess=False` will be passed down from `TaskEvaluate` to `TaskTrain`.
 
-If you require multiple tasks, you can inherit parameters from those tasks. `TaskEvaluate` depeonds on both `TaskTrain` and `TaskPredict`.
+If you require multiple tasks, you can inherit parameters from those tasks. `TaskEvaluate` depends on both `TaskTrain` and `TaskPredict`.
 
 .. code-block:: python
 

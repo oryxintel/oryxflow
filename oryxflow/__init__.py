@@ -164,125 +164,9 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
     return result
 
 
-def accept_code(task=None):
-    """
-    Acknowledge an output-equivalent code change: re-stamp the stored code records at
-    current without rerunning, so neither the auto rerun nor the "code changed but
-    code_version didn't" warning fires. The three exits from every code change: bump
-    ``code_version`` / let auto rerun (semantic change), ``accept_code`` (equivalent
-    refactor -- only if certain; when unsure, recompute), or ``reset()`` (recompute
-    regardless).
-
-    Args:
-        task (obj, class): task INSTANCE re-stamps that task AND its entire upstream
-            dependency tree in its data dir (a shared-helper edit changes the stored
-            source hashes of every task importing the file, so acceptance must cover
-            the whole band) -- call it on the most-downstream task you judge
-            equivalent, typically the flow's default task, or use
-            ``Workflow.accept_code()``. This is also the form that clears the
-            "output predates current code" warning: an output with no stored record
-            gets a fresh baseline record stamped at current. A task CLASS re-stamps
-            every EXISTING record of that family in ``settings.dirpath`` (it cannot
-            create missing records -- use the instance/flow form for that). With no
-            argument, bulk-accepts: every record in ``settings.dirpath`` whose stored
-            hashes differ from the current files is re-stamped. Accepting never
-            touches a record's ``output_id``, so it never triggers downstream
-            recomputes.
-
-    Returns: list of task_ids re-stamped
-    """
-    import uuid as _uuid
-    from datetime import datetime, timezone
-    from oryxflow import state, codehash
-
-    now = datetime.now(timezone.utc).isoformat()
-    accepted = []
-
-    def _restamp(dirpath, task_id, rec, hashes, family, fingerprint=None, dep_state=None):
-        rec = dict(rec)   # preserves output_id: accepting must not ripple downstream
-        if fingerprint is not None:
-            rec['fingerprint'] = fingerprint
-        if dep_state is not None:
-            rec['dep_state'] = dep_state
-        rec['source_hashes'] = hashes
-        rec['py'] = codehash.PY_TAG
-        rec['v'] = state.RECORD_V
-        rec['ts'] = now
-        state.put_record(dirpath, task_id, rec)
-        core._code_warned.pop(task_id, None)   # accepted; a future recurrence re-warns
-        events.append('code_accepted',
-                      {'task_id': task_id, 'family': family, 'source_hashes': hashes})
-        logger.info("accepted code change for {}", task_id)
-        accepted.append(task_id)
-
-    if task is not None and not isinstance(task, type):
-        # instance: walk the task and its upstream dep tree POST-ORDER (deps first, so
-        # dep_state folds re-stamped dep records), re-stamping each existing record's
-        # own dimension (hashes) to current
-        seen = set()
-
-        def _walk(t):
-            if t.task_id in seen:
-                return
-            seen.add(t.task_id)
-            fp = t._code_fingerprint
-            if fp is None:
-                # None folds upward: the entire upstream subtree is untracked too
-                return
-            for dep in core.flatten(t.requires()):
-                _walk(dep)
-            dirpath = t._resolved_dirpath() if hasattr(t, '_resolved_dirpath') \
-                else oryxflow.settings.dirpath
-            rec = state.get_record(dirpath, t.task_id)
-            if rec is None:
-                # no record but the output exists (grandfathered output held back by
-                # the "predates current code" mtime guard): accepting IS the blessing
-                # -- stamp a fresh baseline so the guard is satisfied from here on
-                try:
-                    outputs = core.flatten(t.output())
-                    if not outputs or not all(o.exists() for o in outputs):
-                        return
-                except Exception:
-                    return
-                rec = {'output_id': _uuid.uuid4().hex[:16],
-                       'code_version': t.code_version, 'duration_s': None}
-            _restamp(dirpath, t.task_id, rec, codehash.module_hashes(type(t)),
-                     t.task_family, fingerprint=fp,
-                     dep_state=t._dep_state() if hasattr(t, '_dep_state') else None)
-
-        _walk(task)
-    elif task is not None:
-        cls = task
-        family = cls.task_family
-        hashes = codehash.module_hashes(cls)
-        dirpath = oryxflow.settings.dirpath
-        for tid, rec in state.all_records(dirpath).items():
-            if tid.split('_')[0] == family and rec is not None:
-                _restamp(dirpath, tid, rec, hashes, family)
-    else:
-        dirpath = oryxflow.settings.dirpath
-        root = codehash._project_root()
-        for tid, rec in state.all_records(dirpath).items():
-            stored = rec.get('source_hashes') or {}
-            current = {}
-            changed = False
-            for rel, digest in stored.items():
-                cur = codehash.file_hash(root / rel)
-                current[rel] = cur if cur is not None else digest
-                if cur is not None and cur != digest:
-                    changed = True
-            if changed:
-                _restamp(dirpath, tid, rec, current, tid.split('_')[0])
-    # visible without enable_logging(), like the execution summary: silence here
-    # reads as false confidence that something was accepted
-    if accepted:
-        shown = ', '.join(accepted[:5]) + ('...' if len(accepted) > 5 else '')
-        print('accept_code: re-stamped {} record(s): {}'.format(len(accepted), shown))
-    else:
-        print('accept_code: nothing accepted (no matching stored records -- to bless '
-              'outputs that have no record yet, pass a task instance or use '
-              'flow.accept_code())')
-    return accepted
+# accept_code lives in codecheck (the invalidation-policy module) and is re-exported
+# here as public API
+from oryxflow.codecheck import accept_code
 
 
 def taskflow_upstream(task, only_complete=False):
@@ -517,6 +401,9 @@ class Workflow(object):
         self.params = dict(**self.params, **{'flows': {}})
         # Default Task
         self.default_task = task
+        # every task this flow has run (task_id -> instance): a bare accept_code()
+        # must cover pipelines driven as flow.run([finals...]), not just the default
+        self._run_roots = {}
         # If Task is set, Try to send Flow path to all other tasks
         if task:
             # Attach to tasks
@@ -556,6 +443,8 @@ class Workflow(object):
         if not isinstance(tasks, (list,)):
             tasks = [tasks]
         tasks_inst = [self.get_task(x) for x in tasks]
+        for t in tasks_inst:
+            self._run_roots[t.task_id] = t
 
         # Before Running if Path/Flow Param is set, Set it to all other tasks
         path_param = None
@@ -670,14 +559,48 @@ class Workflow(object):
     def accept_code(self, task=None):
         """
         Accept an output-equivalent code change for a task and its entire upstream
-        dependency tree (see :func:`oryxflow.accept_code`). Defaults to the flow's
-        default task, so a bare ``flow.accept_code()`` accepts the whole flow.
+        dependency tree (see :func:`oryxflow.accept_code`). A bare
+        ``flow.accept_code()`` accepts the whole flow: every imported task family
+        that resolves with this flow's parameters -- so one call from a fresh
+        process blesses a multi-final pipeline, not just the configured default
+        task's subtree.
 
         Args:
-            task (class): task class (defaults to the flow's default task)
+            task (class, list): task class, or list of task classes, to accept from
+                (default: every task the flow can compute)
 
         Returns: list of task_ids re-stamped
         """
+        if task is None:
+            # sweep every task family this process knows (imported task modules,
+            # excluding oryxflow's own template classes), instantiated with this
+            # flow's params: a bless script in a fresh process has no run history,
+            # and the configured default task may reach only one of several finals.
+            # Classes that don't instantiate under these params (DAG-internal
+            # params, abstract bases) are skipped; tasks without outputs are
+            # no-ops in the walk -- anything missed simply recomputes (the safe
+            # direction).
+            roots = {}
+            if self.default_task is not None:
+                t = self.get_task()
+                roots[t.task_id] = t
+            roots.update(self._run_roots)
+            stack = [core.Task]
+            while stack:
+                cls = stack.pop()
+                stack.extend(cls.__subclasses__())
+                if cls.__module__.split('.')[0] == 'oryxflow':
+                    continue
+                try:
+                    t = self.get_task(cls)
+                except Exception:
+                    continue
+                roots.setdefault(t.task_id, t)
+            if not roots:
+                raise RuntimeError('no default tasks set')
+            return accept_code(list(roots.values()))
+        if isinstance(task, (list, tuple)):
+            return accept_code([self.get_task(t) for t in task])
         return accept_code(self.get_task(task))
 
     def set_default(self, task):
@@ -918,10 +841,13 @@ class WorkflowMulti(object):
     def accept_code(self, task=None, flow=None):
         """
         Accept an output-equivalent code change for a task and its upstream tree
-        (see :func:`oryxflow.accept_code`), for one flow or all flows.
+        (see :func:`oryxflow.accept_code`), for one flow or all flows. With no
+        ``task``, each flow accepts its default task plus everything run on it (see
+        :meth:`Workflow.accept_code`).
 
         Args:
-            task (class): task class (defaults to the flow's default task)
+            task (class, list): task class or list of task classes (defaults to the
+                flow's default task plus everything run on that flow)
             flow (string): flow name; if not passed, accepts across all flows
 
         Returns: list of task_ids re-stamped (dict of lists when run for all flows)

@@ -23,22 +23,9 @@ from oryxflow.parameter import (
 )
 
 
-class StalenessWarning(UserWarning):
-    """Code changed but code_version didn't (or can't be verified). Python's default
-    warning filter dedups by call site, which would silence the second run() in the
-    same process -- exactly when it matters -- so the filter is 'always' and build()
-    dedups itself: the SAME message for the same task prints once per process (a
-    WorkflowMulti run is one build per flow over shared upstreams -- without this,
-    each unacknowledged warning repeats per flow and floods stdout), while a CHANGED
-    condition (more files edited, version bumped) re-warns immediately. Every
-    occurrence still lands in RunResult.warnings and the event stream regardless."""
-
-
-import warnings as _warnings_mod
-_warnings_mod.simplefilter('always', StalenessWarning)
-
-# (task_id -> last message emitted) -- the process-level print/log dedupe above
-_code_warned = {}
+# invalidation policy lives in codecheck; re-exported here for backwards compat
+# (oryxflow.core.StalenessWarning / oryxflow.core._code_warned are the same objects)
+from oryxflow.codecheck import StalenessWarning, _code_warned
 
 
 # Parameters of the task id. ``settings.set_parameter_len`` tunes these at import time.
@@ -355,14 +342,15 @@ class Task(metaclass=Register):
         """Recursive code identity, compared against the state store by
         TaskData.complete() -- a mismatch forces a rerun (authoritative). The own
         token is the explicit ``code_version`` when declared; otherwise, with
-        ``settings.code_version_auto`` (the default), the AST hash of the task's
-        module + transitively imported repo-local files, so logic edits rerun
-        automatically. None when neither applies here or upstream (feature inert).
+        ``settings.code_version_auto`` (the default), the AST hash of the task's own
+        class plus the repo-local symbols it transitively references, so logic edits
+        rerun automatically -- and edits to unrelated siblings in the same file don't.
+        None when neither applies here or upstream (feature inert).
         For tasks WITH an explicit code_version the AST source-hash stays a
         warn-only advisory and never gates completeness."""
         # Not memoized: instances are process-long-lived via the Register cache, so a
         # cached fingerprint would go stale on runtime bumps; recompute is a cheap md5
-        # over a small DAG (module_hashes carries its own mtime-revalidated cache).
+        # over a small DAG (task_hashes carries its own mtime-revalidated cache).
         dep_fps = [d._code_fingerprint for d in self.deps()]
         own = self.code_version
         if own is None:
@@ -531,7 +519,7 @@ class RunResult:
         self.failed = failed            # list[TaskFailure]
         self.run_id = run_id            # id shared by this build's events
         self.reasons = reasons or {}    # {task_id: why it ran} for tasks in `ran`
-        self.warnings = warnings or []  # unacknowledged code-change warning strings
+        self.warnings = warnings or []  # unacknowledged code-change warnings, deduped messages
 
     # --- back-compat aliases ---
     @property
@@ -605,7 +593,14 @@ class MultiRunResult(dict):
         return merged
     @property
     def warnings(self):
-        return [w for r in self.values() for w in r.warnings]
+        # deduped across flows: each per-flow build re-warns for shared upstreams, and
+        # "how many pending conditions" must not scale with the flow count
+        merged = []
+        for r in self.values():
+            for w in r.warnings:
+                if w not in merged:
+                    merged.append(w)
+        return merged
 
     def summary(self):
         """Per-flow execution summaries, each under a ``===== <flow> =====`` header."""
@@ -654,13 +649,11 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
     :returns: a :py:class:`RunResult` with ``.ran``/``.complete``/``.failed`` task identities,
         ``.success``, ``.run_id``, per-task ``.reasons`` and code-change ``.warnings``.
     """
-    import os
     import uuid
-    import warnings as _stdwarnings
-    from datetime import datetime, timezone
     from oryxflow import events as _events
     from oryxflow import state as _state
     from oryxflow import codehash as _codehash
+    from oryxflow import codecheck as _codecheck
     from oryxflow import log as _log
     from oryxflow import settings as _settings
 
@@ -672,8 +665,6 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
     already_complete = []  # tasks already complete
     failed = []           # TaskFailure for tasks that failed (run error, failed dep, missing external)
     reasons = {}          # task_id -> why it ran
-    warned = []           # unacknowledged code-change warning strings
-    advised = set()       # task_ids already checked by the code advisory this build
 
     run_id = uuid.uuid4().hex
     git_sha, git_dirty = _git_info()
@@ -685,186 +676,8 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         if msg is not None:
             getattr(logger, level)("{}", msg)
 
-    def _code_state(task):
-        # (fingerprint, dirpath) when the code-invalidation feature applies, else (None, None)
-        fp = task._code_fingerprint
-        if fp is None or not hasattr(task, '_resolved_dirpath'):
-            return None, None
-        return fp, task._resolved_dirpath()
-
-    def _hashes(task):
-        try:
-            return _codehash.module_hashes(task)
-        except Exception:
-            return {}
-
-    def _warn_code(task, msg, changed_files):
-        # decision 12a: the advisory must be visible without enable_logging(), so it
-        # goes out on every channel -- warnings.warn, loguru, the event, RunResult.
-        # The noisy channels (warnings.warn + loguru) dedupe per process on
-        # (task, message) -- see StalenessWarning -- while RunResult and the event
-        # stream record every occurrence.
-        warned.append(msg)
-        fresh = _code_warned.get(task.task_id) != msg
-        _code_warned[task.task_id] = msg
-        if fresh:
-            _stdwarnings.warn(msg, StalenessWarning)
-        _emit('code_warning',
-              {'task_id': task.task_id, 'family': task.task_family,
-               'changed_files': changed_files, 'code_version': task.code_version},
-              msg=msg if fresh else None, level='warning')
-
-    def _mtime_guard_trips(task, hashes):
-        # decision 12c: local-fs heuristic only -- any hashed source newer than the output
-        if _settings.cloud_fs_enabled:
-            return False
-        try:
-            root = _codehash._project_root()
-            src = [os.stat(str(root / rel)).st_mtime for rel in hashes]
-            out = [os.stat(str(o.path)).st_mtime for o in flatten(task.output())
-                   if getattr(o, 'path', None) is not None]
-            return bool(src) and bool(out) and max(src) > min(out)
-        except Exception:
-            return False
-
-    def _make_record(task, hashes, output_id, duration=None):
-        # one shape for every stamp: both dimensions (own hashes + dep output-identity
-        # fold) recorded on every write regardless of mode, plus the live fingerprint
-        # (informational), the last materialization cost (drives the
-        # expensive-recompute guard) and the schema/interpreter tags
-        return {'fingerprint': task._code_fingerprint,
-                'code_version': task.code_version,
-                'source_hashes': hashes, 'output_id': output_id,
-                'dep_state': task._dep_state() if hasattr(task, '_dep_state') else None,
-                'duration_s': duration,
-                'py': _codehash.PY_TAG, 'v': _state.RECORD_V,
-                'ts': datetime.now(timezone.utc).isoformat()}
-
-    def _advise(task):
-        # advisory sweep over a complete subtree, POST-ORDER (deps first, so re-stamped
-        # dep records exist before this task's dep_state folds their output_ids):
-        # grandfather-stamp missing records, converge records across mode flips and
-        # schema/interpreter migrations (preserving output_id so nothing ripples
-        # downstream), and warn when a pinned task's code changed without a bump
-        tid = task.task_id
-        if tid in advised:
-            return
-        advised.add(tid)
-        fp = task._code_fingerprint
-        if fp is None:
-            # fingerprint folds deps, so None means the entire upstream subtree is
-            # untracked too -- nothing to advise anywhere above this task
-            return
-        for dep in flatten(task.requires()):
-            _advise(dep)
-        dirpath = task._resolved_dirpath() if hasattr(task, '_resolved_dirpath') else None
-        if dirpath is None:
-            return
-        try:
-            outputs = flatten(task.output())
-            outputs_exist = bool(outputs) and all(o.exists() for o in outputs)
-        except Exception:
-            outputs_exist = False
-        if not outputs_exist:
-            return
-        rec = _state.get_record(dirpath, tid)
-        if rec is None:
-            # grandfathering: output exists, record missing -> treat as current and
-            # stamp a baseline (state-only, no event), unless the output predates
-            # the code on disk
-            hashes = _hashes(task)
-            if _mtime_guard_trips(task, hashes):
-                _warn_code(task, (
-                    "task {}: output predates current code; can't verify -- "
-                    "reset() to recompute, or accept_code on a task instance / "
-                    "flow.accept_code() to confirm the output is current (stamps a "
-                    "baseline record)").format(task.task_family),
-                    sorted(hashes))
-            else:
-                _state.put_record(dirpath, tid,
-                                  _make_record(task, hashes, uuid.uuid4().hex[:16]))
-            return
-        if rec.get('v') != _state.RECORD_V or rec.get('py') != _codehash.PY_TAG:
-            # schema/interpreter changed -> stored hashes aren't comparable; converge
-            # silently at grandfather trust level, PRESERVING output_id (and the
-            # recorded run cost) so downstream dep_state folds don't move
-            _state.put_record(dirpath, tid,
-                              _make_record(task, _hashes(task),
-                                           rec.get('output_id') or uuid.uuid4().hex[:16],
-                                           duration=rec.get('duration_s')))
-            return
-        stored = rec.get('source_hashes') or {}
-        current = _hashes(task)
-        if stored and current and stored != current:
-            # code changed but the task is (deliberately) still complete: pinned by an
-            # explicit code_version, or held by the expensive-recompute guard. Warn at
-            # the decision point with the exits; never re-stamp here (that would bless
-            # the change) -- accept_code is the explicit blessing.
-            changed = sorted(k for k in set(stored) | set(current)
-                             if stored.get(k) != current.get(k))
-            if task.code_version is not None:
-                _warn_code(task, (
-                    "task {}: {} changed since cached run; code_version still {} -- "
-                    "reusing cached output. Bump code_version to recompute, or "
-                    "oryxflow.accept_code({}) only if certain the output is "
-                    "equivalent -- when unsure, bump (best-effort check: can't "
-                    "see data files or dynamic calls).").format(
-                        task.task_family, ', '.join(changed),
-                        task.code_version, task.task_family),
-                    changed)
-            else:
-                _warn_code(task, (
-                    "task {}: {} changed since cached run; last run took {:.0f}s -- "
-                    "reusing cached output (expensive-recompute guard, "
-                    "settings.code_version_auto_expensive_s={}). reset() to recompute, "
-                    "oryxflow.accept_code({}) if output-equivalent, or set "
-                    "code_version to manage this task explicitly.").format(
-                        task.task_family, ', '.join(changed),
-                        rec.get('duration_s') or 0,
-                        getattr(_settings, 'code_version_auto_expensive_s', None),
-                        task.task_family),
-                    changed)
-        elif (rec.get('fingerprint') != fp
-                or rec.get('code_version') != task.code_version):
-            # hashes match but the record predates a mode flip (pin added/removed with
-            # unchanged code) or an upstream toggle -- converge silently, preserving
-            # output_id and run cost
-            _state.put_record(dirpath, tid,
-                              _make_record(task, current,
-                                           rec.get('output_id') or uuid.uuid4().hex[:16],
-                                           duration=rec.get('duration_s')))
-
-    def _reason_for(task):
-        # why is this (incomplete) task about to run? deps were processed first, so a
-        # rerun upstream is already in `ran`.
-        try:
-            outputs = flatten(task.output())
-            if not outputs or not all(o.exists() for o in outputs):
-                return 'output missing'
-        except Exception:
-            return 'output missing'
-        fp, dirpath = _code_state(task)
-        if fp is not None:
-            rec = _state.get_record(dirpath, task.task_id)
-            if rec is not None:
-                if rec.get('code_version') != task.code_version:
-                    return 'code change ({} -> {})'.format(
-                        rec.get('code_version') if rec.get('code_version') is not None
-                        else 'auto',
-                        task.code_version if task.code_version is not None else 'auto')
-                if task.code_version is None:
-                    # own dimension moved (auto): name the changed files
-                    stored = rec.get('source_hashes') or {}
-                    current = _hashes(task)
-                    changed = sorted(k for k in set(stored) | set(current)
-                                     if stored.get(k) != current.get(k))
-                    if changed:
-                        shown = ', '.join(changed[:3]) + ('...' if len(changed) > 3 else '')
-                        return 'code change (auto: {})'.format(shown)
-                return 'upstream rerun'
-        if any(d.task_id in reasons or d in ran for d in flatten(task.requires())):
-            return 'upstream rerun'
-        return 'upstream rerun' if flatten(task.requires()) else 'output missing'
+    _advisor = _codecheck.Advisor(_emit)
+    warned = _advisor.warned   # unacknowledged code-change warning strings (RunResult)
 
     def _emit_failed(task, error, tb, duration):
         _emit('task_failed',
@@ -879,7 +692,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
             return visited[tid]
 
         if task.complete():
-            _advise(task)
+            _advisor.advise(task)
             logger.debug("task skipped (already complete): {}", tid)
             already_complete.append(task)
             visited[tid] = True
@@ -910,7 +723,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
             visited[tid] = False
             return False
 
-        reason = _reason_for(task)
+        reason = _advisor.reason_for(task, ran, reasons)
         logger.info("task start: {} ({})", task.task_family, tid)
         t0 = time.perf_counter()
         try:
@@ -933,16 +746,16 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
             return False
 
         duration = time.perf_counter() - t0
-        fp, dirpath = _code_state(task)
-        hashes = _hashes(task) if (fp is not None
-                                   or getattr(_settings, 'events', True)) else {}
+        fp, dirpath = _codecheck.code_state(task)
+        hashes = _codecheck.hashes_of(task) if (fp is not None
+                                                or getattr(_settings, 'events', True)) else {}
         if fp is not None:
             try:
                 # fresh output_id: this task actually rematerialized, downstream
                 # dep_state folds must move
                 _state.put_record(dirpath, tid,
-                                  _make_record(task, hashes, uuid.uuid4().hex[:16],
-                                               duration=duration))
+                                  _codecheck.make_record(task, hashes, uuid.uuid4().hex[:16],
+                                                         duration=duration))
             except Exception as e:
                 logger.debug("state record write failed for {}: {}", tid, e)
         try:

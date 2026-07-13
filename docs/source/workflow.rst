@@ -33,7 +33,7 @@ The pipeline can be previewed for the defined flow and passing the task. If noth
     flow.preview(Task1)
 
 
-Runinng the flow
+Running the flow
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 A list of tasks can run for the defined parameters of the flow. Other arguments that can be passed during the flow are:
 `forced`, `forced_all`,`forced_all_upstream`, `confirm`, `workers`, `abort`, `execution_summary`. Any additional named arguments can also be passed for the task objects.
@@ -180,8 +180,8 @@ Operations on multi experiment workflow
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 All the operations like `run`, `preview`, `outputLoad`, `outputLoadAll`, `reset`, `reset_downstream` , `get_task` can be called for the multi flow object.
-Each of this functions have an extra argument called flow which can be used to define the flow parameters to be used foe the corresponding fucntions.
-If the flow parameter is not passed
+Each of these functions takes an extra ``flow`` argument selecting which flow to act on.
+If ``flow`` is not passed, the operation is applied to every flow.
 
 .. code-block:: python
 

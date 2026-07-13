@@ -146,11 +146,11 @@ class TaskData(core.Task):
                 return True
             if rec.get('code_version') is None and settings.code_version_auto:
                 # opting in: free iff the code really is what produced the output
-                return rec.get('source_hashes') == codehash.module_hashes(self)
+                return rec.get('source_hashes') == codehash.task_hashes(self)
             return False         # pin bump (or unverifiable flip) -> recompute
         if not settings.code_version_auto:
             return True          # own logic untracked in explicit-only mode
-        if rec.get('source_hashes') == codehash.module_hashes(self):
+        if rec.get('source_hashes') == codehash.task_hashes(self):
             return True
         # expensive-recompute guard: don't silently burn a long run on a code change --
         # stay complete; build()'s advisory warns with the exits (reset/accept/pin)

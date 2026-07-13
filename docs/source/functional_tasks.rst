@@ -16,7 +16,6 @@ For defining our tasks we will need to first define a `Workflow()` object.
     from oryxflow.functional import Workflow
     flow = Workflow()
 
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
 
@@ -42,7 +41,6 @@ If you have worked with oryxflow.task before you would remember having a `self` 
 Here `task` is exactly that. It contains all methods available in `oryxflow.task.Task` 
 
 
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Running a functional task
 ------------------------------------------------------------
@@ -58,7 +56,6 @@ So we require to run them as you would run any `oryxflow.task`
     flow.run(your_functional_task)
 
     
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Below is a minimal example of functional task that encompasses everything mentioned above.
 
@@ -78,7 +75,6 @@ Below is a minimal example of functional task that encompasses everything mentio
 
     flow.run(sample_functional_task)
 
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Additional decorators
 ------------------------------------------------------------
@@ -157,7 +153,7 @@ Here's a list of them -
 * reset(function)
 * outputLoadAll()
 
-Wait! There is more! Here are some more functions unique to functional workflow.
+There are also some functions unique to the functional workflow.
 
 * add_global_params(example_argument=oryxflow.IntParameter(default=42))
 * resetAll()

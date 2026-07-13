@@ -433,3 +433,51 @@ significance:
    Regression tests: `test_auto_opt_in_pin_line_is_free`,
    `test_accept_code_clears_predates_guard`, `test_accept_code_empty_reports`,
    `test_warning_dedupe_per_process`, `TestCodehash::test_pin_line_hash_neutral`.
+
+9. **Field-test round 3 (same day): file-level hashing replaced by symbol-level.** The round-2
+   `accept_code` fix armed the file-level comparison across a whole monolithic `tasks.py` and
+   exposed that editing one task recomputed all 28 tasks in the module (including API loaders).
+   Superseded by `docs/todo/20260712-engine-code-hash-per-task.md`: `codehash.task_hashes`
+   (per-symbol reference closure) replaces `module_hashes` as the hash consumers' map,
+   `state.RECORD_V` bumped to 3, warning dedupe re-keyed on the message, `accept_code` walk
+   fault-isolated, and the invalidation policy layer extracted to `oryxflow/codecheck.py`.
+
+10. **Field-test round 4 (WorkflowMulti backtest, 7 finals x 12 flows): bulk accept coverage +
+    result-warnings inflation.** Two defects:
+    - *Bare `flow.accept_code()` silently missed (task, flow) pairs*: it walked only
+      `flow.get_task()` — the single configured default task — so tasks reachable only from
+      OTHER finals passed to `flow.run([finals...])` (and their grandfathered record-less
+      outputs) never got baseline records; a fresh process kept warning `output predates
+      current code` for that stable subset. Fix: `Workflow` records every task instance it
+      runs (`_run_roots`), a bare `accept_code()` walks the union of the default task and all
+      run roots, and both `Workflow.accept_code`/`oryxflow.accept_code` accept a LIST of roots
+      (one shared `seen` walk, overlapping upstream trees stamped once). Invariant satisfied:
+      after `flow.accept_code()` a brand-new process running the full finals set warns zero
+      and recomputes nothing.
+    - *`RunResult.warnings` inflated* (94 entries while the deduped print/log channels emitted
+      8): it recorded every `warn()` occurrence — per instance, per flow build — so
+      `len(result.warnings)` didn't answer "how many pending conditions". This supersedes the
+      round-2 decision that RunResult records every occurrence: `Advisor.warned` now dedupes
+      on the message per build, and `MultiRunResult.warnings` dedupes across flows. The event
+      stream remains the only every-occurrence channel.
+    Regression tests: `test_flow_accept_covers_all_run_finals` (delete state file + bump
+    source mtime to simulate the post-upgrade state, assert persisted records + silent fresh
+    run), `test_multi_result_warnings_deduped`; `test_warning_dedupe_family_level` rebased to
+    the deduped semantics. Baseline moved 127 -> 129.
+
+11. **Field-test round 5: the round-4 bulk-accept fix didn't survive a fresh process.** The
+    consumer's one-shot bless script constructs the flow and calls `flow.accept_code()`
+    WITHOUT running first, so the round-4 `_run_roots` (in-process run history) was empty and
+    the walk degraded to the single configured default task again — 309 records stamped, all
+    in one subtree; 6 of 7 finals still warning. (The round-4 regression test masked this by
+    running the finals in the same process before accepting.) Fix: the no-arg
+    `Workflow.accept_code()` now sweeps every imported task class
+    (`core.Task.__subclasses__()`, recursive, skipping `oryxflow.*` template classes),
+    instantiates each with the flow's params via `get_task`, and walks the union (plus the
+    default task and any run roots). Classes that don't instantiate under the flow's params
+    (DAG-internal params, abstract bases) are skipped; tasks whose outputs don't exist are
+    no-ops in the walk — anything missed simply recomputes (the safe direction). This is the
+    consumer's option 2 ("do internally what my bless_finals probe does") generalized: no
+    finals list needed, works from a fresh process, per-flow on `WorkflowMulti` via the
+    existing delegation. `test_flow_accept_covers_all_run_finals` rewritten to bless on a
+    FRESH `Workflow` object with no run history. Baseline stays 129.
