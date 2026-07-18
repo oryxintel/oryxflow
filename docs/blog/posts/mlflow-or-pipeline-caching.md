@@ -1,7 +1,18 @@
+---
+date: 2026-07-11
+slug: mlflow-vs-pipeline-caching
+categories:
+  - MLOps
+description: They sound like the same problem. They're not — and mixing them up is why so many ML projects still can't reproduce last week's result.
+---
+
 # Do you need MLflow, or do you need reproducible pipeline caching?
 
 *They sound like the same problem. They're not — and mixing them up is why so many ML
 projects still can't reproduce last week's result.*
+
+<!-- more -->
+
 
 If you've searched for "manage machine learning experiments" you've been pointed at
 MLflow, Weights & Biases, and DVC. They're excellent tools. But a lot of people install

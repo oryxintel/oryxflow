@@ -1,25 +1,25 @@
 # Read the Docs configuration file
 # See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
+#
+# The docs moved from Sphinx/reStructuredText to MkDocs (Material). Primary hosting is
+# Cloudflare Pages (see .github/workflows/docs.yml); this config keeps the existing
+# readthedocs.io URL building the same MkDocs site as a mirror.
 
-# Required
 version: 2
 
-# Set the OS, Python version, and other tools you might need
 build:
   os: ubuntu-24.04
   tools:
-    python: "3.13"
+    python: "3.12"
 
-# Build documentation with Sphinx. Our conf.py lives in docs/source/,
-# not docs/, so point at it explicitly.
-sphinx:
-  configuration: docs/source/conf.py
+# Build with MkDocs instead of Sphinx.
+mkdocs:
+  configuration: mkdocs.yml
 
-# Install the docs toolchain (Sphinx + theme) and the package itself.
-# The package install is required because conf.py uses sphinx.ext.autodoc,
-# which imports oryxflow (and its deps) to generate the API pages.
+# Install the MkDocs toolchain and the package itself (the API Reference page
+# introspects oryxflow via mkdocstrings, so it must be importable).
 python:
   install:
-    - requirements: docs/requirements.txt
+    - requirements: docs/requirements-docs.txt
     - method: pip
       path: .

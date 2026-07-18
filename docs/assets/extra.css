@@ -1,0 +1,12 @@
+/* oryxflow docs — custom overrides on top of Material for MkDocs.
+   The header/nav banner is black (theme.palette.primary: black). With a black
+   primary, Material would tint body links black too, so force them blue here. */
+
+:root {
+  --md-typeset-a-color: #2563eb;   /* body links — blue (light mode) */
+}
+
+/* Dark mode: a lighter blue for contrast on the slate background. */
+[data-md-color-scheme="slate"] {
+  --md-typeset-a-color: #6ea8ff;
+}

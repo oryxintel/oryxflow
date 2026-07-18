@@ -1,6 +1,17 @@
+---
+date: 2026-07-11
+slug: cache-intermediate-dataframes-python
+categories:
+  - Caching
+description: How data scientists waste hours recomputing steps that never changed — and a lightweight way to fix it.
+---
+
 # Stop rerunning your whole pipeline: caching intermediary DataFrames in Python
 
 *How data scientists waste hours recomputing steps that never changed — and a lightweight way to fix it.*
+
+<!-- more -->
+
 
 ## The problem every data science script eventually has
 

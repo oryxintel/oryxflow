@@ -1,0 +1,212 @@
+# mkdocs.yml — oryxflow documentation site (Material for MkDocs)
+#
+# Build:   mkdocs serve            # live preview at http://127.0.0.1:8000
+#          mkdocs build --strict   # production build into ./site (CI uses this)
+# Deps:    pip install -r docs/requirements-docs.txt
+#
+# site_url is the CANONICAL origin. The docs are served from several places (the
+# *.pages.dev Cloudflare preview, GitHub, oryxflow.io) but oryxflow.io is canonical:
+# Material stamps <link rel="canonical"> from this value, and sitemap.xml <loc> and the
+# llms.txt URLs are built from it — so every copy points search engines and AI crawlers
+# back to oryxflow.io. Keep this as the production domain, not a deploy-preview URL.
+site_name: oryxflow
+site_url: https://oryxflow.io/
+site_description: >-
+  For data scientists and data engineers, oryxflow is a python library that makes building
+  complex data science workflows easy, fast and intuitive: declare tasks, and the engine runs
+  the DAG in order, skips what is already computed, and reruns exactly what a parameter, data,
+  or code change affects.
+site_author: Oryx Intelligence LLC
+copyright: Copyright &copy; 2026 Oryx Intelligence LLC
+
+repo_url: https://github.com/oryxintel/oryxflow
+repo_name: oryxintel/oryxflow
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  custom_dir: overrides
+  logo: assets/logo-oryx.png
+  favicon: assets/logo-oryx.png
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black          # black top nav banner
+      accent: blue            # hover/active accent
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+
+extra_css:
+  - assets/extra.css
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - def_list
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  # Renders :material-*: / :fontawesome-*: icon shortcodes (used in the card grids)
+  # as inline SVGs instead of literal text.
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: [., docs]
+      check_paths: true
+
+plugins:
+  - search
+  - blog:
+      blog_dir: blog
+      # SEO-friendly permalinks: /blog/<category>/<slug> — no date in the URL (dates
+      # signal staleness on evergreen posts; freshness comes from sitemap <lastmod>),
+      # one topical category segment for topic-hub siloing, keyword-first slugs (set
+      # per post via `slug:` in front-matter).
+      post_url_format: "{categories}/{slug}"
+      post_url_max_categories: 1
+      # Every post must have a <!-- more --> excerpt marker, so the /blog/ index shows
+      # teasers that link to each post, never the full bodies inline.
+      post_excerpt: required
+      post_readtime: true
+  - git-revision-date-localized:
+      type: iso_date
+      fallback_to_build_date: true
+      enable_creation_date: true
+      # Avoid the noisy "first revision older than last revision" warnings that
+      # `git log --follow` produces for renamed/moved files (the whole tree was
+      # just migrated). Dates still come from real commits once files are committed.
+      enable_git_follow: false
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_source: true
+            members_order: source
+            separate_signature: true
+            filters: ["!^_"]
+  # llmstxt must run last so it captures the final rendered pages.
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: >-
+        oryxflow is a small, self-contained Python library for building data-science workflows:
+        declare Task classes with parameters, dependencies (requires) and a run() that save()s
+        output; the engine runs the DAG in dependency order, skips tasks whose output already
+        exists, and reruns exactly what a parameter, data, or code change affects.
+      sections:
+        Getting started:
+          - index.md
+          - docs/index.md
+          - docs/installation.md
+          - docs/quickstart.md
+        Guide:
+          - docs/transition.md
+          - docs/tasks.md
+          - docs/workflow.md
+          - docs/run.md
+          - docs/targets.md
+          - docs/logging.md
+          - docs/collaborate.md
+          - docs/managing-workflows.md
+        Advanced:
+          - docs/advtasksdyn.md
+          - docs/advparam.md
+          - docs/functional_tasks.md
+        Tooling:
+          - docs/claude-plugin.md
+        Reference:
+          - docs/reference.md
+          - docs/changelog.md
+        Blog:
+          - blog/index.md
+          - blog/posts/*.md
+
+# Fail the build on links to pages/anchors that don't exist — catches broken
+# cross-references introduced during the RST→Markdown migration.
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+# Everything under docs/ that is NOT part of the published site. gitignore syntax.
+# (Old Sphinx tree, internal design notes, notebooks, loose example scripts, build junk.)
+exclude_docs: |
+  CLAUDE.md
+  source/
+  todo/
+  system/
+  _build/
+  __pycache__/
+  .ipynb_checkpoints/
+  data/
+  *.py
+  *.ipynb
+  *.sh
+  Makefile
+  make.bat
+  requirements.txt
+  oryxflow-docs-graph.png
+
+nav:
+  - Home: index.md
+  - Docs:
+      - docs/index.md
+      - Installation: docs/installation.md
+      - Quickstart: docs/quickstart.md
+      - Guide:
+          - Transition from scripts: docs/transition.md
+          - Writing and managing tasks: docs/tasks.md
+          - Workflows: docs/workflow.md
+          - Running workflows: docs/run.md
+          - Task I/O formats: docs/targets.md
+          - Logging: docs/logging.md
+          - Collaborate & share flows: docs/collaborate.md
+          - Managing complex workflows: docs/managing-workflows.md
+      - Advanced:
+          - Dynamic tasks: docs/advtasksdyn.md
+          - Parameters: docs/advparam.md
+          - Functional API: docs/functional_tasks.md
+      - Build with Claude Code: docs/claude-plugin.md
+      - Example (ML): docs/example-ml.md
+      - API Reference: docs/reference.md
+      - Changelog: docs/changelog.md
+  - Blog:
+      - blog/index.md

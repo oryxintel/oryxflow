@@ -1,8 +1,19 @@
+---
+date: 2026-07-11
+slug: caching-dag-for-ai-coding-agents
+categories:
+  - AI agents
+description: AI agents like Claude Code now write real data science pipelines — feature engineering, model training, experiment sweeps. Here's the honest account of where they fail at it, and w
+---
+
 # Why a caching DAG makes your AI coding agent a better data scientist
 
 *AI agents like Claude Code now write real data science pipelines — feature engineering,
 model training, experiment sweeps. Here's the honest account of where they fail at it, and
 why a lightweight workflow library removes exactly those failures.*
+
+<!-- more -->
+
 
 Coding agents have gotten good at writing pandas and scikit-learn. Ask one to load a
 dataset, engineer features, train a model, and compare a few configurations, and it will

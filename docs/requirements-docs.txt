@@ -1,0 +1,12 @@
+# Documentation toolchain (MkDocs site + doc-example tests).
+# Install with:  pip install -r docs/requirements-docs.txt
+# The oryxflow package itself must also be installed (pip install -e .) because the
+# API Reference page introspects it via mkdocstrings.
+mkdocs-material>=9.5
+mkdocs-llmstxt>=0.2
+mkdocstrings[python]>=0.26
+mkdocs-git-revision-date-localized-plugin>=1.2
+phmdoctest>=1.4
+
+# Migration-only (RST -> Markdown one-off conversion); not needed to build the site:
+# pypandoc-binary>=1.13
