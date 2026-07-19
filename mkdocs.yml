@@ -167,10 +167,9 @@ validation:
   anchors: warn
 
 # Everything under docs/ that is NOT part of the published site. gitignore syntax.
-# (Old Sphinx tree, internal design notes, notebooks, loose example scripts, build junk.)
+# (Internal design notes, notebooks, loose example scripts, build junk.)
 exclude_docs: |
   CLAUDE.md
-  source/
   todo/
   system/
   _build/
@@ -180,9 +179,6 @@ exclude_docs: |
   *.py
   *.ipynb
   *.sh
-  Makefile
-  make.bat
-  requirements.txt
   oryxflow-docs-graph.png
 
 nav:

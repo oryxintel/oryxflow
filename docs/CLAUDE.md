@@ -8,9 +8,9 @@ repo-root `CLAUDE.md`.
 
 The docs are a **Material for MkDocs** site (markdown, not the old Sphinx/reStructuredText). The
 `mkdocs.yml` at the repo root is the single source of truth for theme, nav, plugins, and what is
-published. The old Sphinx tree still lives in `docs/source/` but is **excluded from the build**
-and superseded — don't edit it; edit the `.md` pages in `docs/` (landing + blog) and `docs/docs/`
-(the guide + reference).
+published. The old Sphinx tree (`docs/source/`, `docs/Makefile`, `docs/make.bat`,
+`docs/requirements.txt`) has been removed — edit the `.md` pages in `docs/` (landing + blog) and
+`docs/docs/` (the guide + reference).
 
 ## Layout
 
@@ -36,7 +36,6 @@ docs/                          # docs_dir
     index.md                   # blog landing (Material "blog" plugin)  ->  /blog/
     posts/*.md                 # one file per post; front-matter: date, slug, categories
                                #   permalinks are /blog/<category>/<slug> (no date; see mkdocs.yml)
-  source/                      # OLD Sphinx .rst — excluded from build, kept for reference only
   todo/                        # design/plan notes — excluded from build (internal)
 tests/
   conftest.py                  # isolates test_docs_*.py in a throwaway cwd (module-scoped)

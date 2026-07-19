@@ -103,7 +103,7 @@ non-obvious decisions. Highlights:
 ## Logging (dev notes)
 
 loguru-based, designed to a plan: `docs/todo/20260606-sys-logging.md` (read it before changing
-logging). User-facing docs: `docs/source/logging.rst`. Key facts for working on it:
+logging). User-facing docs: `docs/docs/logging.md`. Key facts for working on it:
 
 - **`oryxflow/log.py` owns everything.** It holds the single `logger`, calls
   `logger.disable("oryxflow")` at import (library pattern: silent until the app opts in), and
@@ -205,7 +205,7 @@ baseline: **73 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`,
 
 ## Conventions
 
-- **User docs (`docs/source/*.rst`) are written for data scientists, not library developers.**
+- **User docs (`docs/docs/*.md`) are written for data scientists, not library developers.**
   They were deliberately rewritten from a user-benefits perspective (commit 316a9fb): say what
   the reader gets and what to type ("lists each distinct warning once, so its length answers
   'how many pending warnings do I have?'"), never how it's computed. No jargon or library

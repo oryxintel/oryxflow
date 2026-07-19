@@ -25,7 +25,7 @@ Consequence: with the default `check_dependencies=True`, a downstream task whose
 still reports **incomplete** if any ancestor's output is missing. Set
 `oryxflow.settings.check_dependencies=False` (`settings.py:11`) to make `complete()` check only
 the task itself — then a present output is "done" regardless of upstream state. User-facing docs:
-`docs/source/run.rst` ~line 96.
+`docs/docs/run.md`.
 
 ## How the engine uses it
 
