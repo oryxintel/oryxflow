@@ -1,5 +1,11 @@
 # oryxflow
 
+[![Socket Badge](https://socket.dev/api/badge/pypi/package/oryxflow)](https://socket.dev/pypi/package/oryxflow)
+[![PyPI version](https://img.shields.io/pypi/v/oryxflow.svg)](https://pypi.org/project/oryxflow/)
+[![License: MIT](https://img.shields.io/pypi/l/oryxflow.svg)](https://github.com/oryxintel/oryxflow/blob/main/LICENSE)
+
+Vetting oryxflow for a corporate package firewall? See [Security & supply chain](https://docs.oryxflow.dev/docs/supply-chain/).
+
 For data scientists and data engineers, `oryxflow` is a python library which makes building complex data science workflows easy, fast and intuitive. It is **primarily designed for data scientists to build better models faster**. For data engineers, it can also be a lightweight alternative and help productionize data science models faster. Unlike other data pipeline/workflow solutions, `oryxflow` focuses on managing data science research workflows instead of managing production data pipelines. 
 
 ## Why use oryxflow?

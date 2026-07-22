@@ -45,11 +45,22 @@ include_package_data=True,
 '''
 pip install -e .
 
-# publish
-# pip install setuptools wheel twine
-python -m build
-python -m twine upload --skip-existing dist/*
+# publish: bump the version above, tag, then publish a GitHub Release. CI takes it from there
+# (.github/workflows/release.yml -> PyPI Trusted Publishing, no token, with attestations).
+git tag v26.7.12 && git push origin v26.7.12
+gh release create v26.7.12 --generate-notes
 
+# local build to inspect the artifacts before releasing (does NOT upload)
+python -m build
+
+# --- manual upload from this machine: the pre-CI process, kept as the fallback ---------------
+# Emergency use only (CI broken / PyPI Trusted Publisher not yet registered). Needs an API token
+# and produces NO attestations, so the release loses its provenance signal.
+# pip install setuptools wheel twine
+# python -m build
+# python -m twine upload --skip-existing dist/*
+
+# testpypi
 # python -m twine upload --repository testpypi dist/*
 # pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ --no-deps oryxflow
 

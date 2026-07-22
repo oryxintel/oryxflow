@@ -155,6 +155,7 @@ plugins:
         Tooling:
           - docs/claude-plugin.md
         Reference:
+          - docs/supply-chain.md
           - docs/reference.md
           - docs/changelog.md
         Blog:
@@ -205,6 +206,7 @@ nav:
           - Functional API: docs/functional_tasks.md
       - Build with Claude Code: docs/claude-plugin.md
       - Example (ML): docs/example-ml.md
+      - Security & supply chain: docs/supply-chain.md
       - API Reference: docs/reference.md
       - Changelog: docs/changelog.md
   - Blog:

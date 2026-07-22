@@ -13,6 +13,11 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   prose. Agents grep this file for the symbol in their traceback.
 
 ## [Unreleased]
+### Security
+- Releases are now published to PyPI via GitHub Actions **Trusted Publishing** (OIDC) instead of a
+  stored API token, and every uploaded file carries a PyPI-recorded **attestation** (PEP 740 /
+  Sigstore) proving it was built from this repository by CI. Verify on the PyPI file detail page
+  for this release. No install-side change — `pip install oryxflow` is unaffected.
 
 ## [26.7.12] - 2026-07-12
 ### Added

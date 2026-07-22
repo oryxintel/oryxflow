@@ -1,0 +1,56 @@
+name: Release
+
+# Build the sdist/wheel and publish to PyPI when a GitHub Release is published.
+#
+# Publishing uses PyPI Trusted Publishing (OIDC) — there is no PYPI_API_TOKEN secret. The
+# `id-token: write` permission lets GitHub mint a short-lived OIDC token that PyPI exchanges
+# for an upload token, and it is also what lets PyPI record PEP 740 attestations (Sigstore)
+# for every uploaded file — cryptographic proof the release was built from this repo by CI.
+# `pypa/gh-action-pypi-publish` mints those attestations by default; do NOT set
+# `attestations: false`. See docs/todo/20260721-release-supply-chain-trust-signals.md.
+#
+# One-time setup on PyPI (project -> Manage -> Publishing -> add a GitHub publisher):
+#   owner: oryxintel   repo: oryxflow   workflow: release.yml   environment: pypi
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write        # OIDC for Trusted Publishing + PEP 740 attestations
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        # No `password:` — Trusted Publishing. `attestations: true` is the default; leave it on.
