@@ -1,7 +1,9 @@
 name: Docs
 
-# Build the MkDocs site (running the documentation-example tests first) and publish it
-# to Cloudflare Pages. Runs on pushes to main that touch the docs, the library, or this
+# Build the MkDocs site and run the documentation-example tests. This validates that the
+# docs build and that every runnable example still works; it does NOT deploy. Deployment is
+# handled by Cloudflare Pages' Git integration (it builds and publishes ./site on every push
+# to main). Runs on pushes to main and on PRs that touch the docs, the library, or this
 # workflow; can also be triggered by hand.
 
 on:
@@ -27,7 +29,7 @@ permissions:
   contents: read
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,12 +52,3 @@ jobs:
       - name: Build docs + run doc-example tests
         # --check fails if the committed tests/test_docs_*.py are stale vs the Markdown.
         run: python scripts/build_docs.py --check
-
-      # Deploy only on pushes to main (not on PRs, which just build to validate).
-      - name: Publish to Cloudflare Pages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy site --project-name=oryxflow-docs --branch=main
