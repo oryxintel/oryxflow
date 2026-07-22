@@ -14,8 +14,8 @@
 
 oryxflow runs a DAG of `Task`s; each `save()`s an output that today is *just a file on disk*.
 The primary consumer we now design for is an **AI coding agent** (Claude) operating through
-the **oryxflow Claude plugin** (`the oryxflow-claude-plugin repo`) and the
-**oryxflow-mcp** server (`the oryxflow-mcp repo`), increasingly asked to *analyze*
+the **oryxflow Claude plugin** (the `oryxflow-claude-plugin` repo) and the
+**oryxflow-mcp** server (the `oryxflow-mcp` repo), increasingly asked to *analyze*
 the data, not just build the pipeline.
 
 The trust problem (see `docs/todo/AI for Financial Analysis_ Trust Starts With Data,
@@ -440,7 +440,7 @@ def enrich(limit=50):
 
 ### 10. `oryxflow-mcp` — read-only catalog tools (cross-repo)
 
-In `the oryxflow-mcp repo` (FastMCP server; inspect `mcp.py` / the `TaskService`
+In the **`oryxflow-mcp`** repo (FastMCP server; inspect `mcp.py` / the `TaskService`
 for the existing tool-registration pattern), add three read-only tools that import the user
 project's `oryxflow`, enable the catalog against the project DB, and return JSON:
 
@@ -453,7 +453,7 @@ from." Match the existing subprocess/AST conventions in that repo.
 
 ### 11. plugin skill — teach the agent to consult + trust the catalog (cross-repo)
 
-In `the oryxflow-claude-plugin repo, skills/oryxflow/SKILL.md` (+ `reference.md`):
+In the **`oryxflow-claude-plugin`** repo, `skills/oryxflow/SKILL.md` (+ `reference.md`):
 add a short section directing the agent, before analyzing outputs, to consult the catalog
 (MCP `describe_output`/`list_catalog`/`get_lineage`, the JSON export, or the regenerated
 `docs/oryxflow-data.md`) and to **trust the field semantics** (definition/unit/period/segment/

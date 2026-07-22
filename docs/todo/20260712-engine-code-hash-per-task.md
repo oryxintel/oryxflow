@@ -11,7 +11,7 @@ reruns the task. Field testing against a real project (84 tasks, one monolithic 
 > Editing one line in `SubmarketReturnBacktest.run()` recomputed every task defined in
 > `tasks.py` — `ran=28`, all reason `code change (auto: tasks.py)`: the API loader
 > (13 instances), plus every unrelated sibling. A cosmetic edit to a reporting task triggers a
-> full re-fetch from the Benchmark API. Until this lands, auto-versioning is net-negative on a
+> full re-fetch from the upstream vendor API. Until this lands, auto-versioning is net-negative on a
 > monolithic `tasks.py`.
 
 This was **not a regression** — hashing was file-level from the first commit. The field agent's

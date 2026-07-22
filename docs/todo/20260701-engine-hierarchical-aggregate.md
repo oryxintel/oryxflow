@@ -2,9 +2,9 @@
 
 ## Scope & execution notes (read first)
 
-- **Target repo to edit: the oryxflow library at `the oryxflow repo`.** All file
-  paths below (`oryxflow/…`, `tests/…`, `docs/…`) are relative to that repo.
-- **`the consumer project` is a separate downstream CONSUMER repo, used
+- **Target repo to edit: the oryxflow library itself.** All file paths below (`oryxflow/…`,
+  `tests/…`, `docs/…`) are relative to this repo.
+- **A private downstream CONSUMER project (referred to below as "the consumer project") is used
   in this plan only as a real-world validation example. Do NOT edit it.** Its migration (below)
   is illustrative of what the library changes unlock; it is not part of this task.
 - **First implementation action:** save this plan file verbatim into the oryxflow repo at
@@ -78,14 +78,14 @@ reset. Problem 3 is solved with a small, reusable concat helper. Runtime-discove
   (`to_str_params` would give serialized strings — wrong for numeric groupby keys).
 - `WorkflowMulti.params[flow]` holds **raw** `{param: value}` dicts (`__init__.py:574-588`).
 
-## Real migration this enables (consumer-project, the motivating case)
+## Real migration this enables (the consumer project, the motivating case)
 
-`the consumer project` — `tasks.py:1066` `RunAllModelPredictCurrentProd`
+In the consumer project, `tasks.py:1066` `RunAllModelPredictCurrentProd`
 iterates `cfg.sectors`, builds a `oryxflow.Workflow(ModelPredictCurrentPresentation, params, env='prod')`
 per sector, calls `flow2.reset(ReturnsBenchmarkAll); flow2.reset(FeaturesSource1)` *inside the task*,
 runs it, and manually `pd.concat`s `df_recommend` across sectors. Exhibits all three problems.
 
-**Before → after (in the consumer-project repo, once the library changes below ship):**
+**Before → after (in the consumer project, once the library changes below ship):**
 
 ```python
 # BEFORE: flow-within-flow, reset buried in the task, custom loop + pd.concat
@@ -122,7 +122,7 @@ flow.reset_upstream(tasks.RunAllModelPredictCurrentProd,
 flow.run()
 ```
 
-Notes validated against the consumer-project code: `ModelPredictCurrentPresentation.persist =
+Notes validated against the consumer project's code: `ModelPredictCurrentPresentation.persist =
 ['all','highlight','compare']` (tasks.py:994) → `keys='all'` selects `df_recommend`.
 `ReturnsBenchmarkAll` is the shared benchmark (no sector param) — `taskflow_upstream` dedups by
 identity so `only=` resets it **once**, not once per sector (fixes the run.py:45 "1x for all

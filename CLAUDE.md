@@ -63,8 +63,7 @@ Outputs are declared with **`persists`** (plural) — e.g. `persists = ['x', 'y'
 
 ## Architecture notes that bite
 
-Read `docs/todo/20260606-sys-decouple-luigi.md` and
-`docs/todo/20260606-sys-param-global.md` before changing the engine — they capture the
+Read `docs/todo/20260606-sys-param-global.md` before changing the engine — it captures the
 non-obvious decisions. Highlights:
 
 - **Sequential engine.** `core.build()` runs the DAG in-process, in dependency order. The
@@ -150,7 +149,7 @@ logging). User-facing docs: `docs/docs/logging.md`. Key facts for working on it:
 
 Non-trivial work is planned first, and the plan is saved **in the repo** at
 `docs/todo/<YYYYMMDD>-<area>-<topic>.md` (e.g. `docs/todo/20260606-sys-logging.md`,
-`20260606-sys-decouple-luigi.md`). `<area>` is a short tag like `sys`, `engine`, `tasks`.
+`20260712-engine-code-invalidation.md`). `<area>` is a short tag like `sys`, `engine`, `tasks`.
 
 These plans double as the architecture record (the "Architecture notes that bite" section above
 points at them) **and** as executable specs. The intended workflow is: write the plan → clear
@@ -205,6 +204,10 @@ baseline: **73 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`,
 
 ## Conventions
 
+- **Never write the user's absolute local paths into repo files** (docs, plans, code, comments,
+  commit messages) — this repo is public. Use a repo-relative path, or if the thing lives outside
+  the repo, name it without the location: "tracked in an external planning note,
+  `<filename>.md`". Same for any other machine-local detail (drive letters, user directories).
 - **User docs (`docs/docs/*.md`) are written for data scientists, not library developers.**
   They were deliberately rewritten from a user-benefits perspective (commit 316a9fb): say what
   the reader gets and what to type ("lists each distinct warning once, so its length answers

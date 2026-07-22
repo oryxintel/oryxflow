@@ -61,8 +61,9 @@ after the decouple?** Yes, given the conditions below.
 
 `task_id_str` is byte-for-byte luigi's `luigi.task.task_id_str` (same JSON serialization, same
 MD5, same constants), and the path convention `{dir}/{family}/{task_id}-{key}.{ext}` is the
-same one oryxflow used in the luigi era. This was a deliberate constraint of the decouple — see
-`docs/todo/20260606-sys-decouple-luigi.md` (the `task_id`/`split('_')[0]` notes ~lines 97-98).
+same one oryxflow used in the luigi era. This was a deliberate constraint of the decouple: the
+`task_id` algorithm and the `task_id.split('_')[0] == task_family` directory convention were kept
+byte-stable on purpose.
 
 So the same params produce the same `task_id`, the same folder, the same filename → the old
 output file satisfies the new completion check.
