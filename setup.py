@@ -7,7 +7,7 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='oryxflow',
-    version='26.7.12',
+    version='26.7.21',
     packages=['oryxflow','oryxflow.targets','oryxflow.tasks'],
     url='https://github.com/oryxintel/oryxflow',
     project_urls={
@@ -47,8 +47,9 @@ pip install -e .
 
 # publish: bump the version above, tag, then publish a GitHub Release. CI takes it from there
 # (.github/workflows/release.yml -> PyPI Trusted Publishing, no token, with attestations).
-git tag v26.7.12 && git push origin v26.7.12
-gh release create v26.7.12 --generate-notes
+# Full checklist, verification and troubleshooting: devops/publish.md
+git tag v26.7.21 && git push github v26.7.21
+gh release create v26.7.21 --generate-notes
 
 # local build to inspect the artifacts before releasing (does NOT upload)
 python -m build

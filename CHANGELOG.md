@@ -13,6 +13,8 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   prose. Agents grep this file for the symbol in their traceback.
 
 ## [Unreleased]
+
+## [26.7.21] - 2026-07-21
 ### Security
 - Releases are now published to PyPI via GitHub Actions **Trusted Publishing** (OIDC) instead of a
   stored API token, and every uploaded file carries a PyPI-recorded **attestation** (PEP 740 /
