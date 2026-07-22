@@ -16,7 +16,7 @@ class TaskData(core.Task):
     """
     Task which has data as input and output
 
-    Args:
+    Attributes:
         target_class (obj): target data format
         target_ext (str): file extension
         persists (list): list of strings naming the outputs this task saves.

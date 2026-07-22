@@ -155,7 +155,7 @@ class CSVPandasTarget(DataTarget):
 
         Args:
             df (obj): pandas dataframe
-            kwargs : additional arguments to pass to df.to_csv
+            **kwargs (dict): additional arguments to pass to df.to_csv
 
         Returns: filename
 
@@ -176,7 +176,7 @@ class CSVGZPandasTarget(CSVPandasTarget):
 
         Args:
             df (obj): pandas dataframe
-            kwargs : additional arguments to pass to df.to_csv
+            **kwargs (dict): additional arguments to pass to df.to_csv
 
         Returns: filename
 
@@ -209,7 +209,7 @@ class ExcelPandasTarget(DataTarget):
 
         Args:
             df (obj): pandas dataframe
-            kwargs : additional arguments to pass to df.to_csv
+            **kwargs (dict): additional arguments to pass to df.to_csv
 
         Returns: filename
 
@@ -294,7 +294,7 @@ class PqPandasTarget(DataTarget):
 
         Args:
             df (obj): pandas dataframe
-            kwargs : additional arguments to pass to df.to_parquet
+            **kwargs (dict): additional arguments to pass to df.to_parquet
 
         Returns: filename
 
@@ -332,7 +332,7 @@ class JsonTarget(DataTarget):
 
         Args:
             dict_ (dict): python dict
-            kwargs : additional arguments to pass to json.dump
+            **kwargs (dict): additional arguments to pass to json.dump
 
         Returns: filename
 
@@ -372,7 +372,7 @@ class MarkdownTarget(DataTarget):
 
         Args:
             md_string (str): markdown string
-            kwargs : additional arguments to pass to markdown.markdown
+            **kwargs (dict): additional arguments to pass to markdown.markdown
 
         Returns: filename
 
@@ -438,7 +438,7 @@ class PickleTarget(DataTarget):
 
         Args:
             obj (obj): python object
-            kwargs : additional arguments to pass to pickle.dump
+            **kwargs (dict): additional arguments to pass to pickle.dump
 
         Returns: filename
 
