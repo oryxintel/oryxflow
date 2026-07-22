@@ -141,7 +141,7 @@ logging). User-facing docs: `docs/docs/logging.md`. Key facts for working on it:
   missing output; ERROR = task `run()` raised. Keep routine I/O at DEBUG so default INFO stays
   quiet.
 - **Tests are unaffected** because logging is disabled by default and tests don't capture
-  stderr — adding log points won't move the 73-passing baseline. To assert on log output, attach
+  stderr — adding log points won't move the passing baseline. To assert on log output, attach
   a loguru sink that appends to a list (loguru doesn't use stdlib `logging`, so pytest `caplog`
   won't see it).
 
@@ -170,10 +170,14 @@ A plan file MUST contain, in order:
    describe it once and list representative paths.
 4. **`## Files modified`** — the full list, one line each, with what changes in each.
 5. **`## Verification`** — exactly how to prove it works end-to-end: commands to run, expected
-   output, and the test baseline to hold (see "Running tests" — currently **73 passing**).
+   output, and the test baseline to hold (see "Running tests" — currently **86 passing**).
 
 Keep it scannable but complete: enough that a clean session can execute it faithfully, including
 re-deriving the goal. Don't reference "the conversation" or "as discussed" — inline everything.
+
+Plans are committed to a public repo, so the motivating real-world example must be sanitized as
+you write it — no client names, private project slugs, or local paths. See the first bullet under
+"Conventions" for the substitutions.
 
 **When a plan is implemented:**
 
@@ -199,15 +203,31 @@ python -m pytest tests/test_main.py tests/test_workflow.py \
 
 Only `test_*.py` are collected (see `tests/setup.md` for what each covers). A benign
 `UserWarning: datatable failed` and sklearn convergence warnings are expected. Current
-baseline: **73 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`, `jinja2`,
+baseline: **86 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`, `jinja2`,
 `tables`; `datatable` is optional (soft-fails).
 
 ## Conventions
 
-- **Never write the user's absolute local paths into repo files** (docs, plans, code, comments,
-  commit messages) — this repo is public. Use a repo-relative path, or if the thing lives outside
-  the repo, name it without the location: "tracked in an external planning note,
-  `<filename>.md`". Same for any other machine-local detail (drive letters, user directories).
+- **Never write private identifiers into repo files. This repo is public and git history is
+  forever.** Applies to every file that gets committed — docs, code, comments, commit messages,
+  and *especially* `docs/todo/` plan notes, which are where real-world context naturally creeps
+  in (a plan describing a migration wants to name the project that motivated it — don't). Sanitize
+  as you write, not later: scrubbing after the fact needs a history rewrite and a force-push.
+
+  Never commit, with the neutral form to use instead:
+
+  | Don't | Do |
+  | --- | --- |
+  | Absolute local paths — `D:\Users\<name>\dev\thing`, `/home/<name>/...` | A repo-relative path, or just the repo name: "the `thing` repo" |
+  | An out-of-repo file's location | "tracked in an external note, `<filename>.md`" |
+  | Client / customer / employer names, incl. as a directory or project slug (`acme-re`, `Acme-cx`) | "a downstream consumer project", "the consumer project" |
+  | A client's data vendors, systems, or task/class names that embed them (`ReturnsAcmeVendorAll`) | A generic stand-in (`ReturnsBenchmarkAll`, "the upstream vendor API") |
+  | Other private project codenames — a sibling private repo, an internal tool | "a private sibling project", or omit |
+  | Anything credential-shaped — tokens, keys, bucket names, internal hostnames/URLs | A placeholder (`<PYPI_TOKEN>`), or reference where it's stored |
+
+  A plan must stay executable after sanitizing: keep the *shape* of the real example (task names,
+  param sets, the failure it exhibits) and drop only the identity. If sanitizing would gut the
+  point, the example belongs in an external note, not in `docs/todo/`.
 - **User docs (`docs/docs/*.md`) are written for data scientists, not library developers.**
   They were deliberately rewritten from a user-benefits perspective (commit 316a9fb): say what
   the reader gets and what to type ("lists each distinct warning once, so its length answers
