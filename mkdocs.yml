@@ -4,13 +4,16 @@
 #          mkdocs build --strict   # production build into ./site (CI uses this)
 # Deps:    pip install -r docs/requirements-docs.txt
 #
-# site_url is the CANONICAL origin. The docs are served from several places (the
-# *.pages.dev Cloudflare preview, GitHub, oryxflow.io) but oryxflow.io is canonical:
-# Material stamps <link rel="canonical"> from this value, and sitemap.xml <loc> and the
-# llms.txt URLs are built from it — so every copy points search engines and AI crawlers
-# back to oryxflow.io. Keep this as the production domain, not a deploy-preview URL.
+# site_url is the CANONICAL origin. The docs live on the docs.oryxflow.dev subdomain (not
+# the apex) on purpose: it's the stable, long-lived home for documentation, insulated from
+# whatever the apex oryxflow.dev becomes later (e.g. a marketing site or a blog re-platformed
+# off MkDocs) — so links into the docs never break. The docs are also reachable via the
+# *.pages.dev Cloudflare preview and GitHub, but docs.oryxflow.dev is canonical: Material
+# stamps <link rel="canonical"> from this value, and sitemap.xml <loc> and the llms.txt URLs
+# are built from it — so every copy points search engines and AI crawlers back to it. Keep
+# this as the production docs domain, not a deploy-preview URL.
 site_name: oryxflow
-site_url: https://oryxflow.io/
+site_url: https://docs.oryxflow.dev/
 site_description: >-
   For data scientists and data engineers, oryxflow is a python library that makes building
   complex data science workflows easy, fast and intuitive: declare tasks, and the engine runs
