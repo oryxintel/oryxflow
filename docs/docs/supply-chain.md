@@ -11,6 +11,10 @@ approving oryxflow doesn't need a back-and-forth.
 
 ## At a glance
 
+- **Signed provenance on every file.** From 26.7.21 onward, releases are built and uploaded by
+  this project's GitHub Actions workflow — no maintainer's laptop, no long-lived upload token —
+  and each file on PyPI carries a PyPI-recorded attestation (PEP 740 / Sigstore) tying it to the
+  exact repository and workflow that produced it. See [Provenance](#provenance).
 - **No known vulnerabilities.** oryxflow has no CVEs or advisories in any public database.
 - **Named publisher, permissive licence.** Published by Oryx Intelligence LLC under the MIT
   licence, from a public source repository.
@@ -32,6 +36,25 @@ Every claim above is checkable from a public source — no need to take our word
 | **deps.dev** (Google) | Dependency graph, advisories, scorecard | [deps.dev/pypi/oryxflow](https://deps.dev/pypi/oryxflow) |
 | **Socket** | Behavioural supply-chain analysis | [socket.dev/pypi/package/oryxflow](https://socket.dev/pypi/package/oryxflow) |
 | **Source** | Full source, issues, history | [github.com/oryxintel/oryxflow](https://github.com/oryxintel/oryxflow) |
+
+## Provenance
+
+Every file published from 26.7.21 onward can be traced back to the commit and CI run that built
+it, and PyPI verified that link at upload time.
+
+On any file's detail page on PyPI you will see the publisher recorded as the GitHub repository
+`oryxintel/oryxflow` and the workflow `release.yml`. Nothing is uploaded by hand, so there is no
+API token that could be stolen and used to publish a file we didn't build.
+
+To check it without a browser, ask PyPI for a file's attestation directly:
+
+```bash
+curl https://pypi.org/integrity/oryxflow/26.7.21/oryxflow-26.7.21-py3-none-any.whl/provenance
+```
+
+The response names the publisher (`repository`, `workflow`, `environment`) and carries the
+Sigstore signing material behind it. Releases before 26.7.21 were uploaded manually and have no
+attestation — that is expected, not a tampering signal.
 
 ## Dependencies
 
