@@ -156,6 +156,9 @@ plugins:
         Build with Claude Code:
           - docs/claude-plugin/index.md
           - docs/claude-plugin/commands.md
+          - docs/claude-plugin/trust.md
+          - docs/claude-plugin/project-structure.md
+          - docs/claude-plugin/coding-standards.md
           - docs/claude-plugin/why.md
         Reference:
           - docs/supply-chain.md
@@ -215,6 +218,9 @@ nav:
   - Build with Claude Code:
       - docs/claude-plugin/index.md
       - Commands: docs/claude-plugin/commands.md
+      - Trustworthy AI data analysis: docs/claude-plugin/trust.md
+      - Project structure: docs/claude-plugin/project-structure.md
+      - Coding standards: docs/claude-plugin/coding-standards.md
       - Why library + plugin: docs/claude-plugin/why.md
   - Blog:
       - blog/index.md

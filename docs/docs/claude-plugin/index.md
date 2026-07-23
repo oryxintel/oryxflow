@@ -72,6 +72,21 @@ copy you paste and forget.
     The five slash commands — scaffold a project, migrate an existing analysis, check standards,
     and put data under Git LFS.
 
+-   :material-check-decagram: **[Trustworthy AI data analysis](trust.md)**
+
+    Why you shouldn't take an agent's numbers on faith — and how the plugin makes its work *cheap
+    to verify* instead: session status, rerun verification, and durable lineage.
+
+-   :material-file-tree: **[Project structure that stays clean](project-structure.md)**
+
+    The load-bearing scaffold that keeps AI-generated code from rotting — separation of concerns
+    that's the shape of the code, not just its filing — and grows with the project.
+
+-   :material-format-list-checks: **[Coding standards the agent applies](coding-standards.md)**
+
+    Canonical names, code grouped by subject, docstrings as documentation — loaded into the
+    agent's context so they shape the code as it's written, not audited after.
+
 -   :material-shield-check: **[Why library + plugin is a matched pair](why.md)**
 
     The division of labor: what the library carries, what the agent carries, and why the pairing

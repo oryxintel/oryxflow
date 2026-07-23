@@ -87,6 +87,10 @@ opposite of tooling that collapses under scale.
 ```
 
 - **[Commands](commands.md)** — scaffold, migrate, and maintain a project.
+- **[Trustworthy AI data analysis](trust.md)** — how the agent's work becomes cheap to verify.
+- **[Project structure that stays clean](project-structure.md)** — the load-bearing scaffold.
+- **[Coding standards the agent applies](coding-standards.md)** — the conventions that ship with
+  the skill.
 - **[Why oryxflow](../why-oryxflow.md)** — the positioning in full.
 - **[Managing complex workflows](../managing-workflows.md)** — the cache, lineage, and
   invalidation the plugin drives.
