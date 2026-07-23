@@ -137,6 +137,7 @@ plugins:
         Getting started:
           - index.md
           - docs/index.md
+          - docs/why-oryxflow.md
           - docs/installation.md
           - docs/quickstart.md
         Guide:
@@ -152,8 +153,10 @@ plugins:
           - docs/advtasksdyn.md
           - docs/advparam.md
           - docs/functional_tasks.md
-        Tooling:
-          - docs/claude-plugin.md
+        Build with Claude Code:
+          - docs/claude-plugin/index.md
+          - docs/claude-plugin/commands.md
+          - docs/claude-plugin/why.md
         Reference:
           - docs/supply-chain.md
           - docs/reference.md
@@ -189,6 +192,7 @@ nav:
   - Home: index.md
   - Docs:
       - docs/index.md
+      - Why oryxflow: docs/why-oryxflow.md
       - Installation: docs/installation.md
       - Quickstart: docs/quickstart.md
       - Guide:
@@ -204,10 +208,13 @@ nav:
           - Dynamic tasks: docs/advtasksdyn.md
           - Parameters: docs/advparam.md
           - Functional API: docs/functional_tasks.md
-      - Build with Claude Code: docs/claude-plugin.md
       - Example (ML): docs/example-ml.md
       - Security & supply chain: docs/supply-chain.md
       - API Reference: docs/reference.md
       - Changelog: docs/changelog.md
+  - Build with Claude Code:
+      - docs/claude-plugin/index.md
+      - Commands: docs/claude-plugin/commands.md
+      - Why library + plugin: docs/claude-plugin/why.md
   - Blog:
       - blog/index.md

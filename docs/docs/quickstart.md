@@ -142,7 +142,7 @@ Notice that `GetDiabetes` runs only once even though two models are trained — 
 
 !!! tip
 
-    The fastest way to a fully-structured project is the Claude Code plugin: it sets up the project layout and wires tasks for you. See [Using oryxflow with Claude Code](claude-plugin.md).
+    The fastest way to a fully-structured project is the Claude Code plugin: it sets up the project layout and wires tasks for you. See [Build with Claude Code](claude-plugin/index.md).
 
 ## Next steps
 

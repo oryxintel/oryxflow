@@ -78,7 +78,7 @@ If you would rather log independently of oryxflow's on/off switch, just use your
 
 !!! note
 
-    Lines you emit with `self.logger` are also captured to oryxflow's event stream as `task_log` events during a run — independently of whether `enable_logging()` is on. So logging a decision-relevant scalar (`self.logger.info("corr_avg={}", corr)`) does double duty: it shows in the live log *and* becomes durable, queryable memory (`oryxflow.events.runs(...)`) for a later session that no longer has the original stderr. See [Managing Complex Workflows](managing-workflows.md#managing-complex-workflows) for the event stream. The [Claude Code plugin](claude-plugin.md) makes this a habit: the agent logs its decision-relevant scalars inside every `run()` so the next session inherits them.
+    Lines you emit with `self.logger` are also captured to oryxflow's event stream as `task_log` events during a run — independently of whether `enable_logging()` is on. So logging a decision-relevant scalar (`self.logger.info("corr_avg={}", corr)`) does double duty: it shows in the live log *and* becomes durable, queryable memory (`oryxflow.events.runs(...)`) for a later session that no longer has the original stderr. See [Managing Complex Workflows](managing-workflows.md#managing-complex-workflows) for the event stream. The [Claude Code plugin](claude-plugin/index.md) makes this a habit: the agent logs its decision-relevant scalars inside every `run()` so the next session inherits them.
 
 ## Routing oryxflow logs into your application's logging
 

@@ -7,11 +7,19 @@ description: oryxflow documentation — install, quickstart, guides for tasks, w
 
 Everything you need to build data-science pipelines with oryxflow: declare each step as a
 **task**, and the engine runs the DAG in order, skips what's already computed, reruns exactly
-what a parameter, data, or code change affects, and lets you load any result by name.
+what a parameter, data, or code change affects, and lets you load any result by name. The result
+is faster, cheaper, and more **trustworthy** data analysis — reproducible and lineage-tracked by
+default, for humans and AI coding agents alike.
 
-New here? Start with **[Installation](installation.md)** then the **[Quickstart](quickstart.md)**.
+New here? Read **[Why oryxflow](why-oryxflow.md)** for the positioning, then start with
+**[Installation](installation.md)** and the **[Quickstart](quickstart.md)**.
 
 <div class="grid cards" markdown>
+
+-   :material-shield-check: **[Why oryxflow](why-oryxflow.md)**
+
+    What it's for and when *not* to use it — reproducibility, lineage, and trustworthy AI data
+    analysis, plus honest comparisons.
 
 -   :material-download: **[Installation](installation.md)**
 
@@ -45,9 +53,10 @@ New here? Start with **[Installation](installation.md)** then the **[Quickstart]
 
     Automatic code invalidation, selective resets, multi-experiment flows.
 
--   :material-robot: **[Build with Claude Code](claude-plugin.md)**
+-   :material-robot: **[Build with Claude Code](claude-plugin/index.md)**
 
-    Let an AI coding assistant scaffold the project and wire the DAG.
+    Make AI-written data analysis trustworthy: scaffold the project, wire the DAG, and teach the
+    agent to use the cache correctly.
 
 -   :material-api: **[API Reference](reference.md)**
 

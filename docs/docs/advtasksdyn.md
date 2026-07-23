@@ -176,7 +176,7 @@ A complete, runnable version of this sector → country → state example — in
 
 !!! tip
 
-    These advanced dynamic-loop flows are exactly what the [Claude Code plugin](claude-plugin.md) is built to manage. Describe the hierarchy in plain language and it writes the fan-out `requires()` and the `inputLoadConcat()` aggregators; when you iterate, it scopes the reset for you — resetting just the family you changed (`reset_upstream(..., only=...)`) so the expensive leaf tasks are preserved. The hand-tracking this section warns about is what the plugin removes.
+    These advanced dynamic-loop flows are exactly what the [Claude Code plugin](claude-plugin/index.md) is built to manage. Describe the hierarchy in plain language and it writes the fan-out `requires()` and the `inputLoadConcat()` aggregators; when you iterate, it scopes the reset for you — resetting just the family you changed (`reset_upstream(..., only=...)`) so the expensive leaf tasks are preserved. The hand-tracking this section warns about is what the plugin removes.
 
 ## Collector Task
 

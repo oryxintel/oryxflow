@@ -236,11 +236,11 @@ Everything above solves one family of problems — the *mechanical* one: stalene
 - a backtest that peeks at the future, or a correlation read off overlapping windows as if the points were independent;
 - a number quoted from memory or eyeballed off a chart instead of from the saved artifact.
 
-None of these raise; each completes cleanly and prints something plausible. Versioning the code just makes the wrong join *reproducible*. These are caught by **habit, not machinery** — validate the merge and assert the row relationship, look at the frame's shape and null counts before stating a finding, quote every number from an artifact you can re-open. (Note this is a different thing from the hash blind spots above: a changed data file is invisible but has a verb — `reset` the loader; a wrong join has no verb, only vigilance.) That is why the [Claude Code plugin](claude-plugin.md) ships those conventions alongside the library, delivered at the point you're writing the task rather than in a review afterward. And the judgment calls — is this method right for the question, is this effect within noise, does the data actually behave the way I assumed — are yours; no cache decides them.
+None of these raise; each completes cleanly and prints something plausible. Versioning the code just makes the wrong join *reproducible*. These are caught by **habit, not machinery** — validate the merge and assert the row relationship, look at the frame's shape and null counts before stating a finding, quote every number from an artifact you can re-open. (Note this is a different thing from the hash blind spots above: a changed data file is invisible but has a verb — `reset` the loader; a wrong join has no verb, only vigilance.) That is why the [Claude Code plugin](claude-plugin/index.md) ships those conventions alongside the library, delivered at the point you're writing the task rather than in a review afterward. And the judgment calls — is this method right for the question, is this effect within noise, does the data actually behave the way I assumed — are yours; no cache decides them.
 
 ## CLAUDE.md snippet for AI-agent projects
 
-For projects driven by AI coding agents, the recommended setup is the [oryxflow Claude Code plugin](claude-plugin.md) — it ships these rules (and more: project scaffolding, task templates, conventions) as a skill that loads automatically, stays current with the library, and needs no per-project copy. If you can't use the plugin (a different agent, a locked-down environment), paste this snapshot of the rules into the project's `CLAUDE.md`:
+For projects driven by AI coding agents, the recommended setup is the [oryxflow Claude Code plugin](claude-plugin/index.md) — it ships these rules (and more: project scaffolding, task templates, conventions) as a skill that loads automatically, stays current with the library, and needs no per-project copy. If you can't use the plugin (a different agent, a locked-down environment), paste this snapshot of the rules into the project's `CLAUDE.md`:
 
 ```markdown
 ## oryxflow cache & provenance rules
@@ -316,4 +316,4 @@ A complete, runnable version of this multi-level dev loop — iterate on one `(s
 
 !!! tip
 
-    This is exactly what the [Claude Code plugin](claude-plugin.md) is built to manage. Describe the hierarchy in plain language and it writes the fan-out `requires()` and the `inputLoadConcat()` aggregators; when you iterate, it scopes the reset for you — resetting just the family you changed (`reset_upstream(..., only=...)`) so the expensive leaf tasks are preserved.
+    This is exactly what the [Claude Code plugin](claude-plugin/index.md) is built to manage. Describe the hierarchy in plain language and it writes the fan-out `requires()` and the `inputLoadConcat()` aggregators; when you iterate, it scopes the reset for you — resetting just the family you changed (`reset_upstream(..., only=...)`) so the expensive leaf tasks are preserved.

@@ -27,9 +27,12 @@ docs/                          # docs_dir
   CLAUDE.md                    # this file (excluded from the build)
   docs/                        # the guide + reference  ->  /docs/*
     index.md                   #   /docs/ home (section index; navigation.indexes)
+    why-oryxflow.md            #   positioning / overview page (trust-led, GEO-shaped)
     installation.md quickstart.md tasks.md workflow.md run.md targets.md logging.md
     collaborate.md managing-workflows.md advtasksdyn.md advparam.md functional_tasks.md
-    claude-plugin.md example-ml.md
+    example-ml.md
+    claude-plugin/             #   "Build with Claude Code" section (top-level nav)
+      index.md commands.md why.md   #   plugin section landing + commands + matched-pair rationale
     reference.md               #   API reference, generated from docstrings via mkdocstrings
     changelog.md               #   includes repo-root CHANGELOG.md via a pymdownx snippet
   blog/

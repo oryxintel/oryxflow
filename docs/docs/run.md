@@ -129,7 +129,7 @@ You have several options to force tasks to reset and rerun. See sections below o
 
 !!! tip
 
-    Editing a task's code with unchanged parameters is handled for you: the code fingerprint moves and the task plus everything downstream recompute on the next run — no reset, no version to bump (see [Code changes: handled automatically](managing-workflows.md#automatic-code-invalidation)). Only tasks pinned with an explicit `code_version` need a bump in the same edit; the staleness advisory warns if you forget. Resets remain for what the hash can't see (data files, external APIs, a suspect cache). The [Claude Code plugin](claude-plugin.md) bakes this loop in for AI-driven projects: after each edit it verifies the intended tasks actually reran and answers warnings with the right exit.
+    Editing a task's code with unchanged parameters is handled for you: the code fingerprint moves and the task plus everything downstream recompute on the next run — no reset, no version to bump (see [Code changes: handled automatically](managing-workflows.md#automatic-code-invalidation)). Only tasks pinned with an explicit `code_version` need a bump in the same edit; the staleness advisory warns if you forget. Resets remain for what the hash can't see (data files, external APIs, a suspect cache). The [Claude Code plugin](claude-plugin/index.md) bakes this loop in for AI-driven projects: after each edit it verifies the intended tasks actually reran and answers warnings with the right exit.
 
 ```python
 # preferred way: reset single task, this will automatically run all upstream dependencies

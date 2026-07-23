@@ -73,7 +73,7 @@ Learn more about [Writing and Managing Tasks](tasks.md) and [Running Workflows](
 
 !!! tip
 
-    The Claude Code plugin automates this transition: describe your existing script in plain language and it creates the task classes and wires the `@oryxflow.requires` dependencies. See [Using oryxflow with Claude Code](claude-plugin.md).
+    The Claude Code plugin automates this transition: describe your existing script in plain language and it creates the task classes and wires the `@oryxflow.requires` dependencies. See [Build with Claude Code](claude-plugin/index.md).
 
 ## Design Pattern Templates for Machine Learning Workflows
 

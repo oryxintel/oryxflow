@@ -20,7 +20,7 @@ oryxflow gives you three approaches, from simplest to most advanced — this pag
 
 Because oryxflow writes every task output under `data/`, the simplest way to share results is to version that folder alongside your code with [Git LFS](https://git-lfs.com). Then you version and share your data as easily as your code: a teammate clones the repo and gets the exact datasets each run produced, so nobody re-runs the expensive tasks just to obtain outputs someone already computed. This is the recommended approach for most teams.
 
-The [Claude Code plugin](claude-plugin.md) sets this up for you in one step with `/oryxflow:init-gitlfs` (it puts `data/` under Git LFS and wires the `.gitattributes`). To do it by hand, install Git LFS and track the data directory:
+The [Claude Code plugin](claude-plugin/index.md) sets this up for you in one step with `/oryxflow:init-gitlfs` (it puts `data/` under Git LFS and wires the `.gitattributes`). To do it by hand, install Git LFS and track the data directory:
 
     git lfs install
     git lfs track "data/**"

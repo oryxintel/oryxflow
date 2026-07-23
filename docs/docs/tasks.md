@@ -28,7 +28,7 @@ You can define input dependencies by using a <span class="title-ref">@oryxflow.r
 
 !!! tip
 
-    The [Claude Code plugin](claude-plugin.md) writes this wiring for you - ask it to "add a task that takes `<Upstream>`'s output" and it emits the task class with the correct `@oryxflow.requires` decorator.
+    The [Claude Code plugin](claude-plugin/index.md) writes this wiring for you - ask it to "add a task that takes `<Upstream>`'s output" and it emits the task class with the correct `@oryxflow.requires` decorator.
 
 ```python
 # no dependency

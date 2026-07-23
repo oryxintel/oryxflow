@@ -1,15 +1,19 @@
 # oryxflow
 
-For data scientists and data engineers, **oryxflow** is a Python library that makes building
-data-science workflows easy, fast, and intuitive. You declare each step of your analysis as a
-**task** — what it depends on and what it produces — and the engine runs them in the right order,
-skips anything already computed, **reruns exactly what a parameter, data, or code change
-affects**, and lets you load any result by name.
+**Faster, cheaper, and more trustworthy data analysis — for humans and AI coding agents.**
+oryxflow turns a data-science script into a reproducible, lineage-tracked pipeline that reruns
+only what changed. It's a Python library with no server, no database, and no account:
+`pip install oryxflow` and you're done.
+
+You declare each step of your analysis as a **task** — what it depends on and what it produces —
+and the engine runs them in the right order, skips anything already computed, **reruns exactly
+what a parameter, data, or code change affects**, and lets you load any result by name.
 
 It also records **what ran, when, and why**, so "is this result stale?", "was it produced by the
-current code?", and "did I already run this?" become queries, not guesses. The payoff: no wasted
-recomputation, reproducible outputs you can trust, and pipelines that are easy to share — instead
-of a fragile chain of scripts and files you manage by hand.
+current code?", and "did I already run this?" become queries, not guesses. The payoff: outputs
+you can **trust** and reproduce, no wasted recomputation, and pipelines that are easy to share —
+instead of a fragile chain of scripts and files you manage by hand. Caching is how it works;
+**trust is what you get** — [see the full positioning](docs/why-oryxflow.md).
 
 <!--phmdoctest-share-names-->
 ```python
@@ -41,6 +45,11 @@ them. That is the core payoff: re-running a pipeline only pays for what actually
 
 <div class="grid cards" markdown>
 
+-   :material-shield-check: **[Why oryxflow](docs/why-oryxflow.md)**
+
+    The positioning in full: reproducibility, lineage, and trustworthy AI data analysis — and
+    when *not* to reach for it.
+
 -   :material-download: **[Installation](docs/installation.md)**
 
     Install oryxflow and its optional extras (cloud storage, export, dask).
@@ -53,9 +62,10 @@ them. That is the core payoff: re-running a pipeline only pays for what actually
 
     The full guide: tasks, workflows, parameters, I/O formats, and logging.
 
--   :material-robot: **[Build with Claude Code](docs/claude-plugin.md)**
+-   :material-robot: **[Build with Claude Code](docs/claude-plugin/index.md)**
 
-    Let an AI coding assistant scaffold your project and wire the DAG for you.
+    The official plugin makes AI-written data analysis trustworthy — it scaffolds the project,
+    wires the DAG, and teaches the agent to use the cache correctly.
 
 -   :material-sitemap: **[Managing complex workflows](docs/managing-workflows.md)**
 
@@ -63,7 +73,8 @@ them. That is the core payoff: re-running a pipeline only pays for what actually
 
 -   :material-post: **[Blog](blog/index.md)**
 
-    Articles on reproducible caching, MLflow vs. pipeline caching, and more.
+    Reproducibility and trust, tool comparisons (vs Airflow, MLflow, DVC), and trustworthy
+    AI-assisted data science.
 
 </div>
 
