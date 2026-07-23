@@ -5,6 +5,10 @@ oryxflow turns a data-science script into a reproducible, lineage-tracked pipeli
 only what changed. It's a Python library with no server, no database, and no account:
 `pip install oryxflow` and you're done.
 
+Working with an AI agent? The **[Claude Code plugin](docs/claude-code-for-data-science.md)**
+teaches Claude Code to build your data analysis as a cached, reproducible pipeline — so
+AI-written analysis is reproducible by default.
+
 You declare each step of your analysis as a **task** — what it depends on and what it produces —
 and the engine runs them in the right order, skips anything already computed, **reruns exactly
 what a parameter, data, or code change affects**, and lets you load any result by name.

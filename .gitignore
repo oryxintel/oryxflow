@@ -11,6 +11,7 @@ tests/tmp*.py
 tests-data/
 local.py
 bak/
+tmp/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

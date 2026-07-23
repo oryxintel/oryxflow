@@ -1,0 +1,40 @@
+# oryxflow documentation — https://docs.oryxflow.dev/
+# Open to all crawlers, including AI answer engines. We want the docs indexed and
+# citable: some AI/LLM crawlers default to disallow unless named, so we welcome them
+# explicitly below.
+
+User-agent: *
+Allow: /
+
+# AI / LLM crawlers (answer engines + training) — explicitly allowed.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://docs.oryxflow.dev/sitemap.xml

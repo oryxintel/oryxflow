@@ -1,0 +1,59 @@
+{#-
+  Material for MkDocs theme override.
+
+  Adds JSON-LD structured data to the docs home page for E-E-A-T signals and
+  AI-Overview / answer-engine eligibility. Home page only (page.is_homepage),
+  so we describe the *product* once rather than repeating it on every page.
+  A single SoftwareApplication node (oryxflow) + the publishing Organization,
+  cross-linked via sameAs to the canonical GitHub + PyPI identities so answer
+  engines resolve "oryxflow" to one entity.
+-#}
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  {% if page and page.is_homepage %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://docs.oryxflow.dev/#software",
+        "name": "oryxflow",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "Data-science pipeline & workflow library",
+        "operatingSystem": "Windows, macOS, Linux",
+        "description": "oryxflow is an open-source Python library and Claude Code plugin that makes AI data analysis faster, cheaper, and more trustworthy: declare your analysis as cached, reproducible tasks and the engine reruns exactly what a parameter, data, or code change affects.",
+        "url": "https://docs.oryxflow.dev/",
+        "downloadUrl": "https://pypi.org/project/oryxflow/",
+        "installUrl": "https://pypi.org/project/oryxflow/",
+        "softwareRequirements": "Python 3",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "author": { "@id": "https://oryxflow.dev/#org" },
+        "publisher": { "@id": "https://oryxflow.dev/#org" },
+        "sameAs": [
+          "https://github.com/oryxintel/oryxflow",
+          "https://pypi.org/project/oryxflow/"
+        ]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://oryxflow.dev/#org",
+        "name": "Oryx Intelligence LLC",
+        "url": "https://oryxflow.dev/",
+        "sameAs": [
+          "https://github.com/oryxintel"
+        ]
+      }
+    ]
+  }
+  </script>
+  {% endif %}
+{% endblock %}
