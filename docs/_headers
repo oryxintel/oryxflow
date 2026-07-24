@@ -1,0 +1,21 @@
+# Cloudflare Pages custom response headers.
+# https://developers.cloudflare.com/pages/configuration/headers/
+#
+# MkDocs copies this file verbatim to the site root (site/_headers), where
+# Cloudflare Pages reads it. Material's own CSS/JS are content-hashed
+# (main.<hash>.min.css, bundle.<hash>.min.js, palette.<hash>.min.css), so a
+# new build ships a new filename — the old one can be cached forever without
+# ever serving stale content. Only the hashed dirs get `immutable`; extra.css
+# and _mkdocstrings.css are NOT hashed, so they keep the default revalidating
+# cache and pick up edits on the next deploy.
+
+/assets/stylesheets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/javascripts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Logo, favicon, and other images: long-lived but revalidatable (filenames are
+# stable, not hashed, so don't mark immutable).
+/assets/images/*
+  Cache-Control: public, max-age=2592000

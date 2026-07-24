@@ -17,6 +17,10 @@
 
 {% block extrahead %}
   {{ super() }}
+  {#- Open the connection to GitHub's API early: the theme's repo widget fetches
+      stars/forks/latest-release from api.github.com, and without a preconnect that
+      DNS+TLS handshake sits on the critical path (Lighthouse: ~320ms LCP savings). -#}
+  <link rel="preconnect" href="https://api.github.com" crossorigin>
   {% if page and page.is_homepage %}
   <script type="application/ld+json">
   {
