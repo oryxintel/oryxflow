@@ -5,10 +5,10 @@ description: oryxflow documentation — install, quickstart, guides for tasks, w
 
 # Documentation
 
-Everything you need to build data-science pipelines with oryxflow: declare each step as a
-**task**, and the engine runs the DAG in order, skips what's already computed, reruns exactly
-what a parameter, data, or code change affects, and lets you load any result by name. The result
-is faster, cheaper, and more **trustworthy** data analysis — reproducible and lineage-tracked by
+Everything you need to build data-science pipelines with oryxflow. Declare each step as a
+**task**. The engine runs your steps in dependency order, skips what's already computed, and
+reruns exactly what a parameter, data, or code change affects — and you load any result by name.
+You get faster, cheaper, more **trustworthy** data analysis, reproducible and lineage-tracked by
 default, for humans and AI coding agents alike.
 
 New here? Read **[Why oryxflow](why-oryxflow.md)** for the positioning, then start with

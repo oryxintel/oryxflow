@@ -41,6 +41,10 @@ lightweight caching DAG changes how you build data-science workflows.
   versioning.
 - [MLflow or pipeline caching?](posts/mlflow-or-pipeline-caching.md) — experiment tracking vs
   workflow caching (and DVC).
+- [MLflow alternatives](posts/mlflow-alternatives.md) — the experiment-tracker landscape, and
+  where a caching DAG fits beside (not against) it.
+- [Airflow alternatives for data science](posts/airflow-alternatives-for-data-science.md) —
+  research-loop tools vs production orchestrators, and when you don't need an orchestrator at all.
 
 **Trustworthy AI-assisted data science**
 

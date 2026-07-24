@@ -1,6 +1,15 @@
 ---
 title: Why oryxflow
 description: oryxflow makes AI-driven data analysis faster, cheaper, and more trustworthy — reproducible, lineage-tracked Python pipelines that rerun only what changed, for humans and AI coding agents alike.
+faq:
+  - q: "Is oryxflow an MCP server?"
+    a: "No. oryxflow ships a Claude Code plugin — a skill plus slash commands — backed by an open-source Python library. The reproducibility work happens locally in that library, not over MCP."
+  - q: "Does oryxflow replace MLflow or Airflow?"
+    a: "No — it composes beside them. oryxflow caches and reruns your local research pipeline; keep using an experiment tracker for dashboards and an orchestrator for scheduled production jobs."
+  - q: "How does oryxflow know when to rerun a task?"
+    a: "From the task's parameters and its code. Change a parameter, a data input, or the code and oryxflow reruns exactly the affected outputs — cosmetic edits like comments or formatting don't trigger a rerun."
+  - q: "Where is my data stored?"
+    a: "Locally. oryxflow is local-first and zero-infrastructure — no server, no database, no account, no telemetry. Your code, your cache, your repo."
 ---
 
 # Why oryxflow
@@ -38,18 +47,18 @@ they get worse, not better, as an AI agent writes more of the code.
 - **Lineage you can query.** oryxflow records what ran, when, with which parameters and code,
   and *why* it recomputed. "Is this stale? Was it built with current code?" are queries, not
   guesses.
-- **Correct-by-default reruns.** Change a parameter, a data input, or a task's code and exactly
+- **Reruns exactly what changed.** Change a parameter, a data input, or a task's code and exactly
   the affected outputs rebuild — you can't accidentally evaluate a new model on old features.
 - **Speed and cost savings.** Completed steps load from cache instead of recomputing, so the
-  edit–run loop drops from minutes to seconds — and an AI agent stops paying (in time and
-  tokens) to redo expensive work it already did.
+  edit–run loop drops from minutes to seconds. An AI agent stops paying — in time and tokens — to
+  redo expensive work it already did.
 - **AI-agent reliability.** The same cache and lineage log become an agent's memory across
   sessions. The companion [Claude Code plugin](claude-plugin/index.md) ships these disciplines
   as an auto-activating skill, so the agent uses the cache correctly instead of trusting stale
   state.
 
-Caching is the *engine*. Trust — reproducible, lineage-tracked, and correct-by-default *reruns* — is
-the *product*.
+Caching is the *engine*. Trust — reproducible, lineage-tracked reruns that update exactly what
+changed — is the *product*.
 
 ## When to use oryxflow
 
@@ -131,6 +140,25 @@ df = flow.outputLoad()                              # load the result by name
 Run `flow.run()` again and nothing recomputes — both outputs already exist. Edit
 `ProcessData`'s code and only it (and anything downstream) reruns, automatically. The record of
 what ran and why is written to a lineage log you can query later.
+
+## Frequently asked questions
+
+**Is oryxflow an MCP server?**
+No. oryxflow ships a Claude Code plugin — a skill plus slash commands — backed by an open-source
+Python library. The reproducibility work happens locally in that library, not over MCP.
+
+**Does oryxflow replace MLflow or Airflow?**
+No — it composes beside them. oryxflow caches and reruns your local research pipeline; keep using
+an experiment tracker for dashboards and an orchestrator for scheduled production jobs.
+
+**How does oryxflow know when to rerun a task?**
+From the task's parameters and its code. Change a parameter, a data input, or the code and
+oryxflow reruns exactly the affected outputs — cosmetic edits like comments or formatting don't
+trigger a rerun.
+
+**Where is my data stored?**
+Locally. oryxflow is local-first and zero-infrastructure — no server, no database, no account, no
+telemetry. Your code, your cache, your repo.
 
 ## Takeaway
 

@@ -1,14 +1,17 @@
 ---
-title: Coding standards the agent applies
-description: The oryxflow Claude Code plugin ships pro-level data-science coding conventions — canonical column names, code grouped by subject, docstrings as documentation — loaded into the agent's context so they shape the code as it's written, not audited after.
+title: Data-science coding standards for Claude Code
+description: The oryxflow Claude Code plugin ships pro-level data-science coding conventions — canonical column names, code grouped by subject, docstrings as documentation — loaded into the agent's context so they shape the analysis code as it's written, not audited after.
 ---
 
-# The coding standards the agent applies as it writes
+# Data-science coding standards Claude Code applies as it writes
 
-**A coding standard only changes the code if it's present the moment the code is written.** The
-oryxflow plugin ships its conventions *where the agent works* — loaded into context as it edits,
-phrased as rules with the reasoning attached — so they're applied as the line is typed, not
-reviewed afterward in a wiki nobody opens.
+**A data-analysis project rarely starts messy — it turns messy.** One clean notebook becomes a
+tangle of drifting column names, copy-pasted cleaning, and functions that never got written; hand
+the work to an AI agent and the drift arrives *faster*. A coding standard only prevents that if
+it's present the moment the code is written. The oryxflow Claude Code plugin ships its
+data-science conventions *where the agent works* — loaded into context as it edits, phrased as
+rules with the reasoning attached — so they're applied as the line is typed, not reviewed
+afterward in a wiki nobody opens.
 
 These aren't motivational-poster generalities. They're specific, opinionated defaults that keep a
 project readable and safe as it grows, and they matter more with an AI in the loop: an agent will
@@ -107,7 +110,7 @@ vigilance is what keeps an AI-built project readable, navigable, and safe to ext
 
 **Read next**
 
-- [Project structure that stays clean](project-structure.md) — the layout these conventions ride
+- [Data-science project structure](project-structure.md) — the layout these conventions ride
   alongside.
 - [Trustworthy AI data analysis](trust.md) — verifying the work the conventions help produce.
 - [Why library + plugin is a matched pair](why.md) — why the conventions ship with the skill.

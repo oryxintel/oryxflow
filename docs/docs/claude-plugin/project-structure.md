@@ -1,14 +1,15 @@
 ---
-title: Project structure that stays clean
-description: The oryxflow Claude Code plugin scaffolds a load-bearing project structure — separation of concerns across config, tasks, workflow, and analysis — that keeps AI-generated data-science code from rotting, and grows with the project instead of collapsing.
+title: Data-science project structure for Claude Code
+description: The oryxflow Claude Code plugin scaffolds a load-bearing data-science project structure — separation of concerns across config, tasks, workflow, and analysis — that keeps AI-generated analysis code from rotting, and grows with the project instead of collapsing.
 ---
 
-# A project structure that stays clean as it grows
+# A data-science project structure that stays clean as it grows
 
-**A folder template tells you where a file goes. It doesn't stop the code inside from rotting.**
-The oryxflow plugin scaffolds a structure that's *load-bearing* — one that makes the messy shape
-harder to write than the clean one — so an AI agent (which defaults to the flat script and the
-reused variable) produces a project that stays well-formed as it grows.
+**A folder template tells you where a data-science file goes. It doesn't stop the analysis inside
+from rotting.** The oryxflow Claude Code plugin scaffolds a data-science project structure that's
+*load-bearing* — one that makes the messy shape harder to write than the clean one — so an AI
+agent (which defaults to the flat script and the reused variable) produces a project that stays
+well-formed as it grows.
 
 Data-science code rots in a predictable way: one notebook becomes two, then a folder of them plus
 a few scripts, all reading the same directory, each with its own copy of the cleaning logic.
@@ -104,7 +105,7 @@ work requires.
 
 **Read next**
 
-- [Coding standards the agent applies](coding-standards.md) — the conventions that ride alongside
+- [Coding standards for AI data analysis](coding-standards.md) — the conventions that ride alongside
   the layout.
 - [Trustworthy AI data analysis](trust.md) — verifying what the agent actually did.
 - [Plugin commands](commands.md) — `init-project`, `migrate`, and the rest.

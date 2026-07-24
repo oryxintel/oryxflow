@@ -163,6 +163,7 @@ plugins:
           - docs/claude-plugin/coding-standards.md
           - docs/claude-plugin/why.md
         Reference:
+          - docs/glossary.md
           - docs/supply-chain.md
           - docs/reference.md
           - docs/changelog.md
@@ -215,6 +216,7 @@ nav:
           - Parameters: docs/advparam.md
           - Functional API: docs/functional_tasks.md
       - Example (ML): docs/example-ml.md
+      - Glossary: docs/glossary.md
       - Security & supply chain: docs/supply-chain.md
       - API Reference: docs/reference.md
       - Changelog: docs/changelog.md
@@ -223,8 +225,8 @@ nav:
       - docs/claude-plugin/index.md
       - Commands: docs/claude-plugin/commands.md
       - Trustworthy AI data analysis: docs/claude-plugin/trust.md
-      - Project structure: docs/claude-plugin/project-structure.md
-      - Coding standards: docs/claude-plugin/coding-standards.md
+      - Data-science project structure: docs/claude-plugin/project-structure.md
+      - Data-science coding standards: docs/claude-plugin/coding-standards.md
       - Why library + plugin: docs/claude-plugin/why.md
   - Blog:
       - blog/index.md

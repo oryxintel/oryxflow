@@ -1,13 +1,13 @@
 ---
-title: Why library + plugin is a matched pair
+title: The oryxflow library + Claude Code plugin for AI data analysis
 description: How the oryxflow library and its Claude Code plugin divide the work of trustworthy AI data analysis — the library carries the state an agent can't hold; the skill carries the disciplines the library can't enforce.
 ---
 
-# Why library + plugin is a matched pair
+# Why the oryxflow library and Claude Code plugin are a matched pair for AI data analysis
 
-The oryxflow library and the Claude Code plugin solve two halves of the same problem, and they're
-most valuable together. This page is the honest account of who carries what — and why the pairing
-gets *stronger* as a project grows, when most tooling buckles.
+The oryxflow library and the Claude Code plugin solve two halves of trustworthy AI data analysis,
+and they're most valuable together. This page is the honest account of who carries what — and why
+the pairing gets *stronger* as a data-science project grows, when most tooling buckles.
 
 ## The agent's real weakness: invisible state
 
@@ -41,7 +41,7 @@ The library and the plugin split the problem cleanly:
 
 - Start each session by reading cache state (`events.print_status()`) before assuming anything.
 - After every edit, **verify the rerun actually happened** — a `ran=0` after a change means the
-  edit landed in a hash blind spot (a data file, a dynamic call), and the fix is `reset()`.
+  edit landed somewhere oryxflow can't detect (a data file, a dynamic call), and the fix is `reset()`.
 - Answer every staleness or expensive-recompute warning with the right exit.
 - Select the right named input when a task has multiple parents and outputs — a spot agents
   otherwise fumble.
@@ -88,8 +88,8 @@ opposite of tooling that collapses under scale.
 
 - **[Commands](commands.md)** — scaffold, migrate, and maintain a project.
 - **[Trustworthy AI data analysis](trust.md)** — how the agent's work becomes cheap to verify.
-- **[Project structure that stays clean](project-structure.md)** — the load-bearing scaffold.
-- **[Coding standards the agent applies](coding-standards.md)** — the conventions that ship with
+- **[Keep a data-science project clean](project-structure.md)** — the load-bearing scaffold.
+- **[Coding standards for AI data analysis](coding-standards.md)** — the conventions that ship with
   the skill.
 - **[Why oryxflow](../why-oryxflow.md)** — the positioning in full.
 - **[Managing complex workflows](../managing-workflows.md)** — the cache, lineage, and

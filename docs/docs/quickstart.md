@@ -1,6 +1,6 @@
 # Quickstart
 
-oryxflow turns a data-science script into a pipeline of **tasks**. You declare each step as a task — what it *depends on* and what it *produces* — and the engine runs them in the right order, skips anything already computed, and lets you load any result by name. No manual file paths, no re-running the slow steps to test a fast one.
+oryxflow turns a data-science script into a pipeline of **tasks**. You declare each step as a task: what it *depends on* and what it *produces*. The engine runs them in the right order, skips anything already computed, and lets you load any result by name. No manual file paths, no re-running the slow steps to test a fast one.
 
 This page gets you from nothing to a running pipeline. For installation, follow the [GitHub instructions](https://github.com/oryxintel/oryxflow#installation) (`pip install oryxflow`).
 

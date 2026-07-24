@@ -3,7 +3,7 @@ date: 2026-07-23
 slug: oryxflow-vs-dvc
 categories:
   - Comparisons
-description: oryxflow vs DVC — DVC versions big data files as git-pinned pipeline stages; oryxflow builds native Python task identity from parameters and an automatic code fingerprint. A fair, deep comparison of what each one's identity is made of, and why they compose.
+description: oryxflow vs DVC — DVC versions big data files as git-pinned pipeline stages; oryxflow builds native Python task identity from parameters and automatic code-change detection. A fair, deep comparison of what each one's identity is made of, and why they compose.
 ---
 
 # oryxflow vs DVC: Python task identity vs file-hash data versioning
@@ -17,7 +17,7 @@ If you searched "DVC vs Python workflow library," here's the honest short answer
 versions large data and model files alongside Git and reruns a pipeline stage when a declared file
 hash changes; [oryxflow](https://github.com/oryxintel/oryxflow) is a small, local-first Python
 library that turns your task classes into a cached, dependency-aware DAG whose identity is built
-from parameters plus an automatic code fingerprint. Neither replaces the other. This is the deeper
+from parameters plus automatic code-change detection. Neither replaces the other. This is the deeper
 dive on where the line falls (there's a shorter DVC section in
 [Do you need MLflow, or pipeline caching?](mlflow-or-pipeline-caching.md) — this post goes further).
 
@@ -53,9 +53,9 @@ your Python, it looks at the files crossing the boundary. If your logic changes 
 output file happens to hash the same — or if you forget to declare a dependency — DVC's model can't
 see it.
 
-**oryxflow's identity is native Python task identity.** A task's cache key is its parameters plus an
-AST-normalized fingerprint of its own code *and* every project file it transitively imports. There's
-no `dvc.yaml`, no command strings, no manually declared file lists: the DAG *is* your `requires()`
+**oryxflow's identity is native Python task identity.** A task's cache key is its parameters plus its
+own code *and* every helper file it imports — compared by what the code *does*, not how it's written.
+There's no `dvc.yaml`, no command strings, no manually declared file lists: the DAG *is* your `requires()`
 methods, and the I/O is type-driven and zero-config — a `TaskPqPandas` saves a DataFrame to parquet,
 `self.inputLoad()` hands it to the next task, and no path appears anywhere in your code.
 
@@ -65,7 +65,8 @@ Two consequences fall out of that, automatically:
   `alpha=0.2` and you get two distinct cached outputs, side by side — no config edit, no new stage.
 - **A code change reruns downstream on its own.** Edit a function's logic and oryxflow reruns that
   task and everything downstream while the expensive upstream stays cached. Edit only comments or
-  formatting and nothing recomputes — the fingerprint is AST-normalized, so cosmetic edits are free.
+  formatting and nothing recomputes — oryxflow compares what your code *does*, not how it's written,
+  so cosmetic edits are free.
   DVC would need you to keep `dvc.yaml` and your file declarations in step with the code by hand.
 
 Here's the whole loop in oryxflow — verified API, no config files anywhere:
@@ -98,7 +99,7 @@ model = flow.outputLoad()
 ```
 
 Change `alpha`, `flow.run()` again, and only `TrainModel` recomputes — `MakeFeatures` is served from
-cache because neither its params nor its code fingerprint moved. Edit the body of `build_features`
+cache because neither its params nor its code changed. Edit the body of `build_features`
 and both rerun. You wrote no stage file to make that happen.
 
 ## oryxflow vs DVC, side by side
@@ -106,11 +107,11 @@ and both rerun. You wrote no stage file to make that happen.
 | | oryxflow | DVC |
 | --- | --- | --- |
 | **Primary job** | in-session Python compute graph | versioning big data/model files with Git |
-| **Identity built from** | params + automatic AST code fingerprint | file hashes + `dvc.yaml` stage commands |
+| **Identity built from** | params + automatic code-change detection | file hashes + `dvc.yaml` stage commands |
 | **Pipeline definition** | native `requires()` methods, no config | `dvc.yaml` stages (command + deps + outs) |
 | **Data I/O** | type-driven, zero-config `save`/`inputLoad` | you write the command's file reads/writes |
 | **Parameter change** | automatically a new cached identity | via params files / DVC Experiments |
-| **Code edit reruns downstream** | automatic, per-symbol, transitive | only if a declared file hash changes |
+| **Code edit reruns downstream** | automatic, including edits to helpers | only if a declared file hash changes |
 | **Data versioning to remote storage** | ❌ (not its job) | ✅ its core strength |
 | **Ties artifacts to Git commits** | ❌ | ✅ |
 | **Setup** | `pip install`, local `data/` folder | Git + a DVC remote |
@@ -153,7 +154,7 @@ still your job (and your tests').
 
 DVC and oryxflow both promise reproducibility, but they build "the same task" out of different
 material: DVC hashes files and YAML-declared stages, oryxflow derives identity from Python
-parameters and an automatic code fingerprint. Pick DVC when the job is versioning big data to Git and
+parameters and automatic code-change detection. Pick DVC when the job is versioning big data to Git and
 a remote; pick oryxflow when the job is iterating on Python tasks in a session. On a real project you
 often want both — DVC underneath for versioned artifacts, oryxflow on top for the compute graph.
 

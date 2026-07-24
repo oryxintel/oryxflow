@@ -242,6 +242,10 @@ baseline: **86 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`,
 - When changing `FlowExport`'s generated-file template, update the exact expected strings in
   `tests/test_workflow.py::TestFlowExports` (they assert generated text byte-for-byte).
 - Don't commit/push unless asked. Default branch is `main`; feature work is on `decouple*`.
+- **Never commit or push the sibling plugin repo `../oryxflow-claude-plugin` from this
+  workspace** — the maintainer commits it themselves. You may *edit* its files (e.g.
+  `.claude-plugin/plugin.json`, `marketplace.json`) when asked, but leave the changes
+  uncommitted for the user; a `git commit` here only ever covers the `oryxflow` repo.
 - **Multi-line strings: match the here-string syntax to the shell tool you're actually calling.**
   The Bash and PowerShell tools use different syntaxes — don't mix them. For a multi-line commit
   message: in the **Bash** tool use a quoted heredoc (`git commit -F - <<'EOF' … EOF`, or

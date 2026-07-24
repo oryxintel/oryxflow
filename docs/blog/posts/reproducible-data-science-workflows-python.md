@@ -39,7 +39,7 @@ oryxflow is built around exactly these three. You declare each step of your anal
 
 ### Deterministic identity, and automatic code-change invalidation
 
-The part that's easy to underrate: oryxflow watches your **code**, not just your parameters. It builds an AST-normalized fingerprint of each task's logic plus the project files it transitively imports. Edit the body of `BuildFeatures` — or a helper function it calls — and oryxflow knows that task's output is stale and reruns it and everything downstream. Reformat the code, add a comment, rename a local variable? The normalized fingerprint is unchanged, so nothing reruns. And an expensive upstream step whose code you didn't touch stays cached.
+The part that's easy to underrate: oryxflow watches your **code**, not just your parameters. It tracks each task's logic plus the helper files it imports, comparing what your code *does*, not how it's written. Edit the body of `BuildFeatures` — or a helper function it calls — and oryxflow knows that task's output is stale and reruns it and everything downstream. Reformat the code, add a comment, rename a local variable? Nothing reruns — those don't change what the code does. And an expensive upstream step whose code you didn't touch stays cached.
 
 That's the property that makes the research loop both fast and trustworthy: you can never test new logic against an output the old logic produced, and you never pay to recompute a step that didn't change.
 

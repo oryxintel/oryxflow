@@ -1,3 +1,14 @@
+---
+description: oryxflow makes AI data analysis faster, cheaper, and more trustworthy — a Python library and Claude Code plugin that builds your analysis as a reproducible, cached pipeline that reruns only what changed.
+faq:
+  - q: "Is oryxflow an MCP server?"
+    a: "No. oryxflow ships a Claude Code plugin — a skill plus slash commands — backed by an open-source Python library. The reproducibility work happens locally in that library, not over MCP."
+  - q: "Do I need an AI coding agent to use it?"
+    a: "No. oryxflow is a plain Python library: pip install oryxflow and use it by hand. The Claude Code plugin is optional — it teaches an AI agent to use that same library correctly."
+  - q: "Where does my data go?"
+    a: "Nowhere. oryxflow is local-first and zero-infrastructure — no server, no database, no account, no telemetry. Your code, your cache, your repo."
+---
+
 # oryxflow
 
 **Faster, cheaper, and more trustworthy data analysis — for humans and AI coding agents.**
@@ -9,14 +20,15 @@ Working with an AI agent? The **[Claude Code plugin](docs/claude-code-for-data-s
 teaches Claude Code to build your data analysis as a cached, reproducible pipeline — so
 AI-written analysis is reproducible by default.
 
-You declare each step of your analysis as a **task** — what it depends on and what it produces —
-and the engine runs them in the right order, skips anything already computed, **reruns exactly
-what a parameter, data, or code change affects**, and lets you load any result by name.
+You declare each step of your analysis as a **task**: what it depends on and what it produces. The
+engine runs them in the right order and skips anything already computed. Change a parameter, the
+data, or the code, and it **reruns exactly what that change affects** — then hands you any result
+by name.
 
 It also records **what ran, when, and why**, so "is this result stale?", "was it produced by the
 current code?", and "did I already run this?" become queries, not guesses. The payoff: outputs
-you can **trust** and reproduce, no wasted recomputation, and pipelines that are easy to share —
-instead of a fragile chain of scripts and files you manage by hand. Caching is how it works;
+you can **trust** and reproduce, with no wasted recomputation. Sharing a pipeline replaces the
+fragile chain of scripts and files you used to manage by hand. Caching is how it works;
 **trust is what you get** — [see the full positioning](docs/why-oryxflow.md).
 
 <!--phmdoctest-share-names-->
@@ -81,6 +93,20 @@ them. That is the core payoff: re-running a pipeline only pays for what actually
     AI-assisted data science.
 
 </div>
+
+## Common questions
+
+**Is oryxflow an MCP server?**
+No. oryxflow ships a Claude Code plugin — a skill plus slash commands — backed by an open-source
+Python library. The reproducibility work happens locally in that library, not over MCP.
+
+**Do I need an AI coding agent to use it?**
+No. oryxflow is a plain Python library: `pip install oryxflow` and use it by hand. The Claude Code
+plugin is optional — it teaches an AI agent to use that same library correctly.
+
+**Where does my data go?**
+Nowhere. oryxflow is local-first and zero-infrastructure — no server, no database, no account, no
+telemetry. Your code, your cache, your repo.
 
 ## Learn more
 

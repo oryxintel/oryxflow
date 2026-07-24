@@ -83,15 +83,15 @@ a right one, from a mistake that raised no error. The realistic response isn't t
 is careful; it's to keep the work on a footing where results are reproducible, reruns are
 checkable, and silent errors are caught by habit. The library provides that footing; the plugin
 supplies the habits. Together they don't make the agent trustworthy — they make its work **cheap
-to verify**, which is the more useful thing, and the whole point of *faster, cheaper, and more
+to verify**. That's the more useful thing, and the whole point of *faster, cheaper, and more
 trustworthy* AI data analysis.
 
 **Read next**
 
 - [Why library + plugin is a matched pair](why.md) — the division of labor in full.
-- [Project structure that stays clean](project-structure.md) — the shape that keeps AI code from
+- [The load-bearing project scaffold](project-structure.md) — the shape that keeps AI code from
   rotting.
-- [Coding standards the agent applies](coding-standards.md) — the conventions loaded where the
+- [Data-science coding standards](coding-standards.md) — the conventions loaded where the
   work happens.
 - [What caching does *not* protect against](../managing-workflows.md#what-caching-does-not-protect-against)
   — the full boundary.

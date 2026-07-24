@@ -103,13 +103,12 @@ DVC is the tool people most often conflate with this space, because it *does* do
 pipeline caching. The honest difference is what identity is built from. **DVC hashes
 files and YAML-declared stages**: you describe your pipeline in `dvc.yaml` — each stage's
 command, dependencies, and outputs — and DVC recomputes a stage when a declared file
-hash changes. **oryxflow's identity is native Python task identity — parameters plus an
-automatic code fingerprint, zero config files**: the DAG *is* your `requires()` methods, a
+hash changes. **oryxflow's identity is native Python task identity — parameters plus
+automatic code-change detection, zero config files**: the DAG *is* your `requires()` methods, a
 parameter change is automatically a new cached identity (no stage file to edit), and a
-code change reruns the task and everything downstream on its own — an AST-normalized hash
-of the task's module and its project-local imports, so comment and formatting edits never
-recompute (pin a task with `code_version` when you'd rather manage it by deliberate
-bumps). If your workflow is command-line stages over
+code change reruns the task and everything downstream on its own. It compares what your code
+*does*, not how it's written, so comment and formatting edits never recompute (pin a task with
+`code_version` when you'd rather manage it by deliberate bumps). If your workflow is command-line stages over
 large versioned data files, DVC's file-hash model fits. If your workflow is Python tasks
 you iterate on inside a session — parameter sweeps, per-entity fan-outs — keeping
 identity in the code you're already editing beats maintaining a parallel YAML description

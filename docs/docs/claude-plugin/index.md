@@ -5,10 +5,10 @@ description: The oryxflow Claude Code plugin makes AI-driven data analysis faste
 
 # Build trustworthy AI data analysis with Claude Code
 
-**The oryxflow Claude Code plugin is a skill plus slash commands (not an MCP server) that makes an
-AI coding agent's data analysis reproducible** — it teaches Claude Code to use oryxflow's cache and
-lineage log correctly, so the agent reuses expensive work, verifies its own reruns, and never
-builds on stale data.
+**The oryxflow Claude Code plugin makes an AI coding agent's data analysis reproducible.** It
+teaches Claude Code to use oryxflow's cache and lineage log correctly: the agent reuses expensive
+work, verifies its own reruns, and never builds on stale data. It ships as a skill plus slash
+commands — not an MCP server.
 
 AI coding agents now write real data-science pipelines — feature engineering, model training,
 experiment sweeps. They write plausible code fast. The hard part isn't the code; it's making
@@ -54,14 +54,15 @@ are exactly what oryxflow externalizes into a cache and a lineage log.
 
 The plugin makes the agent *use* that machinery correctly. It:
 
-- **starts every session with `oryxflow.events.print_status()`** — pending warnings, last runs,
-  recent failures — so it never assumes a stale cache is fresh;
-- **verifies after each edit that the intended tasks actually reran** (`result.reasons` /
-  `events.runs()`), so a code-hash blind spot can't pass silently;
-- **answers every staleness or expensive-recompute warning with the right exit** (recompute /
-  `accept_code` / pin — see [Automatic code invalidation](../managing-workflows.md#automatic-code-invalidation));
-- **logs decision-relevant scalars** via `self.logger`, so they persist as lineage across
-  sessions and become the agent's memory next time.
+- **starts every session by reading cache state** — pending warnings, last runs, recent
+  failures — so it never assumes a stale cache is fresh;
+- **verifies after each edit that the intended tasks actually reran**, so a change that should
+  have invalidated downstream work can't pass silently;
+- **answers every staleness or expensive-recompute warning with the right move** — recompute,
+  accept an output-equivalent refactor, or pin — instead of guessing (see
+  [Automatic code invalidation](../managing-workflows.md#automatic-code-invalidation));
+- **records decision-relevant results as lineage**, so they persist across sessions and become
+  the agent's memory next time.
 
 These are the same disciplines documented in the
 [CLAUDE.md snippet for AI-agent projects](../managing-workflows.md#claudemd-snippet-for-ai-agent-projects)
@@ -82,15 +83,15 @@ copy you paste and forget.
     Why you shouldn't take an agent's numbers on faith — and how the plugin makes its work *cheap
     to verify* instead: session status, rerun verification, and durable lineage.
 
--   :material-file-tree: **[Project structure that stays clean](project-structure.md)**
+-   :material-file-tree: **[Data-science project structure](project-structure.md)**
 
-    The load-bearing scaffold that keeps AI-generated code from rotting — separation of concerns
-    that's the shape of the code, not just its filing — and grows with the project.
+    The load-bearing scaffold that keeps AI-generated data-science code from rotting — separation
+    of concerns that's the shape of the code, not just its filing — and grows with the project.
 
--   :material-format-list-checks: **[Coding standards the agent applies](coding-standards.md)**
+-   :material-format-list-checks: **[Data-science coding standards](coding-standards.md)**
 
     Canonical names, code grouped by subject, docstrings as documentation — loaded into the
-    agent's context so they shape the code as it's written, not audited after.
+    agent's context so they shape the analysis code as it's written, not audited after.
 
 -   :material-shield-check: **[Why library + plugin is a matched pair](why.md)**
 

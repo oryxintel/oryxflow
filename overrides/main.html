@@ -30,6 +30,7 @@
         "applicationSubCategory": "Data-science pipeline & workflow library",
         "operatingSystem": "Windows, macOS, Linux",
         "description": "oryxflow is an open-source Python library and Claude Code plugin that makes AI data analysis faster, cheaper, and more trustworthy: declare your analysis as cached, reproducible tasks and the engine reruns exactly what a parameter, data, or code change affects.",
+        "dateModified": {{ page.meta.git_revision_date_localized | tojson }},
         "url": "https://docs.oryxflow.dev/",
         "downloadUrl": "https://pypi.org/project/oryxflow/",
         "installUrl": "https://pypi.org/project/oryxflow/",
@@ -58,6 +59,33 @@
         ]
       }
     ]
+  }
+  </script>
+  {% endif %}
+  {% if page and not page.is_homepage %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": {{ page.title | tojson }},
+    {% if page.meta and page.meta.description %}"description": {{ page.meta.description | tojson }},{% endif %}
+    {% if page.canonical_url %}"url": {{ page.canonical_url | tojson }},
+    "mainEntityOfPage": { "@type": "WebPage", "@id": {{ page.canonical_url | tojson }} },{% endif %}
+    {% if page.meta and page.meta.git_revision_date_localized %}"dateModified": {{ page.meta.git_revision_date_localized | tojson }},{% endif %}
+    "isPartOf": {
+      "@type": "SoftwareApplication",
+      "@id": "https://docs.oryxflow.dev/#software",
+      "name": "oryxflow",
+      "url": "https://docs.oryxflow.dev/"
+    },
+    "about": { "@id": "https://docs.oryxflow.dev/#software" },
+    "author": {
+      "@type": "Organization",
+      "@id": "https://oryxflow.dev/#org",
+      "name": "Oryx Intelligence LLC",
+      "url": "https://oryxflow.dev/"
+    },
+    "publisher": { "@id": "https://oryxflow.dev/#org" }
   }
   </script>
   {% endif %}

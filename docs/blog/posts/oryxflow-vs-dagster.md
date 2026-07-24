@@ -61,10 +61,10 @@ parameters — not a YAML asset definition or a catalog entry.
 
 ## What about reruns when I change my code?
 
-This is the move oryxflow is built around. It fingerprints each task's code — AST-normalized, so
-comments and reformatting don't count — *and* the project files it transitively imports. Edit one
-task, or a helper it imports, and on the next `run()` oryxflow reruns exactly that task and
-everything downstream, while the expensive upstream stays cached. Change nothing and it recomputes
+This is the move oryxflow is built around. It tracks each task's code — and every helper file it
+imports — comparing what your code *does*, not how it's written, so comments and reformatting
+don't count. Edit one task, or a helper it imports, and on the next `run()` oryxflow reruns exactly
+that task and everything downstream, while the expensive upstream stays cached. Change nothing and it recomputes
 nothing.
 
 ```python

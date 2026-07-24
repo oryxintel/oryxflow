@@ -129,10 +129,10 @@ class TrainModel(oryxflow.tasks.TaskPickle):
         mlflow.log_metric('score', clf.score(...))
 ```
 
-What oryxflow adds that a tracker structurally can't: it fingerprints each task's code with an
-**AST-normalized hash of the task and its project-local imports**, so editing a function's logic
-(or a helper it calls) reruns exactly the affected tasks and everything downstream — while cosmetic
-edits like comments never recompute. It writes a greppable lineage trail to
+What oryxflow adds that a tracker structurally can't: it tracks each task's code — and the helper
+files it imports. Editing a function's logic (or a helper it calls) reruns exactly the affected
+tasks and everything downstream, while cosmetic edits like comments never recompute, because it
+compares what your code *does*, not how it's written. It writes a greppable lineage trail to
 `.oryxflow/events.jsonl`, so you can trace any output back to what produced it. And it's genuinely
 local-first: no server, no database, no account, no telemetry.
 

@@ -29,7 +29,7 @@ Yes — and this is the part most comparisons get wrong, so let's be precise. Pr
 The difference is where the effort lives. In Prefect, caching is something you **configure**: you decide the cache key, you wire the result storage. In oryxflow, caching is the **default behavior** and it's automatic by `(code, params)` — there is no cache key to write. And critically, oryxflow's cache is **code-change-aware**:
 
 - Edit a task's logic — or a helper function it imports, transitively — and that task reruns on the next run, along with everything downstream.
-- Edit a comment, reformat, rename a local variable cosmetically — the fingerprint is AST-normalized, so nothing recomputes.
+- Edit a comment, reformat, rename a local variable cosmetically — oryxflow compares what your code *does*, not how it's written, so nothing recomputes.
 
 You never hand-author a cache key that says "invalidate when the code changes," because the code *is* the key. That's the property you want in a research loop, where the code changes constantly and getting the invalidation boundary wrong means either stale results or a full rerun.
 

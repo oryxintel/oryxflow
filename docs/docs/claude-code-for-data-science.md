@@ -14,10 +14,10 @@ faq:
 
 # Claude Code for data science: plugins and skills for reproducible AI data analysis
 
-**oryxflow is a Claude Code plugin (and the Python library behind it) that makes AI data
-analysis faster, cheaper, and more trustworthy** — it teaches your coding agent to build the
-work as a cached, reproducible pipeline, so it reuses expensive results instead of recomputing
-them and never trains a model on stale data.
+**oryxflow makes AI data analysis faster, cheaper, and more trustworthy.** It's a Claude Code
+plugin, backed by a Python library, that teaches your coding agent to build the work as a
+reproducible pipeline. The agent reuses expensive results instead of recomputing them — and never
+trains a model on stale data.
 
 If you only remember one thing: AI writes the analysis fast, but the hard part — *is it
 reproducible, and did the right data produce this result?* — is exactly what a plugin can enforce
@@ -86,11 +86,10 @@ agent *use* it correctly. Concretely, the plugin has the agent:
 - **record decision-relevant results as lineage**, so they become the agent's memory across
   sessions.
 
-Underneath, the library gives each step a reproducible identity from its parameters *and* an
-automatic fingerprint of its code, caches its output, and reruns exactly what a parameter, data,
-or **code** change affects. The payoff is the brand promise, delivered mechanically:
-**faster, cheaper, and more trustworthy AI data analysis** — reproducible and lineage-tracked by
-default. See [Why oryxflow](why-oryxflow.md) for the full picture.
+Underneath, the library gives each step a reproducible identity from its parameters and its code,
+caches its output, and reruns exactly what a parameter, data, or **code** change affects. That
+delivers the brand promise mechanically: **faster, cheaper, and more trustworthy AI data
+analysis** — reproducible and lineage-tracked by default. See [Why oryxflow](why-oryxflow.md) for the full picture.
 
 ## Install
 

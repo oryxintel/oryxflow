@@ -123,13 +123,13 @@ and re-running either one reuses whichever upstream work it shares.
 ## Editing a step invalidates exactly what changed
 
 Here's the property that hand-rolled caches can't offer, and the reason reuse is safe:
-oryxflow fingerprints each task's *code*. It parses the task (and the project files it
-imports) into a normalized form and hashes the logic. When you edit the body of
-`build_features`, that fingerprint changes, so `BuildFeatures` and everything downstream of
+oryxflow tracks each task's *code* — and the helper files it imports — comparing what your
+code *does*, not how it's written. When you edit the body of
+`build_features`, oryxflow sees the change, so `BuildFeatures` and everything downstream of
 it (`FitModel`) are marked stale and rerun on the next `flow.run()`. The expensive
 `LoadRaw` step upstream is untouched and stays cached.
 
-Crucially, the fingerprint is over *logic*, not text. Rename a local variable for
+Crucially, what counts is *logic*, not text. Rename a local variable for
 clarity, reflow a line, or add a comment, and nothing reruns — a cosmetic edit isn't a
 behavior change, so oryxflow doesn't waste your time rebuilding for it. Change an actual
 computation and the affected band of the DAG rebuilds automatically. You get the reuse of

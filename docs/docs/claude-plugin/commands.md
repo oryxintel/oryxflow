@@ -43,6 +43,6 @@ right way. That ongoing discipline is the subject of
 [Trustworthy AI data analysis](trust.md) and [Why library + plugin is a matched pair](why.md).
 
 The `init-project` scaffold and the graduated path a growing project follows are covered in
-[Project structure that stays clean](project-structure.md); the naming, code-organization, and
+[data-science project structure](project-structure.md); the naming, code-organization, and
 docstring conventions `check-standards` enforces are in
-[Coding standards the agent applies](coding-standards.md).
+[data-science coding standards](coding-standards.md).

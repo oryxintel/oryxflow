@@ -71,7 +71,7 @@ flow.get_task().output().path # where is output saved?
 flow.get_task().output()['output1'].path # multiple outputs
 ```
 
-Every task also carries one more completeness condition: its stored *code fingerprint* must still match its current code. By default the fingerprint is computed automatically (an AST hash of the task's module and its project-local imports), so editing a task's logic — or a helper it imports — makes it incomplete even though its output file is still on disk: "the output exists" never silently masks a code change. A task that declares an explicit `code_version` is pinned instead: only bumping the token moves its fingerprint (edits without a bump produce a staleness warning). Be honest about the limit: the fingerprint sees your task code and the project-local modules it imports, but **not** data-file contents or external APIs — a cache hit is not proof of freshness for those (reset is the verb there). See [Code changes: handled automatically](managing-workflows.md#automatic-code-invalidation) for the full model.
+Every task also carries one more completeness condition: its code must still match the version that produced its output. By default this is tracked automatically — comparing what the task's code *does*, not how it's written — so editing a task's logic (or a helper it imports) makes it incomplete even though its output file is still on disk: "the output exists" never silently masks a code change. A task that declares an explicit `code_version` is pinned instead: only bumping the token marks it changed (edits without a bump produce a staleness warning). Be honest about the limit: code-change detection sees your task code and the project-local modules it imports, but **not** data-file contents or external APIs — a cache hit is not proof of freshness for those (reset is the verb there). See [Code changes: handled automatically](managing-workflows.md#automatic-code-invalidation) for the full model.
 
 ### Task Completion with Parameters
 
@@ -129,7 +129,7 @@ You have several options to force tasks to reset and rerun. See sections below o
 
 !!! tip
 
-    Editing a task's code with unchanged parameters is handled for you: the code fingerprint moves and the task plus everything downstream recompute on the next run — no reset, no version to bump (see [Code changes: handled automatically](managing-workflows.md#automatic-code-invalidation)). Only tasks pinned with an explicit `code_version` need a bump in the same edit; the staleness advisory warns if you forget. Resets remain for what the hash can't see (data files, external APIs, a suspect cache). The [Claude Code plugin](claude-plugin/index.md) bakes this loop in for AI-driven projects: after each edit it verifies the intended tasks actually reran and answers warnings with the right exit.
+    Editing a task's code with unchanged parameters is handled for you: the task plus everything downstream recompute on the next run — no reset, no version to bump (see [Code changes: handled automatically](managing-workflows.md#automatic-code-invalidation)). Only tasks pinned with an explicit `code_version` need a bump in the same edit; the staleness advisory warns if you forget. Resets remain for what the hash can't see (data files, external APIs, a suspect cache). The [Claude Code plugin](claude-plugin/index.md) bakes this loop in for AI-driven projects: after each edit it verifies the intended tasks actually reran and answers warnings with the right exit.
 
 ```python
 # preferred way: reset single task, this will automatically run all upstream dependencies
@@ -178,8 +178,8 @@ Mental model: `reset` = one node; `reset_upstream` = the cone *above* a node (op
 Three things make a cached result out of date, and each has its *own* right verb — reset is only one of them:
 
 - **parameters changed** → nothing to do; a new parameter is a new identity and reruns automatically, keeping the outputs for each parameter set side by side.
-- **code changed** (this task's `run()` or a helper it imports) → nothing to do; the code fingerprint moves and the task plus everything downstream recompute. Don't hand-chain resets for code changes. (A task pinned with an explicit `code_version` is the exception: bump its token in the same edit.)
-- **data or an external input changed** (a raw file, an API response — things the code fingerprint can't see) → **reset** the task that ingests it.
+- **code changed** (this task's `run()` or a helper it imports) → nothing to do; the task plus everything downstream recompute automatically. Don't hand-chain resets for code changes. (A task pinned with an explicit `code_version` is the exception: bump its token in the same edit.)
+- **data or an external input changed** (a raw file, an API response — things code-change detection can't see) → **reset** the task that ingests it.
 
 The full "which verb, when" decision table is in [Managing Complex Workflows](managing-workflows.md#managing-complex-workflows). The sections below cover each case.
 
@@ -220,11 +220,11 @@ class TaskPreprocess(oryxflow.tasks.TaskCachePandas):
 
 ### Handling Data Change
 
-A raw data file or an external API response is invisible to oryxflow — no parameter and no code fingerprint moves, so nothing reruns on its own. When you know an input changed, `reset()` the task that *ingests* it (the loader/source task) so the recompute starts where the new data enters and cascades downstream. Resetting a task further downstream would just reload the same cached old input.
+A raw data file or an external API response is invisible to oryxflow — no parameter changes and no code change is detected, so nothing reruns on its own. When you know an input changed, `reset()` the task that *ingests* it (the loader/source task) so the recompute starts where the new data enters and cascades downstream. Resetting a task further downstream would just reload the same cached old input.
 
 ### Handling Code Change
 
-Code changes need no action: oryxflow hashes each task's module and the project-local modules it imports (ignoring comment/docstring/formatting-only edits), and a real logic change reruns the task *and everything downstream* on the next run, with no resets to chain. Verify it took — `result.reasons` shows `code change (auto: <file>)` — and if an expected rerun didn't happen, the change is in a hash blind spot (data file, installed package, dynamic call): reset it. Two deliberate exceptions hold their cache and **warn** instead of rerunning: tasks pinned with an explicit `code_version` (recompute only on a bump) and expensive tasks whose last run exceeded `settings.code_version_auto_expensive_s` (default 600s — answer with reset / `accept_code` / pin). See [Code changes: handled automatically](managing-workflows.md#automatic-code-invalidation) for the full model, the pin workflow, the three exits (recompute / `accept_code` / reset), and `keep_versions` for keeping old versions side by side.
+Code changes need no action: oryxflow compares what each task's code *does*, not how it's written — so editing a task's logic (or a helper it imports) reruns the task *and everything downstream* on the next run, while comment, docstring, and formatting-only edits are ignored, with no resets to chain. Verify it took — `result.reasons` shows `code change (auto: <file>)` — and if an expected rerun didn't happen, the change is somewhere it can't see (data file, installed package, dynamic call): reset it. Two deliberate exceptions hold their cache and **warn** instead of rerunning: tasks pinned with an explicit `code_version` (recompute only on a bump) and expensive tasks whose last run exceeded `settings.code_version_auto_expensive_s` (default 600s — answer with reset / `accept_code` / pin). See [Code changes: handled automatically](managing-workflows.md#automatic-code-invalidation) for the full model, the pin workflow, the three exits (recompute / `accept_code` / reset), and `keep_versions` for keeping old versions side by side.
 
 ### Forcing a Single Task to Run
 

@@ -72,10 +72,10 @@ rebuild. The honest breakdown:
   doesn't cross a declared boundary is invisible to it.
 - **ZenML** caches at the step level and is the closest competitor here — but the cache key is the
   step's own code and inputs, so an edit to a *helper* the step calls isn't automatically caught.
-- **oryxflow** fingerprints each task's own code **plus every project-local symbol it references,
-  transitively** — so editing a helper function reruns exactly the tasks that use it, and
-  everything downstream, automatically. Cosmetic edits (comments, formatting) never recompute
-  because the hash is taken after AST normalization, and the rerun reason even names the changed
+- **oryxflow** tracks each task's own code **plus every helper it references** — so editing a
+  helper function reruns exactly the tasks that use it, and everything downstream, automatically.
+  Cosmetic edits (comments, formatting) never recompute because oryxflow compares what your code
+  *does*, not how it's written, and the rerun reason even names the changed
   symbol: `code change (auto: features.py::build_features)`.
 
 That helper-aware, per-symbol invalidation is the single capability the rest of the field doesn't

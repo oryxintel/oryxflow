@@ -3,7 +3,7 @@ date: 2026-07-11
 slug: caching-dag-for-ai-coding-agents
 categories:
   - AI agents
-description: AI agents like Claude Code now write real data science pipelines — feature engineering, model training, experiment sweeps. Here's the honest account of where they fail at it, and w
+description: AI agents like Claude Code now write real data science pipelines — feature engineering, model training, experiment sweeps. Here's the honest account of where they fail at it, and why a lightweight workflow library removes exactly those failures.
 ---
 
 # Why a caching DAG makes your AI coding agent a better data scientist
@@ -164,16 +164,16 @@ complex projects where the library otherwise shines.
 1. **Code-change invalidation is automatic — but its blind spots are mine to watch.**
    *(Addressed as of oryxflow 26.7.12.)* oryxflow caches a task's output by its class and
    parameters — so editing the code inside `run()` used to silently reuse the stale output.
-   Now the library fingerprints every task's code for me: it hashes the task's module and
-   its transitively imported project files (AST-normalized, so comment and formatting edits
-   never count), and a real logic change reruns the task **and everything downstream** on
-   the next run — no attribute to maintain, no `reset()` chains, no act of memory. Two
+   Now the library tracks every task's code for me. Edit a task — or a helper it calls — and
+   the next run recomputes that task **and everything downstream**, automatically. Comments
+   and formatting changes are ignored, so only real logic edits trigger a rerun. No attribute
+   to maintain, no `reset()` chains, nothing to remember. Two
    deliberate exceptions hold their cache and *warn* instead: tasks I pin with an explicit
-   `code_version` (recompute only on my bump — for logic the hash can't see, or where a
+   `code_version` (recompute only on my bump — for logic the detection can't see, or where a
    recompute must be a decision), and expensive tasks whose last run exceeded a threshold,
-   so a refactor can't silently burn a 40-minute backtest. The residual honesty: the hash
-   can't see data files, external APIs or dynamic dispatch — where it can't see, it stays
-   silent rather than pretending to verify. So my remaining discipline is *verification,
+   so a refactor can't silently burn a 40-minute backtest. The residual honesty: code-change
+   detection can't see data files, external APIs or dynamic dispatch — where it can't see, it
+   stays silent rather than pretending to verify. So my remaining discipline is *verification,
    not invalidation*: after an edit, the next run must show the edited band in
    `result.ran` with reason `code change (auto: <files>)`; a `ran=0` after an edit means
    the change lives in a blind spot, and `reset()` is the verb there.
@@ -224,10 +224,10 @@ together, see [Claude Code for data science](../../docs/claude-code-for-data-sci
 Working from the failure modes above, the highest-leverage improvements are the ones that
 would close the mechanical gaps automatically instead of relying on discipline:
 
-1. **Code-aware invalidation.** ✅ *Shipped in 26.7.12 — fully automatic.* The
-   AST-normalized, transitive hash *drives* reruns by default: edit a task or a helper it
-   imports and the affected band recomputes, cosmetic edits never do. `code_version` is the
-   opt-in pin for logic the hash can't see or recomputes that must be deliberate (with
+1. **Code-aware invalidation.** ✅ *Shipped in 26.7.12 — fully automatic.* Code-change
+   detection *drives* reruns by default: edit a task or a helper it imports and the affected
+   band recomputes, cosmetic edits never do. `code_version` is the
+   opt-in pin for logic the detection can't see or recomputes that must be deliberate (with
    mode-aware records, so pinning/unpinning unchanged code never recomputes), and an
    expensive-recompute guard keeps a refactor from silently burning a long run. Blind spots
    (data files, dynamic dispatch) degrade to parameters-only caching — never a false rerun,

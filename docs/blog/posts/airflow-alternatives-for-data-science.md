@@ -125,8 +125,8 @@ its output; the engine runs the DAG in dependency order and reuses everything th
 valid. It's a `pip install` — no server, no database, no account, no telemetry.
 
 The part that makes it distinct from the orchestrators above is how it decides what's stale.
-oryxflow fingerprints each task's code — AST-normalized, so comments and reformatting don't
-count — *plus every project-local helper it references, transitively*. Edit one function and
+oryxflow tracks each task's code — and every helper it references — comparing what your code
+*does*, not how it's written, so comments and reformatting don't count. Edit one function and
 the next run recomputes exactly the tasks that use it and everything downstream, while the
 expensive upstream stays cached. Every run appends to a plain, greppable lineage log at
 `.oryxflow/events.jsonl`, so you can trace any output back to the code and inputs that made
