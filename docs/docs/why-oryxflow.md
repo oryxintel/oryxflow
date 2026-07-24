@@ -48,7 +48,7 @@ they get worse, not better, as an AI agent writes more of the code.
   as an auto-activating skill, so the agent uses the cache correctly instead of trusting stale
   state.
 
-Caching is the *engine*. Trust — reproducible, lineage-tracked, correct-by-default results — is
+Caching is the *engine*. Trust — reproducible, lineage-tracked, and correct-by-default *reruns* — is
 the *product*.
 
 ## When to use oryxflow
@@ -75,7 +75,7 @@ Being honest about fit is part of being trustworthy:
   an experiment tracker's job (MLflow, Weights & Biases) — and oryxflow composes cleanly beside
   one.
 
-## How oryxflow compares
+## oryxflow vs MLflow, Airflow, and DVC — which do I need?
 
 oryxflow doesn't replace trackers or orchestrators; it fills the gap between an ad-hoc script
 and a heavyweight platform. What's distinctive is the **combination** of local-first
@@ -134,8 +134,8 @@ what ran and why is written to a lineage log you can query later.
 
 ## Takeaway
 
-- oryxflow makes iterative data analysis **reproducible, lineage-tracked, and
-  correct-by-default** — for humans and AI agents.
+- oryxflow makes iterative data analysis **reproducible and lineage-tracked**, with the right
+  steps rebuilding automatically — for humans and AI agents.
 - It's **local-first and zero-infrastructure**: `pip install oryxflow`, no server or account.
 - **Caching is how it works; trust is what you get.** Faster and cheaper reruns come for free.
 - It **composes** with the tools you already use — trackers for dashboards, orchestrators for

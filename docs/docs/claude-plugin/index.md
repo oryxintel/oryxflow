@@ -5,6 +5,11 @@ description: The oryxflow Claude Code plugin makes AI-driven data analysis faste
 
 # Build trustworthy AI data analysis with Claude Code
 
+**The oryxflow Claude Code plugin is a skill plus slash commands (not an MCP server) that makes an
+AI coding agent's data analysis reproducible** — it teaches Claude Code to use oryxflow's cache and
+lineage log correctly, so the agent reuses expensive work, verifies its own reruns, and never
+builds on stale data.
+
 AI coding agents now write real data-science pipelines — feature engineering, model training,
 experiment sweeps. They write plausible code fast. The hard part isn't the code; it's making
 that code **trustworthy**: not silently rerunning expensive steps, not building on stale

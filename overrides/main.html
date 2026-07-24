@@ -1,12 +1,17 @@
 {#-
   Material for MkDocs theme override.
 
-  Adds JSON-LD structured data to the docs home page for E-E-A-T signals and
-  AI-Overview / answer-engine eligibility. Home page only (page.is_homepage),
-  so we describe the *product* once rather than repeating it on every page.
-  A single SoftwareApplication node (oryxflow) + the publishing Organization,
-  cross-linked via sameAs to the canonical GitHub + PyPI identities so answer
-  engines resolve "oryxflow" to one entity.
+  Adds JSON-LD structured data for E-E-A-T signals and AI-Overview / answer-engine
+  eligibility.
+
+  1. Home page only (page.is_homepage): a single SoftwareApplication node (oryxflow)
+     + the publishing Organization, cross-linked via sameAs to the canonical GitHub +
+     PyPI identities so answer engines resolve "oryxflow" to one entity.
+  2. Any page (blog or docs) that declares a `faq:` list in its front-matter emits a
+     FAQPage node built from those question/answer pairs. Keep each `a:` faithful to the
+     page's *visible* Q&A prose — Google requires the structured answer to match what the
+     reader sees. Front-matter-driven (not hand-written JSON) so the schema can't drift
+     from the prose.
 -#}
 {% extends "base.html" %}
 
@@ -52,6 +57,23 @@
           "https://github.com/oryxintel"
         ]
       }
+    ]
+  }
+  </script>
+  {% endif %}
+  {% if page and page.meta and page.meta.faq %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {% for qa in page.meta.faq -%}
+      {
+        "@type": "Question",
+        "name": {{ qa.q | tojson }},
+        "acceptedAnswer": { "@type": "Answer", "text": {{ qa.a | tojson }} }
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
     ]
   }
   </script>

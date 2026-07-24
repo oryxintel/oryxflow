@@ -15,10 +15,10 @@
 site_name: oryxflow
 site_url: https://docs.oryxflow.dev/
 site_description: >-
-  For data scientists and data engineers, oryxflow is a python library that makes building
-  complex data science workflows easy, fast and intuitive: declare tasks, and the engine runs
-  the DAG in order, skips what is already computed, and reruns exactly what a parameter, data,
-  or code change affects.
+  oryxflow is an open-source Python library and Claude Code plugin for faster, cheaper, more
+  reliable AI data analysis: it makes your data-science pipeline reproducible and lineage-tracked,
+  caching results and rerunning exactly what a parameter, data, or code change affects —
+  local-first, no server or account.
 site_author: Oryx Intelligence LLC
 copyright: Copyright &copy; 2026 Oryx Intelligence LLC
 

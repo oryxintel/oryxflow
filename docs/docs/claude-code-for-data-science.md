@@ -1,6 +1,15 @@
 ---
 title: Claude Code for data science
 description: The oryxflow plugin turns Claude Code into a data-science agent whose analysis is reproducible by default — it caches your pipeline, reruns only what changed, and never builds on stale data. What Claude Code plugins and skills for data science do, and how to make AI data analysis you can trust.
+faq:
+  - q: "Does oryxflow work with any AI coding agent, or only Claude Code?"
+    a: "The library is a plain Python package — it works no matter who writes the code, including you by hand. The plugin packages the disciplines specifically for Claude Code; other agents can follow the same CLAUDE.md conventions manually."
+  - q: "Is it an MCP server?"
+    a: "No. oryxflow ships a Claude Code plugin (skill + slash commands). The reproducibility work happens in the local library, not over MCP."
+  - q: "Where does my data go?"
+    a: "Nowhere. It's local-first and zero-infrastructure — no server, no database, no account, no telemetry. Your code, your cache, your repo."
+  - q: "Do I have to restructure my project to use it?"
+    a: "No — adopt it one task at a time. Point the agent at an existing script with /oryxflow:migrate, or start fresh with /oryxflow:init-project."
 ---
 
 # Claude Code for data science: plugins and skills for reproducible AI data analysis
@@ -185,7 +194,8 @@ or start fresh with `/oryxflow:init-project`.
 ## Takeaway
 
 - Claude Code writes data analysis fast; **oryxflow makes that analysis reproducible** — cached,
-  lineage-tracked, and correct-by-default.
+  lineage-tracked, and reproducible-by-default, so a code, data, or parameter change reruns exactly
+  what it affects.
 - It's a **plugin (skill + slash commands)**, not an MCP server, driving a local, MIT-licensed
   library — no server, no account, no telemetry.
 - **Faster, cheaper, and more trustworthy AI data analysis**: the agent reuses expensive work,
