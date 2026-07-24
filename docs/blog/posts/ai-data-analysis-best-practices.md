@@ -163,6 +163,7 @@ pip install oryxflow
 
 **Read next**
 
+- [Claude Code for data science](../../docs/claude-code-for-data-science.md)
 - [Why a caching DAG makes your AI coding agent a better data scientist](caching-dag-for-ai-agents.md)
 - [When *not* to use oryxflow](when-not-to-use-oryxflow.md)
 - [From notebook to pipeline](notebook-to-pipeline.md)

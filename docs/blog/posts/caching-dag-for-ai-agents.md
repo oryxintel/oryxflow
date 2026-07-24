@@ -216,7 +216,8 @@ That produces a clean division of labor:
   warnings with the right exit, and the multi-input API.
 
 And this pairing gets *more* valuable as complexity rises, not less — the opposite of most
-tooling, which buckles under scale.
+tooling, which buckles under scale. For the full picture of how the library and plugin work
+together, see [Claude Code for data science](../../docs/claude-code-for-data-science.md).
 
 ## What would make oryxflow even better for AI-driven data science
 
