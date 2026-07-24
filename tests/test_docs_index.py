@@ -4,7 +4,7 @@ import pytest
 from phmdoctest.fixture import managenamespace
 
 
-def test_code_16(managenamespace):
+def test_code_24(managenamespace):
     import oryxflow
     import pandas as pd
 
