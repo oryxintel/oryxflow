@@ -4,6 +4,13 @@ slug: why-machine-learning-code-is-bad
 categories:
   - Machine learning
 description: The four ways a typical chain-of-functions ML script goes wrong — and what fixes them.
+faq:
+  - q: "Why does my machine learning code become unreliable over time?"
+    a: "A typical ML script chains functions linearly, so you manually track which functions ran with which parameters and where each output was saved. As complexity grows, that bookkeeping breaks: stale intermediate files, forgotten reruns after a parameter change, and pickle outputs that aren't compressed or portable. Writing the workflow as a DAG of tasks fixes it — oryxflow reruns a task automatically when its inputs or parameters change, so results stay consistent with the code that produced them."
+  - q: "How do I make ML code reproducible without a big framework?"
+    a: "Express your workflow as a small dependency graph instead of a linear chain of functions. In oryxflow each step is a task that declares what it requires, loads its inputs, and saves its output; the engine runs dependencies in the right order, caches each result, and reruns a step only when its code or parameters change. It's a local, zero-infrastructure Python library — no scheduler or server — so you get reproducibility and cached reruns without adopting Airflow-scale tooling."
+  - q: "Should I use Airflow or Luigi for a data science workflow?"
+    a: "Airflow and Luigi are built for ETL and production scheduling, not the data-science research loop. For iterating on models locally — where you want cached outputs, automatic reruns when code or parameters change, and lineage without standing up a server — a lightweight task graph fits better. oryxflow gives you the DAG model for data science specifically: declare dependencies, load inputs, save outputs, and skip anything already computed."
 ---
 
 # 4 Reasons why your machine learning code is bad
@@ -305,3 +312,19 @@ print(sklearn.metrics.accuracy_score(df_train['y'],model.predict(df_train.iloc[:
 
 
 Writing machine learning code as a linear series of functions likely creates many workflow problems. Because of the complex dependencies between different ML tasks it is better to write them as a DAG. oryxflow makes it very easy for you. Alternatively you can use luigi and airflow but they are more optimized for ETL than data science.
+
+
+
+## Frequently asked questions
+
+### Why does my machine learning code become unreliable over time?
+
+A typical ML script chains functions linearly, so you manually track which functions ran with which parameters and where each output was saved. As complexity grows, that bookkeeping breaks: stale intermediate files, forgotten reruns after a parameter change, and pickle outputs that aren't compressed or portable. Writing the workflow as a DAG of tasks fixes it — oryxflow reruns a task automatically when its inputs or parameters change, so results stay consistent with the code that produced them.
+
+### How do I make ML code reproducible without a big framework?
+
+Express your workflow as a small dependency graph instead of a linear chain of functions. In oryxflow each step is a task that declares what it requires, loads its inputs, and saves its output; the engine runs dependencies in the right order, caches each result, and reruns a step only when its code or parameters change. It's a local, zero-infrastructure Python library — no scheduler or server — so you get reproducibility and cached reruns without adopting Airflow-scale tooling.
+
+### Should I use Airflow or Luigi for a data science workflow?
+
+Airflow and Luigi are built for ETL and production scheduling, not the data-science research loop. For iterating on models locally — where you want cached outputs, automatic reruns when code or parameters change, and lineage without standing up a server — a lightweight task graph fits better. oryxflow gives you the DAG model for data science specifically: declare dependencies, load inputs, save outputs, and skip anything already computed.

@@ -5,8 +5,8 @@ categories:
   - AI agents
 description: A practical roundup of the best Claude Code plugins and tools for data science, chosen by the job each one does — reproducibility, data access, notebooks, and experiment tracking.
 faq:
-  - q: "Is the oryxflow plugin an MCP server?"
-    a: "No. The oryxflow plugin is a Claude Code plugin — a skill plus slash commands — not an MCP server. It activates inside your Claude Code session when you're working in an oryxflow project and shapes how the agent writes and runs tasks. MCP connectors solve a different job — reaching data — and the two compose well together."
+  - q: "What are the best Claude Code plugins for data science?"
+    a: "The best Claude Code plugin depends on the job: use an MCP connector to reach your data, a notebook tool to explore, an experiment tracker to compare runs, and oryxflow to make the pipeline itself reproducible and cached — so the agent reuses expensive results and never builds on stale data. They compose rather than compete: reach data with a connector, wire and cache the steps with oryxflow, and log outcomes to your tracker. Note oryxflow is a skill plus slash commands, not an MCP server."
   - q: "What's the best plugin for keeping AI-generated pipelines reproducible?"
     a: "If the worry is that an agent will build on stale data or produce a result you can't recreate, the oryxflow plugin is the strongest fit, because it's backed by a caching task-graph engine that makes reproducibility a structural property rather than a discipline you have to remember."
   - q: "Do I have to choose one tool?"
@@ -142,13 +142,14 @@ cached tasks and you get both: a reproducible graph and a searchable record. We 
 
 ## FAQ
 
-### Is the oryxflow plugin an MCP server?
+### What are the best Claude Code plugins for data science?
 
-No. The oryxflow plugin is a **Claude Code plugin** — a skill plus slash commands — not an
-MCP server. It doesn't run as a separate connector process; it activates inside your Claude
-Code session when you're working in an oryxflow project and shapes how the agent writes and
-runs tasks. MCP connectors (for databases, files, APIs) solve a different job — reaching
-data — and the two compose well together.
+The best Claude Code plugin depends on the job: use an **MCP connector** to reach your data, a
+**notebook tool** to explore, an **experiment tracker** to compare runs, and **oryxflow** to make
+the pipeline itself reproducible and cached — so the agent reuses expensive results and never
+builds on stale data. They compose rather than compete: reach data with a connector, wire and
+cache the steps with oryxflow, and log outcomes to your tracker. Note oryxflow is a skill plus
+slash commands, not an MCP server.
 
 ### What's the best plugin for keeping AI-generated pipelines reproducible?
 

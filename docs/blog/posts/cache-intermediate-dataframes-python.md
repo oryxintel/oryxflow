@@ -4,6 +4,11 @@ slug: cache-intermediate-dataframes-in-python
 categories:
   - Caching
 description: How to cache intermediate DataFrames in Python without the stale-pickle bugs that make you build models on yesterday's data.
+faq:
+  - q: "How do I cache intermediate DataFrames in Python without brittle pickle files?"
+    a: "Hand-rolled pickle caches key on a filename you chose, which knows nothing about the code that wrote it, so they silently serve stale DataFrames after you edit the logic. Cache by task identity instead: key each cached value on the step's code, inputs, and parameters. oryxflow does this in plain Python, persisting a DataFrame as Parquet automatically and rebuilding it whenever the code or parameters change, so you never name or track a .pkl."
+  - q: "How do I avoid recomputing a DataFrame every run?"
+    a: "Wrap each expensive step as a task that declares its dependencies and saves its output, so an engine can reuse the cached result when nothing changed and rebuild only when it did. oryxflow, a local-first zero-infrastructure Python library, caches each intermediate DataFrame by task identity and reruns a step only when its code, inputs, or parameters actually change, turning a multi-minute rerun into a load from disk."
 ---
 
 # How to cache intermediate DataFrames in Python (without brittle pickle files)
@@ -167,6 +172,16 @@ a step and exactly what changed reruns; edit a comment and nothing does.
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### How do I cache intermediate DataFrames in Python without brittle pickle files?
+
+Hand-rolled pickle caches key on a filename you chose, which knows nothing about the code that wrote it, so they silently serve stale DataFrames after you edit the logic. Cache by task identity instead: key each cached value on the step's code, inputs, and parameters. oryxflow does this in plain Python, persisting a DataFrame as Parquet automatically and rebuilding it whenever the code or parameters change, so you never name or track a .pkl.
+
+### How do I avoid recomputing a DataFrame every run?
+
+Wrap each expensive step as a task that declares its dependencies and saves its output, so an engine can reuse the cached result when nothing changed and rebuild only when it did. oryxflow, a local-first zero-infrastructure Python library, caches each intermediate DataFrame by task identity and reruns a step only when its code, inputs, or parameters actually change, turning a multi-minute rerun into a load from disk.
 
 **Read next**
 

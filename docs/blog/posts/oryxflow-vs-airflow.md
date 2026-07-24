@@ -4,6 +4,11 @@ slug: oryxflow-vs-airflow
 categories:
   - Comparisons
 description: Airflow orchestrates scheduled production pipelines; oryxflow caches an iterative research loop. A clear-eyed comparison of when you need a scheduler and when you need a code-aware cache — and why they're complementary, not competitors.
+faq:
+  - q: "Is Airflow overkill for a local data science project?"
+    a: "For a scheduled production pipeline, Airflow's scheduler and metadata database earn their keep. For a local data science project you edit all day, that infrastructure is overhead between you and the answer. oryxflow is a lighter alternative: a pip install with no server or database that caches every task output and reruns only what your code or parameters changed."
+  - q: "What's a lightweight alternative to Airflow for research pipelines?"
+    a: "oryxflow is a lightweight, local-first alternative to Airflow built for the research loop rather than production scheduling. You pip install it, write task classes, and call run() — no scheduler, metadata database, or dag-processor. It caches each task by code and parameters, reruns exactly what a code change affects, and records lineage to a plain log you can grep."
 ---
 
 # oryxflow vs Airflow: research workflows vs production orchestration
@@ -113,6 +118,22 @@ than a rewrite.
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### Is Airflow overkill for a local data science project?
+
+For a scheduled production pipeline, Airflow's scheduler and metadata database earn their keep. For
+a local data science project you edit all day, that infrastructure is overhead between you and the
+answer. oryxflow is a lighter alternative: a pip install with no server or database that caches every
+task output and reruns only what your code or parameters changed.
+
+### What's a lightweight alternative to Airflow for research pipelines?
+
+oryxflow is a lightweight, local-first alternative to Airflow built for the research loop rather than
+production scheduling. You pip install it, write task classes, and call run() — no scheduler, metadata
+database, or dag-processor. It caches each task by code and parameters, reruns exactly what a code
+change affects, and records lineage to a plain log you can grep.
 
 - **[Why oryxflow](../../docs/why-oryxflow.md)** — reproducibility, lineage, and trustworthy AI data
   analysis.

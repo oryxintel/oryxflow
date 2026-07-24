@@ -4,6 +4,13 @@ slug: when-not-to-use-oryxflow
 categories:
   - Guides
 description: An honest guide to when a caching pipeline library like oryxflow is the wrong tool — throwaway exploration, production orchestration, dashboards, and what caching can't check.
+faq:
+  - q: "When should I not use oryxflow?"
+    a: "Skip oryxflow for throwaway exploration that runs once, for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for the research loop; it caches task outputs and skips unchanged work, but it doesn't schedule, scale out, or display."
+  - q: "Is oryxflow overkill for a quick one-off analysis?"
+    a: "For a five-line notebook cell you run once, yes — a task DAG is pure ceremony, because the payoff of skipping re-computation never arrives when you only run it once. The value of caching rises with depth, cost, and parameter breadth; near zero of each means near-zero return. Stay in a plain notebook or script, and reach for oryxflow only when you're re-running a slow step for the tenth time or hand-managing intermediate files."
+  - q: "Does oryxflow check that my analysis is correct?"
+    a: "No — and no workflow tool does. oryxflow guarantees an output was produced by the exact code and inputs it recorded, which makes your pipeline reproducible, not correct. It will happily cache, with full lineage, a leaked test set, a bad join, or a backtest that peeks at the future. Those bugs are caught by sanity checks, held-out validation, and reading your own numbers skeptically — not by any caching machinery."
 ---
 
 # When not to use oryxflow
@@ -96,5 +103,19 @@ Being honest about fit is the whole point: reach for oryxflow when you have a de
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### When should I not use oryxflow?
+
+Skip oryxflow for throwaway exploration that runs once, for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for the research loop; it caches task outputs and skips unchanged work, but it doesn't schedule, scale out, or display.
+
+### Is oryxflow overkill for a quick one-off analysis?
+
+For a five-line notebook cell you run once, yes — a task DAG is pure ceremony, because the payoff of skipping re-computation never arrives when you only run it once. The value of caching rises with depth, cost, and parameter breadth; near zero of each means near-zero return. Stay in a plain notebook or script, and reach for oryxflow only when you're re-running a slow step for the tenth time or hand-managing intermediate files.
+
+### Does oryxflow check that my analysis is correct?
+
+No — and no workflow tool does. oryxflow guarantees an output was produced by the exact code and inputs it recorded, which makes your pipeline reproducible, not correct. It will happily cache, with full lineage, a leaked test set, a bad join, or a backtest that peeks at the future. Those bugs are caught by sanity checks, held-out validation, and reading your own numbers skeptically — not by any caching machinery.
 
 **Read next:** [Why oryxflow](../../docs/why-oryxflow.md) · [Managing complex workflows](../../docs/managing-workflows.md) · [oryxflow vs the field](oryxflow-vs-the-field.md) · [MLflow or pipeline caching](mlflow-or-pipeline-caching.md) · [Claude plugin](../../docs/claude-plugin/index.md) · [GitHub](https://github.com/oryxintel/oryxflow)

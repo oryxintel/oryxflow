@@ -4,6 +4,11 @@ slug: oryxflow-vs-pipeline-frameworks
 categories:
   - Comparisons
 description: A hands-on comparison of Python pipeline frameworks for iterative, AI-assisted data analysis — orchestrators (Airflow, Prefect, Dagster, Luigi, Kedro, Metaflow, Flyte, ZenML) and experiment trackers (MLflow, W&B, DVC) — and where a local, code-aware caching library fits.
+faq:
+  - q: "Which workflow tool should I use for local data science — Airflow, Prefect, Dagster, or something lighter?"
+    a: "Airflow, Prefect, and Dagster are built for scheduled or distributed production pipelines — real infrastructure that a solo research loop doesn't need. For iterating on analysis locally all day, a lighter code-aware cache fits better. oryxflow gives you automatic code-aware caching that follows helper edits and zero-config artifact storage, local and pip-installable, then hands the stable pipeline to an orchestrator when it's production."
+  - q: "Airflow vs Prefect vs Dagster for data science — how do they differ?"
+    a: "For data science, Airflow is a heavyweight scheduler needing a server and metadata database; Prefect is a Python-native orchestrator with opt-in caching you configure; Dagster is an asset platform with a UI and IO managers. All three win production scheduling. None caches your code identity so an edit reruns only affected tasks — that's the research-loop gap oryxflow fills locally."
 ---
 
 # oryxflow vs. the field: pipeline frameworks for AI data analysis
@@ -190,6 +195,23 @@ orchestrators win production; the trackers win dashboards; oryxflow wins the res
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### Which workflow tool should I use for local data science — Airflow, Prefect, Dagster, or something lighter?
+
+Airflow, Prefect, and Dagster are built for scheduled or distributed production pipelines — real
+infrastructure that a solo research loop doesn't need. For iterating on analysis locally all day, a
+lighter code-aware cache fits better. oryxflow gives you automatic code-aware caching that follows
+helper edits and zero-config artifact storage, local and pip-installable, then hands the stable
+pipeline to an orchestrator when it's production.
+
+### Airflow vs Prefect vs Dagster for data science — how do they differ?
+
+For data science, Airflow is a heavyweight scheduler needing a server and metadata database; Prefect
+is a Python-native orchestrator with opt-in caching you configure; Dagster is an asset platform with a
+UI and IO managers. All three win production scheduling. None caches your code identity so an edit
+reruns only affected tasks — that's the research-loop gap oryxflow fills locally.
 
 - **[Why oryxflow](../../docs/why-oryxflow.md)** — the positioning in full.
 - **[oryxflow vs Airflow](oryxflow-vs-airflow.md)** — research workflows vs production orchestration.

@@ -1,12 +1,18 @@
 ---
 description: oryxflow makes AI data analysis faster, cheaper, and more trustworthy — a Python library and Claude Code plugin that builds your analysis as a reproducible, cached pipeline that reruns only what changed.
 faq:
-  - q: "Is oryxflow an MCP server?"
-    a: "No. oryxflow ships a Claude Code plugin — a skill plus slash commands — backed by an open-source Python library. The reproducibility work happens locally in that library, not over MCP."
-  - q: "Do I need an AI coding agent to use it?"
-    a: "No. oryxflow is a plain Python library: pip install oryxflow and use it by hand. The Claude Code plugin is optional — it teaches an AI agent to use that same library correctly."
-  - q: "Where does my data go?"
-    a: "Nowhere. oryxflow is local-first and zero-infrastructure — no server, no database, no account, no telemetry. Your code, your cache, your repo."
+  - q: "How do I stop rerunning my whole pipeline every time I change one step?"
+    a: "oryxflow caches each step's output and reruns only what a code, data, or parameter change affects, plus everything downstream of it. Change one feature and the untouched upstream steps load instantly from cache instead of recomputing. It's a local-first Python library: pip install oryxflow, declare each step as a task, and re-running only pays for what actually changed."
+  - q: "How do I cache intermediate DataFrames in Python without brittle pickle files?"
+    a: "Declare each step as an oryxflow task that saves its DataFrame, and the engine caches it, addresses it by task identity instead of a hand-managed filename, and reloads it on the next run. You never wire up to_pickle / read_pickle paths or track which file is current — you ask for a result by the task that made it, and stale outputs rerun automatically when the code changes."
+  - q: "Is there a lightweight alternative to Airflow or MLflow for a local data science project?"
+    a: "oryxflow is a local-first Python workflow library that sits between notebooks and heavyweight orchestrators — no server, scheduler, database, or account. Where Airflow orchestrates production DAGs and MLflow tracks experiments, oryxflow makes one analyst's pipeline reproducible and cached: it reruns only what changed and records what produced each result. Reach for it when a notebook has outgrown itself but Airflow or MLflow would be overkill."
+  - q: "How do I run a parameter sweep without rerunning the upstream steps every time?"
+    a: "Parameters flow through the task graph, so oryxflow reruns only the tasks a given parameter actually changes and reuses the shared upstream cache across every combination in the sweep. Compare ten model configs and the data-loading and feature steps run once, not ten times. Each run is tagged by its parameters, so results stay reproducible and you can load any combination's output by name."
+  - q: "Is there a Claude Code plugin to make AI-generated data analysis reproducible and trustworthy?"
+    a: "Yes — the oryxflow Claude Code plugin. It teaches your coding agent to build the analysis as a cached, reproducible pipeline: reusing expensive results, verifying its own reruns, and never training on stale intermediates. oryxflow guarantees a result was produced by the code and inputs it recorded — reproducible, not automatically correct — so you can check AI-written analysis instead of trusting it blindly. It ships as a skill plus slash commands, not an MCP server."
+  - q: "When should I not use oryxflow?"
+    a: "Skip it for throwaway exploration — a quick CSV load, a group-by, one plot — where a plain notebook is faster and a task graph is just overhead. oryxflow earns its keep once a project gains depth (a stale early step silently corrupts everything below it), expensive steps (caching makes the inner loop tractable), or experiment matrices. Those are exactly the conditions where hand-managed scripts and AI coding agents tend to go wrong."
 ---
 
 # oryxflow
@@ -94,19 +100,48 @@ them. That is the core payoff: re-running a pipeline only pays for what actually
 
 </div>
 
-## Common questions
+## Frequently asked questions
 
-**Is oryxflow an MCP server?**
-No. oryxflow ships a Claude Code plugin — a skill plus slash commands — backed by an open-source
-Python library. The reproducibility work happens locally in that library, not over MCP.
+**How do I stop rerunning my whole pipeline every time I change one step?**
+oryxflow caches each step's output and reruns only what a code, data, or parameter change affects,
+plus everything downstream of it. Change one feature and the untouched upstream steps load
+instantly from cache instead of recomputing. It's a local-first Python library:
+`pip install oryxflow`, declare each step as a task, and re-running only pays for what actually
+changed.
 
-**Do I need an AI coding agent to use it?**
-No. oryxflow is a plain Python library: `pip install oryxflow` and use it by hand. The Claude Code
-plugin is optional — it teaches an AI agent to use that same library correctly.
+**How do I cache intermediate DataFrames in Python without brittle pickle files?**
+Declare each step as an oryxflow task that saves its DataFrame, and the engine caches it,
+addresses it by task identity instead of a hand-managed filename, and reloads it on the next run.
+You never wire up `to_pickle` / `read_pickle` paths or track which file is current — you ask for a
+result by the task that made it, and stale outputs rerun automatically when the code changes.
 
-**Where does my data go?**
-Nowhere. oryxflow is local-first and zero-infrastructure — no server, no database, no account, no
-telemetry. Your code, your cache, your repo.
+**Is there a lightweight alternative to Airflow or MLflow for a local data science project?**
+oryxflow is a local-first Python workflow library that sits between notebooks and heavyweight
+orchestrators — no server, scheduler, database, or account. Where Airflow orchestrates production
+DAGs and MLflow tracks experiments, oryxflow makes one analyst's pipeline reproducible and cached:
+it reruns only what changed and records what produced each result. Reach for it when a notebook has
+outgrown itself but Airflow or MLflow would be overkill.
+
+**How do I run a parameter sweep without rerunning the upstream steps every time?**
+Parameters flow through the task graph, so oryxflow reruns only the tasks a given parameter
+actually changes and reuses the shared upstream cache across every combination in the sweep.
+Compare ten model configs and the data-loading and feature steps run once, not ten times. Each run
+is tagged by its parameters, so results stay reproducible and you can load any combination's output
+by name.
+
+**Is there a Claude Code plugin to make AI-generated data analysis reproducible and trustworthy?**
+Yes — the oryxflow Claude Code plugin. It teaches your coding agent to build the analysis as a
+cached, reproducible pipeline: reusing expensive results, verifying its own reruns, and never
+training on stale intermediates. oryxflow guarantees a result was produced by the code and inputs
+it recorded — reproducible, not automatically *correct* — so you can check AI-written analysis
+instead of trusting it blindly. It ships as a skill plus slash commands, not an MCP server.
+
+**When should I not use oryxflow?**
+Skip it for throwaway exploration — a quick CSV load, a group-by, one plot — where a plain notebook
+is faster and a task graph is just overhead. oryxflow earns its keep once a project gains depth (a
+stale early step silently corrupts everything below it), expensive steps (caching makes the inner
+loop tractable), or experiment matrices. Those are exactly the conditions where hand-managed
+scripts and AI coding agents tend to go wrong.
 
 ## Learn more
 

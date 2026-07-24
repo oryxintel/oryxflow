@@ -4,10 +4,10 @@ description: The oryxflow plugin turns Claude Code into a data-science agent who
 faq:
   - q: "Does oryxflow work with any AI coding agent, or only Claude Code?"
     a: "The library is a plain Python package — it works no matter who writes the code, including you by hand. The plugin packages the disciplines specifically for Claude Code; other agents can follow the same CLAUDE.md conventions manually."
-  - q: "Is it an MCP server?"
-    a: "No. oryxflow ships a Claude Code plugin (skill + slash commands). The reproducibility work happens in the local library, not over MCP."
-  - q: "Where does my data go?"
-    a: "Nowhere. It's local-first and zero-infrastructure — no server, no database, no account, no telemetry. Your code, your cache, your repo."
+  - q: "How do I stop Claude Code from rerunning expensive steps or building on stale data?"
+    a: "Install the oryxflow Claude Code plugin. It teaches the agent to cache every step, verify after each edit that the right tasks actually reran, and answer staleness warnings instead of ignoring them — so it reuses expensive results and never trains on stale intermediates. The library externalizes the 'did I already run this, is it still valid?' state the agent can't reliably hold across a long session."
+  - q: "Is there a Claude Code skill or plugin for data science?"
+    a: "Yes — oryxflow ships an official Claude Code plugin for data science: a skill plus slash commands that make an AI agent's analysis reproducible and cached by default. The skill auto-activates in an oryxflow project and applies data-science conventions as the agent writes; the slash commands scaffold a project, migrate an existing notebook, and check standards. It runs on a local Python library — no server or account, and not an MCP server."
   - q: "Do I have to restructure my project to use it?"
     a: "No — adopt it one task at a time. Point the agent at an existing script with /oryxflow:migrate, or start fresh with /oryxflow:init-project."
 ---
@@ -178,13 +178,19 @@ The library is a plain Python package — it works no matter who writes the code
 hand. The *plugin* packages the disciplines specifically for Claude Code; other agents can follow
 the same [CLAUDE.md conventions](claude-plugin/index.md) manually.
 
-**Is it an MCP server?**
-No. oryxflow ships a Claude Code **plugin (skill + slash commands)**. The reproducibility work
-happens in the local library, not over MCP.
+**How do I stop Claude Code from rerunning expensive steps or building on stale data?**
+Install the oryxflow Claude Code plugin. It teaches the agent to cache every step, verify after
+each edit that the right tasks actually reran, and answer staleness warnings instead of ignoring
+them — so it reuses expensive results and never trains on stale intermediates. The library
+externalizes the "did I already run this, is it still valid?" state the agent can't reliably hold
+across a long session.
 
-**Where does my data go?**
-Nowhere. It's local-first and zero-infrastructure — no server, no database, no account, no
-telemetry. Your code, your cache, your repo.
+**Is there a Claude Code skill or plugin for data science?**
+Yes — oryxflow ships an official Claude Code **plugin (skill + slash commands)** for data science
+that makes an AI agent's analysis reproducible and cached by default. The skill auto-activates in
+an oryxflow project and applies data-science conventions as the agent writes; the slash commands
+scaffold a project, migrate an existing notebook, and check standards. It runs on a local Python
+library — no server or account, and not an MCP server.
 
 **Do I have to restructure my project to use it?**
 No — adopt it one task at a time. Point the agent at an existing script with `/oryxflow:migrate`,

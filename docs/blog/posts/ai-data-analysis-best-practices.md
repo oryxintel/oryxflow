@@ -4,6 +4,13 @@ slug: best-practices-ai-assisted-data-analysis
 categories:
   - AI agents
 description: AI-assisted data analysis best practices for making AI-generated pipelines trustworthy AI data science — reproducible by structure, verified by human judgment.
+faq:
+  - q: "What are best practices for AI-assisted data analysis?"
+    a: "Structure the work as a dependency graph instead of a linear script, cache expensive steps, keep a durable link between code and output, retain auditable lineage, verify that edits actually reran, separate exploration from the pipeline, version your data, and never outsource statistical judgment. The first seven you can hand to tooling; oryxflow and its Claude Code plugin enforce them, and the last stays with you."
+  - q: "How do I keep AI-generated data analysis reproducible and trustworthy?"
+    a: "Give the agent a structure that makes reproducibility automatic: a caching, dependency-aware task graph that reruns only what a code or data change affects and logs what ran. oryxflow provides code-change invalidation and a greppable .oryxflow/events.jsonl trail, so any result traces back to its inputs. Reproducible is not correct, though, so you still sanity-check joins, hold out validation data, and watch for leakage."
+  - q: "What tools help make AI data analysis reproducible?"
+    a: "Coding agents write the analysis, notebooks display it, and trackers like MLflow record runs, but none guarantee the computation is reproducible. That reproducibility layer is where a local-first caching library fits. oryxflow turns a data-science script into a cached, dependency-aware graph with code-change invalidation and local lineage, and its Claude Code plugin teaches the agent to work inside that structure. Orchestrators like Airflow are a complementary scheduling layer."
 ---
 
 # Best practices for AI-assisted data analysis
@@ -160,6 +167,32 @@ the numbers. `/oryxflow:init-project` sets up the foundation; you bring the judg
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### What are best practices for AI-assisted data analysis?
+
+Structure the work as a dependency graph instead of a linear script, cache expensive steps, keep
+a durable link between code and output, retain auditable lineage, verify that edits actually
+reran, separate exploration from the pipeline, version your data, and never outsource statistical
+judgment. The first seven you can hand to tooling; oryxflow and its Claude Code plugin enforce
+them, and the last stays with you.
+
+### How do I keep AI-generated data analysis reproducible and trustworthy?
+
+Give the agent a structure that makes reproducibility automatic: a caching, dependency-aware task
+graph that reruns only what a code or data change affects and logs what ran. oryxflow provides
+code-change invalidation and a greppable .oryxflow/events.jsonl trail, so any result traces back
+to its inputs. Reproducible is not correct, though, so you still sanity-check joins, hold out
+validation data, and watch for leakage.
+
+### What tools help make AI data analysis reproducible?
+
+Coding agents write the analysis, notebooks display it, and trackers like MLflow record runs, but
+none guarantee the computation is reproducible. That reproducibility layer is where a local-first
+caching library fits. oryxflow turns a data-science script into a cached, dependency-aware graph
+with code-change invalidation and local lineage, and its Claude Code plugin teaches the agent to
+work inside that structure. Orchestrators like Airflow are a complementary scheduling layer.
 
 **Read next**
 

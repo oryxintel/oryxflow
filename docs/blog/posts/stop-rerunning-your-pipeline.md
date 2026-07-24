@@ -4,6 +4,11 @@ slug: cache-intermediate-dataframes-python
 categories:
   - Caching
 description: How data scientists waste hours recomputing steps that never changed — and a lightweight way to fix it.
+faq:
+  - q: "How do I stop rerunning my whole pipeline when I change one step?"
+    a: "When you edit one step, you want only that step and its downstream to recompute, not the whole script. Model each step as a task with declared dependencies so an engine can run them in dependency order and skip anything already computed. oryxflow does this: it caches each task's output and reruns only the steps a code, data, or parameter change actually affects, so a one-line edit stops triggering a fifteen-minute recompute."
+  - q: "How do I make Python reruns only recompute what changed?"
+    a: "Turn your script into tasks that declare what they depend on and what they produce, then let an engine track each task's identity from its code and parameters. When something changes, only the affected tasks are stale. oryxflow, a small local-first Python library, caches every task output and reruns only what changed on the next run, so unchanged upstream steps load from disk instead of recomputing."
 ---
 
 # Stop rerunning your whole pipeline: caching intermediary DataFrames in Python
@@ -150,3 +155,13 @@ pip install oryxflow
 
 The next time you change one line and reach for the run button, you shouldn't have to
 recompute everything upstream of it. Let the DAG remember what's already done.
+
+## Frequently asked questions
+
+### How do I stop rerunning my whole pipeline when I change one step?
+
+When you edit one step, you want only that step and its downstream to recompute, not the whole script. Model each step as a task with declared dependencies so an engine can run them in dependency order and skip anything already computed. oryxflow does this: it caches each task's output and reruns only the steps a code, data, or parameter change actually affects, so a one-line edit stops triggering a fifteen-minute recompute.
+
+### How do I make Python reruns only recompute what changed?
+
+Turn your script into tasks that declare what they depend on and what they produce, then let an engine track each task's identity from its code and parameters. When something changes, only the affected tasks are stale. oryxflow, a small local-first Python library, caches every task output and reruns only what changed on the next run, so unchanged upstream steps load from disk instead of recomputing.

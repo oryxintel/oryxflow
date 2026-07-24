@@ -4,6 +4,13 @@ slug: mlflow-alternatives
 categories:
   - Comparisons
 description: An honest roundup of MLflow alternatives — Weights & Biases, Neptune, Comet, ClearML, Aim, DVCLive, and SageMaker Experiments — plus where a reproducibility and caching layer fits underneath the tracker.
+faq:
+  - q: "Is there a free, open-source alternative to MLflow?"
+    a: "Yes — several. MLflow itself is open-source; among alternatives, ClearML and Aim are open-source and self-hostable at no cost, with Aim being the lightest to run locally. DVCLive is open-source and file-based. oryxflow is open-source too, but it's a different category — a reproducibility and caching layer, not a tracking dashboard — so it complements these rather than replacing them."
+  - q: "What's the lightest-weight MLflow alternative?"
+    a: "For a tracker, Aim is the usual answer: a fast local UI with minimal setup and no hosted account. If your \"lightweight\" wish is really about not standing up a tracking server and not recomputing your pipeline every run, that points at a local caching layer like oryxflow instead — pip install, a local data/ folder, no server at all."
+  - q: "Can I use MLflow (or an alternative) with oryxflow together?"
+    a: "Yes, and that's the recommended pattern. Keep your tracker for the searchable record of runs, and put its logging calls inside cached oryxflow tasks. You get a reproducible, minimally-recomputed computation graph and a clean experiment log, without either tool pretending to be the other."
 ---
 
 # MLflow alternatives: the trackers worth a look (and the layer underneath them)

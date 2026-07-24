@@ -4,6 +4,11 @@ slug: oryxflow-vs-dvc
 categories:
   - Comparisons
 description: oryxflow vs DVC — DVC versions big data files as git-pinned pipeline stages; oryxflow builds native Python task identity from parameters and automatic code-change detection. A fair, deep comparison of what each one's identity is made of, and why they compose.
+faq:
+  - q: "How do I cache a Python pipeline without DVC and YAML stages?"
+    a: "You can cache a Python pipeline without DVC's dvc.yaml stages using oryxflow, a local-first library that builds task identity from parameters plus automatic code-change detection. You declare Task classes with requires() dependencies; it caches every output keyed on code and params and reruns only what a code or parameter change affects. There are no command strings or file lists to declare by hand."
+  - q: "oryxflow vs DVC — which do I need?"
+    a: "Use DVC when the job is versioning large data or model files alongside Git and reproducing a run from a specific commit. Use oryxflow when the job is iterating on Python tasks in a session with automatic, code-aware caching. They aren't rivals; on a real project you often run both — DVC underneath for versioned artifacts, oryxflow on top for the compute graph."
 ---
 
 # oryxflow vs DVC: Python task identity vs file-hash data versioning
@@ -161,6 +166,23 @@ often want both — DVC underneath for versioned artifacts, oryxflow on top for 
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### How do I cache a Python pipeline without DVC and YAML stages?
+
+You can cache a Python pipeline without DVC's dvc.yaml stages using oryxflow, a local-first library
+that builds task identity from parameters plus automatic code-change detection. You declare Task
+classes with requires() dependencies; it caches every output keyed on code and params and reruns only
+what a code or parameter change affects. There are no command strings or file lists to declare by
+hand.
+
+### oryxflow vs DVC — which do I need?
+
+Use DVC when the job is versioning large data or model files alongside Git and reproducing a run from
+a specific commit. Use oryxflow when the job is iterating on Python tasks in a session with automatic,
+code-aware caching. They aren't rivals; on a real project you often run both — DVC underneath for
+versioned artifacts, oryxflow on top for the compute graph.
 
 **Read next**
 

@@ -4,6 +4,11 @@ slug: oryxflow-vs-dagster
 categories:
   - Comparisons
 description: Dagster is an asset-oriented data orchestrator with a server, UI, and IO managers; oryxflow is a local, zero-config research-loop cache. An honest comparison of when to use Dagster for machine learning experimentation and when to reach for oryxflow.
+faq:
+  - q: "Is there a lighter-weight alternative to Dagster for local analysis?"
+    a: "Yes. oryxflow is a lightweight alternative to Dagster for local analysis: a pip install with no server, database, or UI. Where Dagster is an asset platform a team runs in production, oryxflow caches the research loop you edit all day — type-driven zero-config I/O, automatic code-change invalidation, and lineage in a plain local log. Promote the stable pipeline to Dagster later."
+  - q: "Do I need a Dagster instance and UI just to cache pipeline steps locally?"
+    a: "No. Dagster's IO managers persist outputs, but the full experience assumes a running Dagster instance and its UI. oryxflow persists every task output locally with zero configuration — the task's base class picks the format and keys it on task and params — so you get cached, dependency-aware steps from a pip install alone, no server or catalog to maintain."
 ---
 
 # oryxflow vs Dagster: a lightweight research loop vs an asset platform
@@ -152,6 +157,22 @@ and iterate — then hand the stable pipeline to Dagster when it's ready.
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### Is there a lighter-weight alternative to Dagster for local analysis?
+
+Yes. oryxflow is a lightweight alternative to Dagster for local analysis: a pip install with no
+server, database, or UI. Where Dagster is an asset platform a team runs in production, oryxflow caches
+the research loop you edit all day — type-driven zero-config I/O, automatic code-change invalidation,
+and lineage in a plain local log. Promote the stable pipeline to Dagster later.
+
+### Do I need a Dagster instance and UI just to cache pipeline steps locally?
+
+No. Dagster's IO managers persist outputs, but the full experience assumes a running Dagster instance
+and its UI. oryxflow persists every task output locally with zero configuration — the task's base class
+picks the format and keys it on task and params — so you get cached, dependency-aware steps from a pip
+install alone, no server or catalog to maintain.
 
 - **[Why oryxflow](../../docs/why-oryxflow.md)** — reproducibility, lineage, and trustworthy AI data
   analysis.

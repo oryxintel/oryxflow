@@ -4,6 +4,11 @@ slug: reproducible-data-science-workflows-in-python
 categories:
   - Reproducibility
 description: What it takes to build reproducible data science workflows in Python — deterministic task identity, automatic invalidation, and lineage — with a small, local-first library.
+faq:
+  - q: "How do I make a data science workflow reproducible in Python?"
+    a: "A workflow is reproducible when you can name the exact code and inputs behind any result and regenerate it on demand. That takes three things: deterministic task identity from code and parameters, automatic invalidation so you can't test new code against a stale output, and a durable lineage record. oryxflow gives you all three in plain Python, locally, with caching that makes them cheap thrown in for free."
+  - q: "What makes a pipeline reproducible without a lot of infrastructure?"
+    a: "Reproducibility needs a durable link between each result and the code and inputs that produced it, not a server or database. oryxflow delivers that locally: it computes a deterministic identity for each step, reruns a step automatically when its code changes, and appends every run to a local lineage log at .oryxflow/events.jsonl. No server, no database, no account — just pip install and local files."
 ---
 
 # Reproducible data science workflows in Python
@@ -126,5 +131,15 @@ A workflow is reproducible when you can name the exact code and inputs behind an
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### How do I make a data science workflow reproducible in Python?
+
+A workflow is reproducible when you can name the exact code and inputs behind any result and regenerate it on demand. That takes three things: deterministic task identity from code and parameters, automatic invalidation so you can't test new code against a stale output, and a durable lineage record. oryxflow gives you all three in plain Python, locally, with caching that makes them cheap thrown in for free.
+
+### What makes a pipeline reproducible without a lot of infrastructure?
+
+Reproducibility needs a durable link between each result and the code and inputs that produced it, not a server or database. oryxflow delivers that locally: it computes a deterministic identity for each step, reruns a step automatically when its code changes, and appends every run to a local lineage log at .oryxflow/events.jsonl. No server, no database, no account — just pip install and local files.
 
 **Read next:** [From notebook to a reproducible pipeline](notebook-to-pipeline.md) · [Stop rerunning your whole pipeline](stop-rerunning-your-pipeline.md) · [When not to use oryxflow](when-not-to-use-oryxflow.md) · [oryxflow vs. the field](oryxflow-vs-the-field.md) · [Why oryxflow](../../docs/why-oryxflow.md) · [Managing workflows](../../docs/managing-workflows.md) · [Build with the Claude Code plugin](../../docs/claude-plugin/index.md)

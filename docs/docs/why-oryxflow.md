@@ -2,14 +2,14 @@
 title: Why oryxflow
 description: oryxflow makes AI-driven data analysis faster, cheaper, and more trustworthy — reproducible, lineage-tracked Python pipelines that rerun only what changed, for humans and AI coding agents alike.
 faq:
-  - q: "Is oryxflow an MCP server?"
-    a: "No. oryxflow ships a Claude Code plugin — a skill plus slash commands — backed by an open-source Python library. The reproducibility work happens locally in that library, not over MCP."
+  - q: "How do I make my data science workflow reproducible?"
+    a: "Declare each step of your analysis as an oryxflow task that saves its output, and the pipeline becomes reproducible by construction: every result is addressed by the code and parameters that produced it, each run records what ran and why, and re-running regenerates any result from the recorded inputs. Reproducibility stops depending on remembering which cell you ran in what order."
   - q: "Does oryxflow replace MLflow or Airflow?"
     a: "No — it composes beside them. oryxflow caches and reruns your local research pipeline; keep using an experiment tracker for dashboards and an orchestrator for scheduled production jobs."
   - q: "How does oryxflow know when to rerun a task?"
     a: "From the task's parameters and its code. Change a parameter, a data input, or the code and oryxflow reruns exactly the affected outputs — cosmetic edits like comments or formatting don't trigger a rerun."
-  - q: "Where is my data stored?"
-    a: "Locally. oryxflow is local-first and zero-infrastructure — no server, no database, no account, no telemetry. Your code, your cache, your repo."
+  - q: "Does oryxflow help when an AI coding agent writes my analysis?"
+    a: "Yes. An AI coding agent loses track of what it already computed and whether it's still valid across a long session, then trains on stale data or recomputes expensive steps. oryxflow externalizes that state into a cache and a lineage log, and the Claude Code plugin teaches the agent to use them — so AI-written analysis is reproducible by default. The data stays local: no server, database, or account."
 ---
 
 # Why oryxflow
@@ -143,9 +143,11 @@ what ran and why is written to a lineage log you can query later.
 
 ## Frequently asked questions
 
-**Is oryxflow an MCP server?**
-No. oryxflow ships a Claude Code plugin — a skill plus slash commands — backed by an open-source
-Python library. The reproducibility work happens locally in that library, not over MCP.
+**How do I make my data science workflow reproducible?**
+Declare each step of your analysis as an oryxflow task that saves its output, and the pipeline
+becomes reproducible by construction: every result is addressed by the code and parameters that
+produced it, each run records what ran and why, and re-running regenerates any result from the
+recorded inputs. Reproducibility stops depending on remembering which cell you ran in what order.
 
 **Does oryxflow replace MLflow or Airflow?**
 No — it composes beside them. oryxflow caches and reruns your local research pipeline; keep using
@@ -156,9 +158,12 @@ From the task's parameters and its code. Change a parameter, a data input, or th
 oryxflow reruns exactly the affected outputs — cosmetic edits like comments or formatting don't
 trigger a rerun.
 
-**Where is my data stored?**
-Locally. oryxflow is local-first and zero-infrastructure — no server, no database, no account, no
-telemetry. Your code, your cache, your repo.
+**Does oryxflow help when an AI coding agent writes my analysis?**
+Yes. An AI coding agent loses track of what it already computed and whether it's still valid across
+a long session, then trains on stale data or recomputes expensive steps. oryxflow externalizes that
+state into a cache and a lineage log, and the Claude Code plugin teaches the agent to use them — so
+AI-written analysis is reproducible by default. The data stays local: no server, database, or
+account.
 
 ## Takeaway
 

@@ -4,6 +4,11 @@ slug: oryxflow-vs-prefect
 categories:
   - Comparisons
 description: oryxflow vs Prefect for data science — Prefect is a Python-native orchestrator with configurable result caching; oryxflow is a zero-config, code-change-aware research-loop cache. When you need each, and why they're complementary.
+faq:
+  - q: "Do I need Prefect for a research pipeline, or something lighter?"
+    a: "For running, scheduling, and observing pipelines across infrastructure, use Prefect. For a research pipeline you edit all day on your laptop, something lighter fits better. oryxflow is a local-first alternative: a pip install with no server or database that caches every task by code and params and reruns exactly what your code changes affect — no cache key to configure."
+  - q: "Is there a lightweight Prefect alternative for local data science?"
+    a: "Yes. oryxflow is a lightweight, local-first alternative to Prefect for data science, built for the research loop rather than production orchestration. Prefect can cache results but you configure the cache key and result storage; oryxflow caches automatically by code and params, is code-change-aware out of the box, and passes DataFrames between steps with type-driven save and inputLoad — no server, account, or telemetry."
 ---
 
 # oryxflow vs Prefect: research-loop caching vs Python-native orchestration
@@ -118,6 +123,16 @@ Prefect and oryxflow both build DAGs from plain Python, and both can cache resul
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### Do I need Prefect for a research pipeline, or something lighter?
+
+For running, scheduling, and observing pipelines across infrastructure, use Prefect. For a research pipeline you edit all day on your laptop, something lighter fits better. oryxflow is a local-first alternative: a pip install with no server or database that caches every task by code and params and reruns exactly what your code changes affect — no cache key to configure.
+
+### Is there a lightweight Prefect alternative for local data science?
+
+Yes. oryxflow is a lightweight, local-first alternative to Prefect for data science, built for the research loop rather than production orchestration. Prefect can cache results but you configure the cache key and result storage; oryxflow caches automatically by code and params, is code-change-aware out of the box, and passes DataFrames between steps with type-driven save and inputLoad — no server, account, or telemetry.
 
 - **[Why oryxflow](../../docs/why-oryxflow.md)** — reproducibility, lineage, and trustworthy AI data analysis.
 - **[oryxflow vs Airflow](oryxflow-vs-airflow.md)** — research workflows vs production orchestration.

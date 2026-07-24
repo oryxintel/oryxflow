@@ -4,6 +4,11 @@ slug: parameter-sweeps-without-rerunning
 categories:
   - Caching
 description: Run parameter sweeps in Python that reuse cached upstream steps, so you can compare models and hyperparameters without recomputing the shared data every time.
+faq:
+  - q: "How do I run a parameter sweep without rerunning the upstream steps every time?"
+    a: "Put the varying choice on a task parameter and let the engine key a separate cached output per value, while the shared upstream steps compute once and are reused across the whole grid. oryxflow does exactly this: changing a parameter reruns only the tasks that depend on it, so a sweep costs you the model fits and not the repeated data loading and feature building."
+  - q: "How do I share cached features across a grid of model configs?"
+    a: "Compute the features once as an upstream task, then have each model configuration depend on it so every config reads the same cached output instead of rebuilding it. oryxflow shares that upstream across every flow in a WorkflowMulti or fan-out grid, so all configs train on byte-for-byte identical inputs and only the differing model steps run — a trustworthy comparison with no filename bookkeeping."
 ---
 
 # Parameter sweeps in Python without rerunning upstream steps
@@ -147,6 +152,16 @@ A parameter sweep should cost you the model fits and nothing else. Put the varyi
 ```bash
 pip install oryxflow
 ```
+
+## Frequently asked questions
+
+### How do I run a parameter sweep without rerunning the upstream steps every time?
+
+Put the varying choice on a task parameter and let the engine key a separate cached output per value, while the shared upstream steps compute once and are reused across the whole grid. oryxflow does exactly this: changing a parameter reruns only the tasks that depend on it, so a sweep costs you the model fits and not the repeated data loading and feature building.
+
+### How do I share cached features across a grid of model configs?
+
+Compute the features once as an upstream task, then have each model configuration depend on it so every config reads the same cached output instead of rebuilding it. oryxflow shares that upstream across every flow in a WorkflowMulti or fan-out grid, so all configs train on byte-for-byte identical inputs and only the differing model steps run — a trustworthy comparison with no filename bookkeeping.
 
 Then keep going:
 
