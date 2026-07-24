@@ -56,9 +56,7 @@ class TaskTrain(oryxflow.tasks.TaskPqPandas):
                 pass
 ```
 
-Overview <https://oryxflow.readthedocs.io/en/stable/parameters.html#parameter-types>
-
-Full reference <https://oryxflow.readthedocs.io/en/stable/api/oryxflow.parameter.html>
+For the full list of parameter types and their options, see the [API reference](reference.md).
 
 ## Avoid repeating parameters in every class
 
@@ -131,9 +129,9 @@ class TaskEvaluate(oryxflow.tasks.TaskAggregator):
         yield self.clone(TaskPredict)
 ```
 
-For another ML example see <https://github.com/oryxintel/oryxflow/blob/master/docs/example-ml.md>
+For another ML example, see [Example (ML)](example-ml.md).
 
-For more details see <https://oryxflow.readthedocs.io/en/stable/api/oryxflow.util.html>
+For more details, see the [API reference](reference.md).
 
 The project template also implements task parameter inheritance <https://github.com/d6t/d6tflow-template>
 

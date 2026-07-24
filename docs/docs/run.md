@@ -207,7 +207,7 @@ class TaskTrain(oryxflow.tasks.TaskPickle):
     # no need for to define it again: do_preprocess = oryxflow.BoolParameter(default=True)
 ```
 
-See \[oryxflow docs for handling parameter inheritance\](<https://oryxflow.readthedocs.io/en/stable/api/oryxflow.util.html#using-inherits-and-requires-to-ease-parameter-pain>)
+See [handling parameter inheritance](advparam.md#avoid-repeating-parameters-in-every-class).
 
 ### Default Parameter Values in Config
 
