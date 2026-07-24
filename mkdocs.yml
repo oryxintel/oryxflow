@@ -138,6 +138,7 @@ plugins:
           - index.md
           - docs/index.md
           - docs/why-oryxflow.md
+          - docs/migrate-from-d6tflow.md
           - docs/installation.md
           - docs/quickstart.md
         Guide:
@@ -197,6 +198,7 @@ nav:
   - Docs:
       - docs/index.md
       - Why oryxflow: docs/why-oryxflow.md
+      - Migrate from d6tflow: docs/migrate-from-d6tflow.md
       - Installation: docs/installation.md
       - Quickstart: docs/quickstart.md
       - Guide:
