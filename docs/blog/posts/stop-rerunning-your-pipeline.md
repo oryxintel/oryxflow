@@ -145,7 +145,7 @@ tasks — oryxflow handles the caching and rerun logic those tools don't.
 pip install oryxflow
 ```
 
-- Docs: https://oryxflow.readthedocs.io
+- Docs: https://docs.oryxflow.dev
 - Source & examples: https://github.com/oryxintel/oryxflow
 
 The next time you change one line and reach for the run button, you shouldn't have to

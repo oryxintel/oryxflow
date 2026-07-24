@@ -160,7 +160,7 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
     success = result.scheduling_succeeded
     if abort and not success:
         raise RuntimeError(
-            'Exception found running flow, check trace. For more details see https://oryxflow.readthedocs.io/en/latest/run.html#debugging-failures') from result.first_exception
+            'Exception found running flow, check trace. For more details see https://docs.oryxflow.dev/docs/run/#debugging-failures') from result.first_exception
     return result
 
 

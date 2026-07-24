@@ -105,4 +105,4 @@ print(models['gbm'].score(data_train['gbm'].drop('y',1), data_train['gbm']['y'])
 
 ## Next steps
 
-See https://oryxflow.readthedocs.io/en/latest/transition.html
+See [Transition from scripts](transition.md).

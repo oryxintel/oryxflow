@@ -132,7 +132,7 @@ here:
 pip install oryxflow
 ```
 
-Docs: https://oryxflow.readthedocs.io · Source: https://github.com/oryxintel/oryxflow
+Docs: https://docs.oryxflow.dev · Source: https://github.com/oryxintel/oryxflow
 
 oryxflow is a lightweight, dependency-free alternative to Luigi, Metaflow, and Kedro,
 focused on research iteration rather than production orchestration — and it plays nicely

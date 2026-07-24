@@ -146,11 +146,11 @@ print(scores)
 
 ## Documentation
 
-Library usage and reference https://oryxflow.readthedocs.io
+Library usage and reference https://docs.oryxflow.dev/
 
 ## Getting started resources
 
-[Transition to oryxflow from typical scripts](https://oryxflow.readthedocs.io/en/latest/transition.html)
+[Transition to oryxflow from typical scripts](https://docs.oryxflow.dev/docs/transition/)
 
 [5 Step Guide to Scalable Deep Learning Pipelines with oryxflow](https://htmlpreview.github.io/?https://github.com/d6t/d6t-python/blob/master/blogs/blog-20190813-d6tflow-pytorch.html)
 

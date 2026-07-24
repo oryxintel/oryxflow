@@ -271,5 +271,5 @@ pip install oryxflow
 ```
 
 - Source & examples: https://github.com/oryxintel/oryxflow
-- Docs: https://oryxflow.readthedocs.io
+- Docs: https://docs.oryxflow.dev
 - Build pipelines with an agent: https://github.com/oryxintel/oryxflow-claude-plugin

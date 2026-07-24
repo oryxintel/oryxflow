@@ -11,8 +11,8 @@ setup(
     packages=['oryxflow','oryxflow.targets','oryxflow.tasks'],
     url='https://github.com/oryxintel/oryxflow',
     project_urls={
-        'Documentation': 'https://oryxflow.readthedocs.io/',
-        'Changelog': 'https://oryxflow.readthedocs.io/en/stable/changelog.html',
+        'Documentation': 'https://docs.oryxflow.dev/',
+        'Changelog': 'https://docs.oryxflow.dev/docs/changelog/',
         'Source': 'https://github.com/oryxintel/oryxflow',
     },
     license='MIT',
