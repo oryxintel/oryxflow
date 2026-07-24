@@ -50,5 +50,8 @@ jobs:
           pip install -r docs/requirements-docs.txt
 
       - name: Build docs + run doc-example tests
-        # --check fails if the committed tests/test_docs_*.py are stale vs the Markdown.
-        run: python scripts/build_docs.py --check
+        # Regenerates the doc tests fresh, runs them (red if an example rotted), then
+        # `mkdocs build` (red if the site — i.e. the Cloudflare Pages build — would break).
+        # No --check: staleness of the committed tests/test_docs_*.py is bookkeeping, not a
+        # real failure, so we don't gate CI on it.
+        run: python scripts/build_docs.py
