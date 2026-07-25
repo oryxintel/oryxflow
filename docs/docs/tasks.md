@@ -184,6 +184,26 @@ class TaskMultipleOutput(oryxflow.tasks.TaskPqPandas):
 
 When you have multiple outputs and don't declare `persists` you will get `raise ValueError('Save dictionary needs to consistent with Task.persist')`
 
+### What can I save?
+
+Anything — you are not limited to dataframes. `self.save()` accepts whatever the task's parent class handles, so if your result is a dict, save it as JSON; if it's a trained model, save it as pickle. There's no need to force a non-tabular result into a dataframe.
+
+```python
+# a dict saved as JSON, and loaded back as a dict
+class TaskConfig(oryxflow.tasks.TaskJson):
+
+    def run(self):
+        self.save({'features': ['x1', 'x2'], 'nrows': 100})
+
+# any python object saved as pickle
+class TaskModel(oryxflow.tasks.TaskPickle):
+
+    def run(self):
+        self.save(model)
+```
+
+See [Targets](targets.md#which-task-class-should-i-use) for the full list of formats and which class saves what.
+
 ### Where Is Output Data Saved?
 
 Output data by default is saved in `data/`, you can check with

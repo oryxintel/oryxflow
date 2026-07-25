@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # to have its examples verified on every build. See docs/CLAUDE.md.
 TESTED_PAGES = {
     "docs/docs/quickstart.md": "tests/test_docs_quickstart.py",
+    "docs/docs/targets.md": "tests/test_docs_targets.py",
     "docs/index.md": "tests/test_docs_index.py",
 }
 
