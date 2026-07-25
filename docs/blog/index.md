@@ -57,6 +57,15 @@ lightweight caching DAG changes how you build data-science workflows.
 - [The best AI tools for data analysis](posts/best-ai-data-analysis-tools.md) — the layers of the
   AI data stack, and the trust layer most of them miss.
 
+**LLM evals**
+
+- [Your eval platform deletes your results in 14 days](posts/llm-eval-results-retention.md) — eval
+  platforms are working sets, not archives; keep the scored rows yourself.
+- [LLM evals are a parameter sweep](posts/llm-evals-are-a-parameter-sweep.md) — the scoring is new,
+  the matrix underneath it is a solved problem.
+- [Cheap, durable LLM evals: pydantic-evals + oryxflow](posts/cheap-durable-llm-evals.md) — how a
+  metered eval matrix gets expensive, and what to cache instead.
+
 **Practical patterns**
 
 - [Parameter sweeps without rerunning upstream steps](posts/parameter-sweeps-without-rerunning.md)

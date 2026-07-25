@@ -123,6 +123,79 @@ scripts/deploy_docs.sh          # Linux/macOS/git-bash
 ./scripts/deploy_docs.ps1
 ```
 
+## Writing a blog post
+
+Posts are the main content channel and get written often — this is the whole recipe, so you don't
+have to re-derive it by reading five existing posts.
+
+**1. File + front-matter.** One file per post at `docs/blog/posts/<name>.md`. No `mkdocs.yml` nav
+entry is needed (the Material `blog` plugin picks up `posts/*.md`, and `llmstxt` globs it).
+
+```yaml
+---
+date: 2026-07-25          # required by the blog plugin
+slug: keyword-first-slug  # required: the URL is /blog/<first-category-slug>/<slug>
+categories:               # first one becomes the URL segment (post_url_max_categories: 1)
+  - AI agents
+description: One or two keyword-bearing sentences. Used as the meta description and the social
+  card, so write it for a search result, not as a summary for yourself.
+faq:                      # optional but standard — see 4
+  - q: "A question phrased the way someone would type it"
+    a: "A self-contained answer, 2-4 sentences, that names oryxflow at least once."
+---
+```
+
+Categories in use (reuse rather than inventing — each new one mints a new URL prefix):
+`Comparisons`, `AI agents`, `Caching`, `Reproducibility`, `Machine learning`, `MLOps`, `Guides`.
+
+**2. Body shape.** Every post follows the same skeleton:
+
+```markdown
+# Title (H1, matching the intent of the slug)
+
+*One-line italic subtitle — the thesis, or the promise.*
+
+<!-- more -->            <-- REQUIRED. post_excerpt: required; the build fails without it.
+
+## Sections...
+
+## Takeaway              <-- or a titled conclusion; always land the argument
+
+    pip install oryxflow
+
+## Frequently asked questions
+### <the q: from front-matter, verbatim>
+<the a: from front-matter, verbatim>
+
+Then keep going:
+- <3-6 links: sibling posts first, then guide pages, then GitHub>
+```
+
+**3. Links.** Plain relative Markdown, and `validation` in `mkdocs.yml` fails the build on a bad
+target. From a post: a sibling post is `other-post.md`; a guide page is `../../docs/page.md`; the
+blog index is `../index.md`.
+
+**4. The FAQ is duplicated on purpose.** `overrides/main.html` reads the `faq:` front-matter and
+emits a JSON-LD `FAQPage` block for search/AI crawlers; the visible "Frequently asked questions"
+section at the bottom is the human copy. **Keep the two byte-identical** — write the answer once
+and paste it into both. Answers must stand alone (no "as described above") because they get
+extracted out of context.
+
+**5. Code in posts is NOT tested.** Only the pages in `TESTED_PAGES` (`scripts/build_docs.py`) are
+compiled by phmdoctest, and blog posts aren't among them. So examples may reference undefined
+helpers (`build_classifier(...)`) — but it also means nothing checks the API surface for you.
+**Verify every API you show against the source** before publishing: grep the signature in
+`oryxflow/`, and for third-party libraries fetch the current docs rather than writing from memory.
+Same for any vendor pricing/retention claim — cite the vendor's own page, quote it, and date-stamp
+it ("as of July 2026"). A wrong number about a named competitor is the one error that costs
+credibility outright.
+
+**6. Register the post** in `docs/blog/index.md` under the right themed heading. The plugin
+generates the chronological list; the curated lists at the top are hand-maintained.
+
+**7. Check it.** `mkdocs serve` and open `/blog/`, or `mkdocs build` (non-strict) and confirm no
+link warnings for the new file.
+
 ## Conventions
 
 - User docs speak to data scientists in terms of benefits, never library internals or jargon
