@@ -202,7 +202,5 @@ pnl strategy #3: -0.449
 # These materials, and any other information or data conveyed in connection with these materials, is intended for informational purposes only. Under no circumstances are these materials, or any information or data conveyed in connection with such report, to be considered an offer or solicitation of an offer to buy or sell any securities of any company. Nor may these materials, or any information or data conveyed in connection with such report, be relied on in any manner as legal, tax or investment advice. The information and data is not intended to be used as the primary basis of investment decisions and nothing contained herein or conveyed in connection therewith is, or is intended to be, predictive of the movement of the market prices of the securities of the applicable company or companies. The facts and opinions presented are those of the author only and not official opinions of any financial instituion.
 #************************************************************
 
-# interactive notebook 
-# https://mybinder.org/v2/gh/d6tdev/d6tflow-binder-interactive/master?filepath=example-trading.ipynb
 
 

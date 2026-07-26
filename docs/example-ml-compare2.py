@@ -1,3 +1,33 @@
+# ---------------------------------------------------------------------------
+# DRAFT / SCRATCH - not a finished example. Kept for the pipeline shape only.
+#
+# This file is a working note exploring how to cross-validate models a flow
+# produced, and how to parameterize a comparison across two model families. It
+# was never finished. Read example-ml-compare.py for the maintained version of
+# the model-comparison example.
+#
+# It RUNS as far as the in-sample errors: the DAG (GetData -> ModelFeatures ->
+# DataTrain -> ModelTrainOLS / ModelTrainLGBM -> ModelEvalAll) executes, and the
+# naive / ols / gbm mean-squared errors print. Everything below that point is
+# unfinished:
+#
+# - The `cv errors` block RAISES. It passes an oryxflow *task instance* to
+#   sklearn's cross_validate() where an estimator is expected:
+#       InvalidParameterError: The 'estimator' parameter of cross_validate must
+#       be an object implementing 'fit'. Got ModelTrainOLS(interaction=False)
+#   A task is not an estimator. Cross-validating here needs an unfitted
+#   estimator built from the same config the task uses - the open question this
+#   draft never resolved. Nothing after this line executes.
+# - The `single model experiments` loop repeats the same broken call.
+# - The `multi model experiments` loop has an empty `experiments` dict, so its
+#   body never runs. The open design question is recorded inline there: how to
+#   sweep OLS and LGBM parameters together without ModelEvalAll recomputing for
+#   experiments whose inputs are identical.
+# - `statsmodels` is imported but never used.
+# - GetData downloads a CSV over the network, so this needs an internet
+#   connection.
+# ---------------------------------------------------------------------------
+
 # processing
 import oryxflow
 import pandas as pd

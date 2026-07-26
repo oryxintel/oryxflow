@@ -6,7 +6,7 @@ import pandas as pd
 class GetData(oryxflow.tasks.TaskPqPandas):  # save dataframe as parquet
 
     def run(self):
-        ds = sklearn.datasets.load_boston()
+        ds = sklearn.datasets.load_diabetes()
         df_train = pd.DataFrame(ds.data, columns=ds.feature_names)
         df_train['y'] = ds.target
         self.save(df_train) # quickly save dataframe
@@ -34,9 +34,9 @@ class ModelTrain(oryxflow.tasks.TaskPickle): # save output as pickle
             model = sklearn.ensemble.GradientBoostingRegressor()
         else:
             raise ValueError('invalid model selection')
-        model.fit(df_train.drop('y',1), df_train['y'])
+        model.fit(df_train.drop(columns='y'), df_train['y'])
         self.save(model)
-        self.saveMeta({'score':model.score(df_train.drop('y',1), df_train['y'])})
+        self.saveMeta({'score':model.score(df_train.drop(columns='y'), df_train['y'])})
 
 # goal: compare performance of two models
 params_model1 = {'do_preprocess':True, 'model':'ols'}
@@ -45,23 +45,24 @@ params_model2 = {'do_preprocess':False, 'model':'gbm'}
 # run workflow
 flow = oryxflow.WorkflowMulti(ModelTrain, {'ols':params_model1, 'gbm':params_model2})
 flow.reset_upstream(confirm=False) # force re-run
-print(flow.preview('ols'))
+flow.preview(flow='ols')
 
 flow.run()
 '''
 Scheduled 3 tasks of which:
+* 0 complete ones were encountered
 * 3 ran successfully:
-    - 1 GetData()
-    - 1 ModelData(do_preprocess=True)
-    - 1 ModelTrain(do_preprocess=True, model=ols)
+    - GetData
+    - ModelData(do_preprocess=True)
+    - ModelTrain(do_preprocess=True, model=ols)
 
 # To run 2nd model, don't need to re-run all tasks, only the ones that changed
 Scheduled 3 tasks of which:
 * 1 complete ones were encountered:
-    - 1 GetData()
+    - GetData
 * 2 ran successfully:
-    - 1 ModelData(do_preprocess=False)
-    - 1 ModelTrain(do_preprocess=False, model=gbm)
+    - ModelData(do_preprocess=False)
+    - ModelTrain(do_preprocess=False, model=gbm)
 
 '''
 
@@ -69,13 +70,13 @@ data = flow.outputLoadAll()
 
 scores = flow.outputLoadMeta()
 print(scores)
-# {'ols': {'score': 0.7406426641094095}, 'gbm': {'score': 0.9761405838418584}}
+# {'ols': {'score': 0.52}, 'gbm': {'score': 0.80}}
 
 # get training data and models
 data_train = flow.outputLoad(task=ModelData)
 models = flow.outputLoad(task=ModelTrain)
 
-print(models['ols'].score(data_train['ols'].drop('y',1), data_train['ols']['y']))
-# 0.7406426641094095
-print(models['gbm'].score(data_train['gbm'].drop('y',1), data_train['gbm']['y']))
-# 0.9761405838418584
+print(models['ols'].score(data_train['ols'].drop(columns='y'), data_train['ols']['y']))
+# 0.52
+print(models['gbm'].score(data_train['gbm'].drop(columns='y'), data_train['gbm']['y']))
+# 0.80

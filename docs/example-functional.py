@@ -22,10 +22,9 @@ def get_data2(task):
 @flow.requires({"input1": get_data1, "input2": get_data2})
 @flow.params(multiplier=oryxflow.IntParameter(default=0))
 def usedata(task):
-    data = task.inputLoad()
-    df1 = data['input1']
-    df2 = data['input2']
-    df3 = df1.join(df2, lsuffix='1', rsuffix='2')
+    df1 = task.inputLoad(task='input1')            # single-output dep -> the dataframe
+    df2 = task.inputLoad(task='input2', keys='b')  # dep with persists -> pick the output by name
+    df3 = df1.join(df2)
     df3['b'] = df3['a']*task.multiplier  # use task parameter
     task.save(df3)
 
