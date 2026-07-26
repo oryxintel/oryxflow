@@ -42,10 +42,7 @@ class TrainGBM(oryxflow.tasks.TaskPickle): # save output as pickle
 
 @oryxflow.requires({'ols':TrainOLS,'gbm':TrainGBM})
 class TrainAllModels(oryxflow.tasks.TaskAggregator):
-
-    def run(self):
-        yield self.clone(TrainOLS)
-        yield self.clone(TrainGBM)
+    pass
 
 oryxflow.run(TrainAllModels(), forced_all_upstream=True, confirm=False)
 

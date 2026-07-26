@@ -358,9 +358,8 @@ class TestInvalidation:
                 self.save({'b': 2})
 
         class Agg(oryxflow.tasks.TaskAggregator):
-            def run(self):
-                yield T1()
-                yield T2()
+            def requires(self):
+                return [T1(), T2()]
 
         class D(oryxflow.tasks.TaskPickle):
             def requires(self):

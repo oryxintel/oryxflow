@@ -1,12 +1,12 @@
-# TaskAggregator cannot be driven by a Workflow (`unknown parameter flows`)
+# TaskAggregator redefined as a `requires()`-based group node
 
 ## Context
 
-`TaskAggregator` — the task type whose `run()` only yields other tasks — **cannot be used with
+`TaskAggregator` — the task type whose `run()` only yielded other tasks — **could not be used with
 `Workflow` or `WorkflowMulti` at all.** Every method on the flow object that resolves the task
-instance raises, so an aggregator can only be driven by the module-level `oryxflow.run()`.
+instance raised, so an aggregator could only be driven by the module-level `oryxflow.run()`.
 
-Reproduce it with any aggregator (no parameters, no `path`, no `env` needed):
+Reproduce it with any aggregator on the old contract (no parameters, no `path`, no `env` needed):
 
 ```python
 import oryxflow, pandas as pd
@@ -31,109 +31,117 @@ UnknownParameterException: Collect[args=(), kwargs={'flows': {}}]: unknown param
 ```
 
 Construction succeeds; **everything after it fails** with the same exception — `flow.run()`,
-`flow.preview()`, `flow.get_task()`, `flow.complete()`, `flow.outputLoad()`. There is no workaround
+`flow.preview()`, `flow.get_task()`, `flow.complete()`, `flow.outputLoad()`. There was no workaround
 short of abandoning the flow object, which is why `docs/docs/advtasksdyn.md` and
-`tests/test_main.py::test_dynamic` both drive aggregators with module-level `oryxflow.run()`. Nothing
-documents that this is a hard limitation rather than a stylistic choice, so a user who reaches for
-`Workflow` with an aggregator hits an exception whose message points at a parameter they never wrote.
+`tests/test_main.py::test_dynamic` both drove aggregators with module-level `oryxflow.run()`.
 
 ### Why it happens
 
 Two mechanisms that were built for `TaskData` were never extended to `TaskAggregator`:
 
 1. **`Workflow` passes `path`/`flows` as *constructor kwargs*.**
-   `oryxflow/__init__.py:401` in `Workflow.__init__` unconditionally does:
+   `oryxflow/__init__.py` in `Workflow.__init__` unconditionally does:
 
    ```python
    self.params = dict(**self.params, **{'flows': {}})
    ```
 
    so `'flows'` is a permanent entry in `self.params` for **every** flow, even one with no flows
-   attached. `path` lands in the same dict when `path`/`env` is set. Then
-   `Workflow.get_task()` (`oryxflow/__init__.py:629`) does:
-
-   ```python
-   return task(**self.params)
-   ```
+   attached. `path` lands in the same dict when `path`/`env` is set. Then `Workflow.get_task()`
+   does `return task(**self.params)`.
 
    `path` and `flows` are **not** Parameters (deliberately — see
    `docs/todo/20260606-sys-param-global.md`; they don't ride through `clone()`), so handing them to
-   the parameter machinery is the anomaly. It only works today because of mechanism 2.
+   the parameter machinery is the anomaly. It only works because of mechanism 2.
 
-2. **`TaskData` absorbs and filters them; `TaskAggregator` doesn't.**
-   `TaskData` (`oryxflow/tasks/__init__.py:38`) declares them as keyword-only args and strips
-   anything that isn't a declared parameter *before* calling `super().__init__()`:
+2. **`TaskData` absorbs and filters them; `TaskAggregator` didn't.**
+   `TaskData` declares them as keyword-only args and strips anything that isn't a declared parameter
+   *before* calling `super().__init__()`, and overrides `get_param_values` with the same filter, so
+   the metaclass's parameter resolution never sees the extras either. `TaskAggregator` subclasses
+   **`core.Task` directly**, not `TaskData`, so `flows={}` reached `core.Task`'s parameter resolution
+   and was rejected.
 
-   ```python
-   def __init__(self, *args, path=None, flows=None, **kwargs):
-       kwargs_ = {k: v for k, v in kwargs.items()
-                  if k in self.get_param_names(include_significant=True)}
-       super().__init__(*args, **kwargs_)
-       self.path = getattr(self, 'path', path)
-       ...
-       self.flows = flows
-   ```
+The same gap applies to any user-written bare `core.Task` subclass, not just `TaskAggregator`.
 
-   and it overrides `get_param_values` (`oryxflow/tasks/__init__.py:52`) with the same filter, so the
-   metaclass's parameter resolution never sees the extras either.
+### The deeper problem: yielded children are invisible to the whole library
 
-   `TaskAggregator` (`oryxflow/tasks/__init__.py:611`) subclasses **`core.Task` directly**, not
-   `TaskData`. It has neither override, so `flows={}` reaches `core.Task`'s parameter resolution and
-   is rejected.
+The exception is a symptom, not the disease. On the old contract an aggregator declared its children
+by **yielding them from `run()`**, so they existed only in `deps()` and never in `requires()`. Every
+propagation mechanism in the library walks `requires()` — `utils.traverse()` (behind
+`taskflow_upstream`, `_attach_to_tasks`, `invalidate_upstream`, `reset_upstream`, `FlowExport`) and
+`utils.print_tree()`. So even with the absorption fix alone, an aggregator's children stay invisible:
+`preview()` prints the group by itself, per-flow `path`/`env` silently never reaches the children,
+and upstream reset/export skip them. The documented decorated form (`docs/example-onnx.py`) papered
+over this by listing the children **twice** — once in `@oryxflow.requires`, once in `yield` — kept in
+sync by hand.
 
-The same gap applies to any user-written bare `core.Task` subclass, not just `TaskAggregator` — an
-aggregator is simply the one the library ships.
+Meanwhile the capability the class was pitched for ("spawn multiple tasks without processing any of
+the outputs") is already covered natively: `oryxflow.run([T1(), T2()])` and `flow.run([T1, T2])` both
+accept a list of roots, `WorkflowMulti` covers same-task-many-params, and the `requires()` fan-out +
+`inputLoadConcat()` pattern covers the case where you do want a combined output.
+
+**Outcome:** keep the class as a named group node, but move the group from `run()` to `requires()`.
+It becomes an ordinary DAG node with no output of its own, so `Workflow`, preview expansion, per-flow
+`path`/`env`, `reset_upstream` and `FlowExport` all work for free rather than each needing a patch.
 
 ### Design decisions
 
-- **Chosen: mirror `TaskData`'s absorption on `TaskAggregator`** (option A below). It is the smallest
-  change that matches the pattern already in the file, touches one class, and cannot affect any
-  `TaskData` path — so the 86-test baseline is not at risk. **This fix has been verified to work**
-  (see Verification): with the two methods added, all five previously-failing flow methods pass and
-  `flow.outputLoad()` returns the children's data.
-- **Rejected for this change: hoist the absorption into `core.Task`** (option B). It is arguably the
-  better home — one implementation instead of two near-identical copies, and it would fix every bare
-  `core.Task` subclass at once, including user-written ones. It is rejected here purely on **blast
-  radius**: `core.Task.__init__` / `get_param_values` sit under the entire engine, so every task in
-  the test suite exercises them, whereas option A cannot touch a `TaskData` path at all. Fixing a
-  reproducible exception and refactoring parameter resolution are two changes and should be two
-  commits. Option B is a reasonable immediate follow-up once A has settled — there is **no external
-  compatibility constraint** blocking it (breaking changes to the engine surface are acceptable;
-  land them as a `BREAKING:` entry in `CHANGELOG.md` per its own conventions).
-- **Rejected: filter at the injection site** (option C) — have `Workflow.get_task()` pass only
-  declared parameters and rely on `_attach_to_tasks()` to set `path`/`flows` by mutation. This is the
-  most *correct* framing, because `path`/`flows` are not Parameters and should never have travelled
-  through the constructor. It was rejected as a bug fix because of a specific hazard:
-  `Register.__call__` memoizes instances by `(class, serialized-params)` and `Workflow` **relies on
-  that memo to carry the mutated `path`/`flows` to instances retrieved later** (`outputPath`,
-  `FlowExport`) — see "Instance memoization is load-bearing" in the repo-root `CLAUDE.md`. Non-
-  parameters aren't part of the memo key, so filtering them out would not change the key; but
-  `TaskData.__init__` sets `self.path` on **first construction only** (`getattr(self, 'path', path)`
-  under memoization), and `_attach_to_tasks()` is called only on the tasks handed to it, so removing
-  the constructor route could leave upstream instances without a `path`. Verifying that requires
-  exercising the per-flow `path`/`env` and `FlowExport` paths, which is more than this bug needs.
-  **Do not attempt option C as part of this change.**
-- **Also worth fixing, and cheap: the misleading error.** Even after option A, a user who passes a
-  genuinely unknown kwarg to a flow gets `unknown parameter flows`-style noise pointing at an
-  internal name. Out of scope here; noted at the end.
+- **Children are declared in `requires()` (or `@oryxflow.requires`); `run()` does nothing.** Confirmed
+  with the user. This is what makes every `requires()`-walking mechanism work without touching
+  `utils.traverse()` or `print_tree()` — no engine-wide change, no blast radius outside this class.
+- **Clean break, no deprecation release.** Confirmed with the user. Breaking changes to the engine
+  surface are acceptable (the downstream stability constraint was dropped in 91fc7e5); it lands as a
+  `BREAKING:` + `Migration:` bullet in `CHANGELOG.md`. The old generator form fails loudly at
+  construction with a message naming the fix, rather than silently doing nothing.
+- **Keep the `path`/`flows` absorption.** It is still required: the class subclasses `core.Task`, and
+  `Workflow.get_task()` passes both as kwargs. This duplicates `TaskData`'s pair; hoisting both into
+  `core.Task` stays a follow-up, not part of this change.
+- **Keep the engine's generator seam** (`core.py` `_drive_generator`). It is the dynamic-requires
+  path, independent of this class; `test_dynamic` is retargeted to a plain task so it stays covered.
+- **Pure passthrough — no artifact of its own.** The group saves nothing and owns no target;
+  `complete()` is derived entirely from the tasks it requires. **Rejected: giving it a marker output**
+  (a `TaskJson`/`TaskCache` writing a stub file so it has its own completeness). A marker can go stale
+  in both directions — present while a member has been invalidated, absent while every member is
+  cached — so the derived answer is the correct one and the file would be a second source of truth.
+  It also keeps the group free of `path`/target machinery. Nothing needs the artifact: the code
+  fingerprint already folds `deps()`, so downstream `code_version` propagation works without a state
+  record for the group itself (`codecheck.code_state` returns `(None, None)` for a task with no
+  `_resolved_dirpath`, which is what `TaskAggregator` already did).
+- **Rejected: deleting `TaskAggregator` outright.** A named group node other tasks can `requires()`
+  is worth keeping now that it costs nothing to make work.
+- **Rejected: the absorption-only fix** this file originally planned. It fixes the exception but
+  leaves the children invisible to preview, per-flow paths, reset and export — the group would run
+  but nothing else would see inside it.
+- **Rejected: filter at the injection site** — have `Workflow.get_task()` pass only declared
+  parameters and rely on `_attach_to_tasks()` to set `path`/`flows` by mutation. Cleanest framing,
+  but `Register.__call__` memoizes instances by `(class, serialized-params)` and `Workflow` relies on
+  that memo to carry mutated `path`/`flows` to instances retrieved later (`outputPath`, `FlowExport`)
+  — see "Instance memoization is load-bearing" in the repo-root `CLAUDE.md`. Removing the constructor
+  route could leave upstream instances without a `path`.
 
 ## Implementation
 
-### 1. Absorb `path`/`flows` on `TaskAggregator`
+### 1. Rewrite `TaskAggregator` — `oryxflow/tasks/__init__.py`
 
-File: `oryxflow/tasks/__init__.py`, class `TaskAggregator` (line 611).
-
-Add the two methods below as the **first** members of the class, immediately after the docstring and
-before `def reset(...)`. They are a deliberate copy of `TaskData`'s pair (lines 38 and 52) — keep the
-bodies identical to those, so the two stay easy to diff and to de-duplicate later under option B:
+Replace the whole class body; add `import inspect` at the top of the file.
 
 ```python
+class TaskAggregator(core.Task):
+    """
+    Task which groups other tasks, without saving an output of its own
+    ...
+    """
+
     def __init__(self, *args, path=None, flows=None, **kwargs):
         # `path`/`flows` are set by Workflow, are not Parameters, and must not reach
         # the parameter machinery -- same absorption TaskData does.
         kwargs_ = {k: v for k, v in kwargs.items(
         ) if k in self.get_param_names(include_significant=True)}
         super().__init__(*args, **kwargs_)
+        if inspect.isgeneratorfunction(type(self).run):
+            raise RuntimeError(
+                '{}: TaskAggregator no longer yields tasks from run(). Declare the group in '
+                'requires() (or @oryxflow.requires) and leave run() empty.'.format(self.task_family))
         self.path = getattr(self, 'path', path)
         self.flows = flows
 
@@ -142,114 +150,119 @@ bodies identical to those, so the two stay easy to diff and to de-duplicate late
         kwargs_ = {k: v for k, v in kwargs.items(
         ) if k in cls.get_param_names(include_significant=True)}
         return super(TaskAggregator, cls).get_param_values(params, args, kwargs_)
+
+    def run(self):
+        pass
+
+    def reset(self, confirm=False):
+        return self.invalidate(confirm=confirm)
+
+    def invalidate(self, confirm=False):
+        for t in self.deps():
+            t.invalidate(confirm)
+        return True
+
+    def complete(self, cascade=True):
+        return all(t.complete(cascade) for t in self.deps())
+
+    def output(self):
+        return [t.output() for t in self.deps()]
+
+    def outputLoad(self, keys=None, as_dict=False, cached=False):
+        return [t.outputLoad(keys, as_dict, cached) for t in self.deps()]
 ```
 
-Note `super(TaskAggregator, cls)` rather than a bare `super()` — matching `TaskData`'s explicit form
-(line 55), which matters because the metaclass calls `get_param_values` as a classmethod.
+Notes:
+- `super(TaskAggregator, cls)` in `get_param_values`, not bare `super()` — the metaclass calls it as
+  a classmethod (mirrors `TaskData`).
+- **Delete** the old `deps()` override. `core.Task.deps()` is `flatten(self.requires())`, which is
+  now exactly right, and the `code_version` propagation it was added for keeps working through the
+  base implementation.
+- Every method now reads `self.deps()` where it used to read `self.run()`.
+- `complete()` on a group with no `requires()` is vacuously `True` — a group with no members is a
+  no-op node, not an error.
 
-### 2. Add a regression test
+### 2. Retarget the generator test — `tests/test_main.py`
 
-File: `tests/test_main.py`, beside the existing `test_dynamic` (which drives an aggregator through
-module-level `oryxflow.run()` — leave that test as it is; it covers the other entry point).
+`test_dynamic` was the only coverage of `core.build._drive_generator`. Rewrite it against a plain
+task with a generator `run()` (dynamic requirements), which is what that seam is for now.
 
-Add a test that fails before step 1 with `UnknownParameterException` and passes after. Cover every
-method that goes through `get_task()`, because they all broke together:
+### 3. New tests for the group contract — `tests/test_main.py`
 
-```python
-def test_aggregator_workflow(cleanup_files):
-    class Task1Agg(oryxflow.tasks.TaskCache):
-        n = oryxflow.IntParameter(default=1)
-        def run(self):
-            self.save(pd.DataFrame({'a': range(self.n)}))
+`test_aggregator_workflow` (in-memory: complete/run/outputLoad/preview-expansion/reset) and
+`test_aggregator_workflow_env` (on-disk, `env='prod'`, asserts the per-flow env reaches the group's
+children). Both inside `class TestMain`; the on-disk one takes the existing `cleanup` fixture. Give
+the task classes distinct family names — the suite shares `tests/data/`. Assert paths against
+`pathlib.Path(...)`, never a raw string.
 
-    class CollectAgg(oryxflow.tasks.TaskAggregator):
-        def run(self):
-            yield Task1Agg(n=1)
-            yield Task1Agg(n=2)
+### 4. Migrate the code-invalidation test — `tests/test_code_invalidation.py`
 
-    flow = oryxflow.Workflow(CollectAgg)
-    assert flow.get_task() is not None
-    flow.preview()
-    flow.run()
-    assert flow.complete()
-    assert [len(df) for df in flow.outputLoad()] == [1, 2]
-```
+In `test_aggregator_propagation`, replace `Agg`'s generator `run()` with
+`def requires(self): return [T1(), T2()]`; assertions unchanged (propagation now flows through the
+base `deps()`).
 
-Match the surrounding file's conventions for fixtures and task naming (give the classes distinct
-family names so they don't collide with other tests' cached output — the suite shares `tests/data/`).
+### 5. Docs
 
-### 3. Cover the `path` variant too
+- `docs/docs/advtasksdyn.md`, "Collector Task" — rewritten: lead with `flow.run([T1, T2])` (no group
+  task needed), then the group task for when something downstream depends on the group, then
+  `WorkflowMulti` for same-task-many-params. Both `yield` examples removed.
+- `docs/docs/advparam.md` — the `@oryxflow.requires` + aggregator example is decorator + `pass`.
+- `docs/example-onnx.py` — the two `yield self.clone(...)` lines dropped; the decorator above already
+  declares the group.
+- Root `CLAUDE.md` — engine note no longer attributes generator `run()` to `TaskAggregator`; the
+  layout entry records the group-node contract.
+- `../oryxflow-claude-plugin/skills/oryxflow/reference.md` — the `TaskAggregator` row names
+  `requires()`. **Edited only, left uncommitted** — that repo is committed by the maintainer.
 
-The same absorption handles `path`, so add one assertion (or a second small test) driving an
-aggregator through a flow that sets a path, e.g. `oryxflow.Workflow(CollectAgg, env='exp1')` or
-`path=`. Follow whichever form `tests/test_workflow.py` already uses for per-flow paths, and assert
-against `pathlib.Path(...)` rather than a raw string so it passes on both Windows and POSIX.
+### 6. `CHANGELOG.md`
 
-### 4. Document that aggregators work with flows
-
-File: `docs/docs/advtasksdyn.md`.
-
-The page currently only ever drives aggregators with module-level `oryxflow.run()`. Once step 1
-lands, add a short note (user-facing voice — what the reader can now type, not why it broke) that an
-aggregator can be wrapped in a `Workflow` like any other task, with a two-or-three-line example.
-Do **not** describe the parameter-absorption mechanics on the page; that belongs here.
+One `BREAKING:` bullet under `## [Unreleased]` / `### Changed` with a same-bullet `Migration:` clause.
 
 ## Files modified
 
-- `oryxflow/tasks/__init__.py` — `TaskAggregator` gains the `__init__` / `get_param_values` pair that
-  absorbs the non-Parameter `path` and `flows` kwargs `Workflow` passes.
-- `tests/test_main.py` — new regression test(s) driving an aggregator through `Workflow`, covering
-  `get_task`, `preview`, `run`, `complete`, `outputLoad`, plus the `path`/`env` variant.
-- `docs/docs/advtasksdyn.md` — note plus short example showing an aggregator inside a `Workflow`.
-- `docs/todo/20260726-engine-aggregator-flows-kwarg.md` — this file; add an
-  `## Implementation notes (divergences from the plan as built)` section if the built fix differs.
+- `oryxflow/tasks/__init__.py` — `TaskAggregator` rewritten: `requires()`-based members, `path`/`flows`
+  absorption, empty `run()`, loud error on the old generator form, `deps()` override deleted;
+  `import inspect` added.
+- `tests/test_main.py` — `test_dynamic` retargeted to a plain generator-`run()` task; new
+  `test_aggregator_workflow` and `test_aggregator_workflow_env`; module-level `io`,
+  `contextlib.redirect_stdout`, `pathlib.Path` imports.
+- `tests/test_code_invalidation.py` — `test_aggregator_propagation`'s `Agg` uses `requires()`.
+- `docs/docs/advtasksdyn.md`, `docs/docs/advparam.md`, `docs/example-onnx.py` — examples on the new form.
+- `CLAUDE.md` — engine note + layout entry.
+- `CHANGELOG.md` — `BREAKING:` + `Migration:` bullet under `## [Unreleased]`.
+- `docs/todo/20260726-engine-aggregator-flows-kwarg.md` — this file, rewritten as the design record.
+- `../oryxflow-claude-plugin/skills/oryxflow/reference.md` — one row; **left uncommitted**.
 
 ## Verification
 
-**1. The bug reproduces before the change.** Save the snippet from the Context section and run it;
-expect `UnknownParameterException: ... unknown parameter flows` from `flow.run()`.
+1. **The reported bug is gone.** The Context snippet with the group moved into `requires()`:
+   `flow.get_task()`, `flow.preview()`, `flow.run()`, `flow.complete()` and `flow.outputLoad()` all
+   succeed, and `outputLoad()` returns the members' data (`[1, 2]` rows).
+2. **The old form fails loudly.** An aggregator that still yields from `run()` raises `RuntimeError`
+   at construction with the migration message — not a silent no-op.
+3. **Baseline holds.** From the repo root (`data/` resolves to `tests/data/`):
 
-**2. The fix resolves it.** The chosen approach was validated by subclassing `TaskAggregator` with
-exactly the two methods from step 1 and running an aggregator through a flow. Expected output after
-the change — all five methods succeed and the children's data loads:
+   ```bash
+   python -m pytest tests/test_main.py tests/test_workflow.py \
+       tests/test_workflowMulti.py tests/test_workflowMulti2.py -q
+   ```
 
-```text
-get_task: OK
-preview: OK
-run: OK
-complete: OK
-outputLoad: OK
-rows: [1, 2]
-```
-
-**3. The new test fails before and passes after.** Stash step 1, run the new test, confirm it errors
-with `UnknownParameterException`; unstash and confirm it passes.
-
-**4. Hold the baseline.** From the repo root (paths resolve `data/` → `tests/data/`):
-
-```bash
-python -m pytest tests/test_main.py tests/test_workflow.py \
-    tests/test_workflowMulti.py tests/test_workflowMulti2.py -q
-```
-
-Expect **86 passing plus the tests added in steps 2–3**. A benign `UserWarning: datatable failed`
-and sklearn convergence warnings are expected. Any *other* change in that count means the absorption
-leaked into a `TaskData` path — it must not, since step 1 touches only `TaskAggregator`.
-
-**5. Docs still build.** `python scripts/build_docs.py` — the doc tests must still pass and
-`mkdocs build` must produce no new link warnings after the `advtasksdyn.md` edit.
+   **88 passing** (86 baseline + the two new tests). A benign `UserWarning: datatable failed` and
+   sklearn convergence warnings are expected. `python -m pytest tests/test_code_invalidation.py -q`
+   is unchanged at 43.
+4. **Docs build.** `python scripts/build_docs.py` — generated doc tests still pass and `mkdocs build`
+   produces no new link warnings.
 
 ## Out of scope (noted while diagnosing)
 
 - **`flows` is injected even when unused.** `Workflow.__init__` adds `{'flows': {}}` to `self.params`
-  unconditionally (`oryxflow/__init__.py:401`), so every task construction carries a kwarg that is
-  almost always empty. Only ever setting it when a flow is actually attached would shrink the blast
-  radius of this whole class of bug, but it changes a code path every flow uses.
+  unconditionally, so every task construction carries a kwarg that is almost always empty. Only ever
+  setting it when a flow is actually attached would shrink the blast radius of this class of bug, but
+  it changes a code path every flow uses.
 - **The error message names an internal.** `unknown parameter flows` points at a kwarg the user never
-  wrote. Whatever absorbs these kwargs could raise a message that distinguishes "you passed an
-  unknown parameter" from "the engine passed you an internal one".
-- **`preview()` doesn't expand an aggregator's children.** The tree prints the aggregator alone
-  (`+--[Collect-{} (PENDING)]`) rather than the tasks it yields, so the preview understates what will
-  run. Separate issue from this exception; worth its own plan if it bothers anyone.
-- **Option B** (hoisting absorption into `core.Task`) as a follow-up de-duplication once option A has
-  settled — it would also fix user-written bare `core.Task` subclasses.
+  wrote. Whatever absorbs these kwargs could distinguish "you passed an unknown parameter" from "the
+  engine passed you an internal one".
+- **Hoist the absorption into `core.Task`** — one implementation instead of the two near-identical
+  copies in `TaskData` and `TaskAggregator`, and it would fix user-written bare `core.Task`
+  subclasses too. Rejected here purely on blast radius: `core.Task.__init__` / `get_param_values` sit
+  under the entire engine.

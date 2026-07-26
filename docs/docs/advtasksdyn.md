@@ -180,18 +180,29 @@ A complete, runnable version of this sector → country → state example — in
 
 ## Collector Task
 
-If you want to spawn multiple tasks without processing any of the outputs, you can use <span class="title-ref">TaskAggregator</span>. This task should do nothing but yield other tasks.
+To run several tasks together without combining their outputs, just pass them as a list — you don't need a task for that at all.
+
+```python
+flow = oryxflow.Workflow()
+flow.run([TrainModel1, TrainModel2])
+```
+
+When something downstream needs to depend on the whole group, give the group a name with <span class="title-ref">TaskAggregator</span>. List its members with <span class="title-ref">@oryxflow.requires</span> and leave the body empty — the group saves nothing itself, and it's done when all of its members are done.
 
 ```python
 @oryxflow.requires(TrainModel1,TrainModel2) # inherit all params from input tasks
 class TrainAllModels(oryxflow.tasks.TaskAggregator):
+    pass
 
-    def run(self):
-        yield self.clone(TrainModel1)
-        yield self.clone(TrainModel2)
+flow = oryxflow.Workflow(TrainAllModels)
+flow.preview()          # shows the group and every member below it
+flow.run()
+models = flow.outputLoad()   # one entry per member
 ```
 
-Alternatively, you can achieve the same using the <span class="title-ref">WorkflowMulti</span> object with additional flexibility.
+A group task works like any other task: `preview()` shows what's still pending inside it, per-flow settings reach its members, and `flow.reset_upstream()` resets them.
+
+To run the *same* task for many parameter combinations, use <span class="title-ref">WorkflowMulti</span> — you get one independently managed run per combination.
 
 ```python
 params = dict()
@@ -199,16 +210,6 @@ params_all = oryxflow.utils.params_generator_single({'param':['a','b']},params)
 
 flow = oryxflow.WorkflowMulti(tasks_search.SearchModelTrain, params=params_all)
 flow.run()
-```
-
-If you want to run the workflow with multiple parameters at the same time, you can use <span class="title-ref">TaskAggregator</span> to yield multiple tasks.
-
-```python
-class TaskAggregator(oryxflow.tasks.TaskAggregator):
-
-    def run(self):
-        yield TaskTrain(do_preprocess=False)
-        yield TaskTrain(do_preprocess=True)
 ```
 
 ## Fully Dynamic

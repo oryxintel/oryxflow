@@ -20,6 +20,7 @@ oryxflow/
                      #   getpaths, task_id_str, inherits/requires, find_deps, build()
   parameter.py       # Parameter, Int/Float/Bool/Date/Dict/List/Choice/Enum Parameter
   tasks/__init__.py  # TaskData (+ TaskCache/Json/Pickle/CSV/Excel/Pq/Markdown...), TaskAggregator
+                     #   (group node: members declared in requires(), empty run(), no output)
   targets/__init__.py# CacheTarget, _LocalPathTarget, DataTarget + format targets, Target re-export
   settings.py        # global settings (dirpath, cached, check_dependencies, task-id lengths...)
   cache.py           # `data` = in-memory target cache (dict)
@@ -68,7 +69,7 @@ non-obvious decisions. Highlights:
 
 - **Sequential engine.** `core.build()` runs the DAG in-process, in dependency order. The
   `workers` argument is accepted but ignored. It handles `external=True` tasks (never run),
-  generator `run()` (TaskAggregator / dynamic yields), errors (mark failed, record first
+  generator `run()` (dynamic yields), errors (mark failed, record first
   exception, `oryxflow.run(abort=True)` raises `RuntimeError` *chained* to it — see "Logging"),
   and is re-entrant (a task's `run()` may call `oryxflow.run()` — flow-within-a-flow).
 

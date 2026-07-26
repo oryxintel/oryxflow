@@ -1,9 +1,12 @@
 import pytest
 import os
+import io
 import stat
 import shutil
 import pandas as pd
 import warnings
+from contextlib import redirect_stdout
+from pathlib import Path
 import oryxflow
 
 
@@ -447,17 +450,56 @@ class TestMain:
 
     def test_dynamic(self):
 
-        class TaskCollector(oryxflow.tasks.TaskAggregator):
+        class TaskDynamic(oryxflow.tasks.TaskCache):
             def run(self):
-                yield TestMain.Task1()
-                yield TestMain.Task2()
+                yield TestMain.Task1()          # dynamic requirement, resolved mid-run
+                self.save(TestMain.Task1().outputLoad())
 
-        oryxflow.run(TaskCollector())
-        assert self.Task1().complete() and self.Task2().complete() and TaskCollector().complete()
-        assert TaskCollector().outputLoad()[0].equals(self.Task1().outputLoad())
-        assert TaskCollector().outputLoad()[1][0].equals(self.Task2().outputLoad()[0])
-        TaskCollector().reset(confirm=False)
-        assert not (self.Task1().complete() and self.Task2().complete() and TaskCollector().complete())
+        oryxflow.run(TaskDynamic())
+        assert TestMain.Task1().complete() and TaskDynamic().complete()
+        assert TaskDynamic().outputLoad().equals(TestMain.df)
+
+    def test_aggregator_workflow(self):
+        class AggLeaf(oryxflow.tasks.TaskCachePandas):
+            n = oryxflow.IntParameter(default=1)
+
+            def run(self):
+                self.save(pd.DataFrame({'a': range(self.n)}))
+
+        class AggCollect(oryxflow.tasks.TaskAggregator):
+            def requires(self):
+                return {n: AggLeaf(n=n) for n in [1, 2]}
+
+        flow = oryxflow.Workflow(AggCollect)
+        assert not flow.complete()
+        flow.run()
+        assert flow.complete()
+        assert [len(df) for df in flow.outputLoad()] == [1, 2]
+
+        with io.StringIO() as buf, redirect_stdout(buf):
+            flow.preview()
+            assert buf.getvalue().count('AggLeaf') == 2   # group expands in the tree
+
+        flow.reset()
+        assert not flow.complete()
+
+    def test_aggregator_workflow_env(self, cleanup):
+        class EAggLeaf(oryxflow.tasks.TaskPqPandas):
+            n = oryxflow.IntParameter(default=1)
+
+            def run(self):
+                self.save(pd.DataFrame({'a': range(self.n)}))
+
+        class EAggCollect(oryxflow.tasks.TaskAggregator):
+            def requires(self):
+                return {n: EAggLeaf(n=n) for n in [1, 2]}
+
+        flow = oryxflow.Workflow(EAggCollect, env='prod')
+        flow.run()
+        # per-flow env reaches the group's children
+        assert flow.outputPath(EAggLeaf).parent == Path('data/env=prod/EAggLeaf')
+        assert flow.outputPath(EAggLeaf).exists()
+        flow.reset()
 
     def tests_params(self):
         class Task1(oryxflow.tasks.TaskCache):

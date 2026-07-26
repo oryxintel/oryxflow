@@ -14,6 +14,19 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 
 ## [Unreleased]
 
+## [26.7.26] - 2026-07-26
+### Changed
+- BREAKING: `TaskAggregator` is now a `requires()`-based group node instead of a task that yields
+  its members from `run()`. Because the group is a regular DAG node, it works with `Workflow` /
+  `WorkflowMulti` (previously every call raised `UnknownParameterException: ... unknown parameter
+  flows`), `preview()` expands it to show each member, and per-flow `path`/`env`,
+  `reset_upstream()` and `FlowExport` reach its members. The group still saves nothing of its own
+  and is complete when every task it requires is complete. The old form now raises a
+  `RuntimeError` at construction naming the fix. Migration: move the members from `yield`
+  statements in `run()` into `requires()` (or `@oryxflow.requires`) and leave `run()` empty —
+  `class Agg(oryxflow.tasks.TaskAggregator): def run(self): yield T1(); yield T2()` becomes
+  `class Agg(oryxflow.tasks.TaskAggregator): def requires(self): return [T1(), T2()]`.
+
 ## [26.7.21] - 2026-07-21
 ### Security
 - Releases are now published to PyPI via GitHub Actions **Trusted Publishing** (OIDC) instead of a

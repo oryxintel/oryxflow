@@ -123,10 +123,7 @@ oryxflow.Workflow(TaskEvaluate, {'do_preprocess': False}).preview()  # specify n
 ```python
 @oryxflow.requires(TaskTrain,TaskPredict) # inherit all params from input tasks
 class TaskEvaluate(oryxflow.tasks.TaskAggregator):
-
-    def run(self):
-        yield self.clone(TaskTrain)
-        yield self.clone(TaskPredict)
+    pass
 ```
 
 For another ML example, see [Example (ML)](example-ml.md).

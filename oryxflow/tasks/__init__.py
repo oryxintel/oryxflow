@@ -2,6 +2,7 @@ import pickle
 import pathlib
 import json
 import hashlib
+import inspect
 
 from oryxflow import core
 from oryxflow.log import logger
@@ -610,35 +611,58 @@ class TaskMarkdown(TaskData):
 
 class TaskAggregator(core.Task):
     """
-    Task which yields other tasks
+    Task which groups other tasks, without saving an output of its own
 
-    NB: Use this function by implementing `run()` which should do nothing but yield other tasks
+    Declare the group in ``requires()`` (or with ``@oryxflow.requires``) and leave
+    ``run()`` empty. The group is complete when every task it requires is complete.
 
     example::
 
-        class TaskCollector(oryxflow.tasks.TaskAggregator):
-            def run(self):
-                yield Task1()
-                yield Task2()
+        @oryxflow.requires({'ols': TaskTrainOLS, 'gbm': TaskTrainGBM})
+        class TaskTrainAll(oryxflow.tasks.TaskAggregator):
+            pass
 
+        oryxflow.Workflow(TaskTrainAll).run()
+
+    For a one-off group that needs no task of its own, pass a list instead:
+    ``oryxflow.run([TaskTrainOLS(), TaskTrainGBM()])``.
     """
+
+    def __init__(self, *args, path=None, flows=None, **kwargs):
+        # `path`/`flows` are set by Workflow, are not Parameters, and must not reach
+        # the parameter machinery -- same absorption TaskData does.
+        kwargs_ = {k: v for k, v in kwargs.items(
+        ) if k in self.get_param_names(include_significant=True)}
+        super().__init__(*args, **kwargs_)
+        if inspect.isgeneratorfunction(type(self).run):
+            raise RuntimeError(
+                '{}: TaskAggregator no longer yields tasks from run(). Declare the group in '
+                'requires() (or @oryxflow.requires) and leave run() empty.'.format(self.task_family))
+        self.path = getattr(self, 'path', path)
+        self.flows = flows
+
+    @classmethod
+    def get_param_values(cls, params, args, kwargs):
+        kwargs_ = {k: v for k, v in kwargs.items(
+        ) if k in cls.get_param_names(include_significant=True)}
+        return super(TaskAggregator, cls).get_param_values(params, args, kwargs_)
+
+    def run(self):
+        pass
 
     def reset(self, confirm=False):
         return self.invalidate(confirm=confirm)
 
-    def deps(self):
-        # aggregator contract: run() only yields tasks. Folding them into deps() lets
-        # code_version bumps propagate through the aggregator's fingerprint.
-        return core.flatten([t for t in self.run()])
-
     def invalidate(self, confirm=False):
-        [t.invalidate(confirm) for t in self.run()]
+        for t in self.deps():
+            t.invalidate(confirm)
+        return True
 
     def complete(self, cascade=True):
-        return all([t.complete(cascade) for t in self.run()])
+        return all(t.complete(cascade) for t in self.deps())
 
     def output(self):
-        return [t.output() for t in self.run()]
+        return [t.output() for t in self.deps()]
 
     def outputLoad(self, keys=None, as_dict=False, cached=False):
-        return [t.outputLoad(keys, as_dict, cached) for t in self.run()]
+        return [t.outputLoad(keys, as_dict, cached) for t in self.deps()]
