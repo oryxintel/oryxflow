@@ -19,3 +19,13 @@
 # stable, not hashed, so don't mark immutable).
 /assets/images/*
   Cache-Control: public, max-age=2592000
+
+# Self-hosted Roboto / Roboto Mono. These names aren't content-hashed, but they
+# get `immutable` anyway because the bytes behind a given name never change: the
+# filename pins family + subset + axis, so a font revision arrives as a new
+# filename rather than new content under an old one. That matters more here than
+# elsewhere — a font is needed to paint text, so a revalidation round-trip on a
+# repeat visit would delay exactly what we moved these off Google to speed up.
+# If you ever do overwrite a font file in place, rename it in the same commit.
+/assets/fonts/*
+  Cache-Control: public, max-age=31536000, immutable

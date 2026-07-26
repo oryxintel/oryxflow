@@ -33,6 +33,14 @@ theme:
   custom_dir: overrides
   logo: assets/logo-oryx.png
   favicon: assets/favicon.ico
+  # Don't let Material load Roboto from fonts.googleapis.com. That injected a
+  # stylesheet from a second origin into the critical path (a DNS + TLS handshake
+  # before any text could render), which is what Search Console flagged as slow.
+  # The same fonts are self-hosted from assets/fonts/ and declared in
+  # assets/extra.css, so they arrive on the connection the page already has open.
+  # Turning this off also drops the theme's own :root font variables — extra.css
+  # sets --md-text-font / --md-code-font in their place. Keep the two in sync.
+  font: false
   icon:
     repo: fontawesome/brands/github
   palette:

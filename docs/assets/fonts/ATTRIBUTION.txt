@@ -1,0 +1,48 @@
+Third-party fonts bundled with the oryxflow documentation site
+==============================================================
+
+These files are redistributed here so the docs can serve their own fonts instead
+of loading them from fonts.googleapis.com. They are NOT covered by the oryxflow
+MIT license in the repository root; each keeps its own license, below.
+
+Roboto
+  Copyright 2011 The Roboto Project Authors
+  https://github.com/googlefonts/roboto-classic
+  Version 3.015
+  License: SIL Open Font License, Version 1.1 - https://openfontlicense.org
+
+Roboto Mono
+  Copyright 2015 The Roboto Mono Project Authors
+  https://github.com/googlefonts/robotomono
+  Version 3.001
+  License: SIL Open Font License, Version 1.1 - https://openfontlicense.org
+
+(Copyright, version and license are quoted from each file's own embedded name
+table, not from a third-party listing.)
+
+
+What's in this directory
+------------------------
+
+Eight files: two families x two styles x two character subsets.
+
+  roboto-latin-wght-normal.woff2            roboto-mono-latin-wght-normal.woff2
+  roboto-latin-wght-italic.woff2            roboto-mono-latin-wght-italic.woff2
+  roboto-latin-ext-wght-normal.woff2        roboto-mono-latin-ext-wght-normal.woff2
+  roboto-latin-ext-wght-italic.woff2        roboto-mono-latin-ext-wght-italic.woff2
+
+`wght` in the name means these are variable fonts: a single file covers the whole
+weight axis (Roboto 100-900, Roboto Mono 100-700). There is deliberately no
+per-weight file - regular and bold come from the same bytes. Adding
+roboto-700-*.woff2 alongside these would just ship a second identical copy.
+
+`latin` and `latin-ext` are disjoint character subsets. The `unicode-range`
+declarations in ../extra.css decide which one a visitor actually downloads, so an
+English page fetches only the smaller `latin` file.
+
+Declared in ../extra.css; Material's own Google Fonts loading is turned off via
+`theme.font: false` in mkdocs.yml. Cache headers are set in ../../_headers.
+
+If you replace or add a font file, re-check the `unicode-range` values in
+extra.css against the new file's character table - a character outside every
+declared range silently renders in a system fallback font instead.

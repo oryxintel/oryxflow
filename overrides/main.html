@@ -17,6 +17,16 @@
 
 {% block extrahead %}
   {{ super() }}
+  {#- Start the body-text font downloading immediately. It's declared in extra.css,
+      which the browser has to fetch and parse before it can even discover the
+      @font-face — so without this hint the font request starts late, after the
+      first paint is already blocked on it. Only the latin text face is preloaded:
+      it's needed for the visible copy on every page. The mono, italic and
+      latin-ext faces are deliberately left to normal discovery, since preloading
+      a font a given page never uses would compete with the real LCP resource.
+      `crossorigin` is required even same-origin — font fetches are CORS-mode, and
+      without it the browser makes a second, unshared request. -#}
+  <link rel="preload" href="{{ 'assets/fonts/roboto-latin-wght-normal.woff2' | url }}" as="font" type="font/woff2" crossorigin>
   {#- Open the connection to GitHub's API early: the theme's repo widget fetches
       stars/forks/latest-release from api.github.com, and without a preconnect that
       DNS+TLS handshake sits on the critical path (Lighthouse: ~320ms LCP savings). -#}
