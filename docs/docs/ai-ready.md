@@ -1,6 +1,6 @@
 ---
 title: Built for AI coding agents
-description: oryxflow is AI-coding ready: the whole documentation is available as llms.txt and llms-full.txt for one-request ingestion, the core examples are executed by the test suite on every build, and the API reference is generated from docstrings that cover 100% of the public API.
+description: "oryxflow is AI-coding ready: the whole documentation is available as llms.txt and llms-full.txt for one-request ingestion, the core examples are executed by the test suite on every build, and the API reference is generated from docstrings that cover 100% of the public API."
 faq:
   - q: "Does oryxflow have an llms.txt?"
     a: "Yes. https://docs.oryxflow.dev/llms.txt is a sectioned index of every page, and https://docs.oryxflow.dev/llms-full.txt is the entire documentation concatenated into one file, so an agent can read the whole thing in a single request instead of crawling page by page."
