@@ -7,8 +7,6 @@ from phmdoctest.fixture import managenamespace
 def test_code_53(managenamespace):
     import oryxflow
 
-    oryxflow.set_dir('data/')
-
     class GetConfig(oryxflow.tasks.TaskJson):
 
         def run(self):
@@ -29,7 +27,7 @@ def test_code_53(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_78(managenamespace):
+def test_code_76(managenamespace):
     class ScoreModel(oryxflow.tasks.TaskJson):
         persists = ['metrics', 'warnings']
 
@@ -44,7 +42,7 @@ def test_code_78(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_95(managenamespace):
+def test_code_93(managenamespace):
     class TrainModel(oryxflow.tasks.TaskPickle):
 
         def run(self):
@@ -59,7 +57,7 @@ def test_code_95(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_114(managenamespace):
+def test_code_112(managenamespace):
     class WriteReport(oryxflow.tasks.TaskMarkdown):
 
         def run(self):

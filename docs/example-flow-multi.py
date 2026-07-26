@@ -13,8 +13,6 @@
 import oryxflow
 import pandas as pd
 
-oryxflow.set_dir('data/')
-
 # Plain domain config: the nested enumeration describing the hierarchy's shape.
 # This is YOUR data (keep it in a cfg.py), not a oryxflow construct. `requires()` indexes into it.
 UNIVERSE = {

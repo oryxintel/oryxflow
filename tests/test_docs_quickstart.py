@@ -8,8 +8,6 @@ def test_code_24(managenamespace):
     import oryxflow
     import pandas as pd
 
-    oryxflow.set_dir('data/')                       # where task outputs are cached
-
     class GetData(oryxflow.tasks.TaskPqPandas):     # output saved as parquet
         def run(self):
             df = pd.DataFrame({'x': range(10)})
@@ -26,7 +24,7 @@ def test_code_24(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_46(managenamespace):
+def test_code_44(managenamespace):
     flow = oryxflow.Workflow(ProcessData)
 
     flow.preview()          # show what will run, without running it
@@ -62,8 +60,6 @@ def test_code_85(managenamespace):
     import pandas as pd
     import sklearn.datasets, sklearn.preprocessing
     import sklearn.linear_model, sklearn.ensemble
-
-    oryxflow.set_dir('data/')
 
     class GetDiabetes(oryxflow.tasks.TaskPqPandas):
         def run(self):
@@ -101,7 +97,7 @@ def test_code_85(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_129(managenamespace):
+def test_code_127(managenamespace):
     flow = oryxflow.WorkflowMulti(ModelTrain, {
         'ols': {'do_preprocess': True,  'model': 'ols'},
         'gbm': {'do_preprocess': False, 'model': 'gbm'},

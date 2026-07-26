@@ -190,8 +190,6 @@ Full treatment, with the integration pattern and when one tool alone is enough:
 import oryxflow
 import pandas as pd
 
-oryxflow.set_dir('data/')
-
 class GetData(oryxflow.tasks.TaskPqPandas):        # output saved as parquet — no file paths
     def run(self):
         self.save(pd.DataFrame({'x': range(10)}))

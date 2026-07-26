@@ -4,11 +4,9 @@ import pytest
 from phmdoctest.fixture import managenamespace
 
 
-def test_code_60(managenamespace):
+def test_code_63(managenamespace):
     import oryxflow
     import pandas as pd
-
-    oryxflow.set_dir('data/')
 
     class GetData(oryxflow.tasks.TaskPqPandas):        # output saved as parquet
         def run(self):

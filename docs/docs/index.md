@@ -70,6 +70,11 @@ that got out of hand? Go straight to
     Make AI-written data analysis trustworthy: scaffold the project, wire the DAG, and teach the
     agent to use the cache correctly.
 
+-   :material-file-code: **[Built for AI coding agents](ai-ready.md)**
+
+    `llms.txt` for one-request ingestion, core examples executed by the test suite, and a reference
+    generated from docstrings that cover the whole public API.
+
 -   :material-api: **[API Reference](reference.md)**
 
     Every public symbol, generated from the source docstrings.

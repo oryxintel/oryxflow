@@ -24,8 +24,6 @@ Two tasks: one produces data, the next transforms it.
 import oryxflow
 import pandas as pd
 
-oryxflow.set_dir('data/')                       # where task outputs are cached
-
 class GetData(oryxflow.tasks.TaskPqPandas):     # output saved as parquet
     def run(self):
         df = pd.DataFrame({'x': range(10)})
@@ -53,6 +51,8 @@ print(df.head())
 ```
 
 Run `flow.run()` **again** and nothing happens — both outputs already exist, so the engine skips them. That is the core payoff: re-running a pipeline only pays for what actually changed.
+
+Nothing to configure first: outputs go to `data/`, one file per task and parameter set, named for you. To keep them somewhere else, call `oryxflow.set_dir('other/')` before you run.
 
 ## Change a parameter, rerun only what depends on it
 
@@ -86,8 +86,6 @@ import oryxflow
 import pandas as pd
 import sklearn.datasets, sklearn.preprocessing
 import sklearn.linear_model, sklearn.ensemble
-
-oryxflow.set_dir('data/')
 
 class GetDiabetes(oryxflow.tasks.TaskPqPandas):
     def run(self):

@@ -16,8 +16,6 @@ The classic case: load a dataset once (expensive), train a model once per hyperp
 import oryxflow
 import pandas as pd
 
-oryxflow.set_dir('data/')
-
 ALPHAS = [0.01, 0.1, 1.0, 10.0]          # the grid you iterate over — your own domain data
 
 class LoadData(oryxflow.tasks.TaskCachePandas):

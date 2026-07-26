@@ -156,8 +156,6 @@ reruns:
 import oryxflow
 import pandas as pd
 
-oryxflow.set_dir('data/')
-
 class GetData(oryxflow.tasks.TaskPqPandas):        # output saved as parquet — no file paths
     def run(self):
         self.save(pd.DataFrame({'x': range(10)}))
@@ -230,6 +228,9 @@ Ready to build?
 
 - **[Build with Claude Code](claude-plugin/index.md)** — the full plugin section: commands,
   trust model, project structure.
+- **[Built for AI coding agents](ai-ready.md)** — the docs themselves are machine-readable
+  (`llms.txt`, unit-tested core examples, docstring-generated reference), so any agent can learn
+  oryxflow in one request.
 - **[Why oryxflow](why-oryxflow.md)** — the positioning and how the library works.
 - **[Quickstart](quickstart.md)** — from nothing to a self-caching pipeline in minutes.
 - **[Migrate a messy notebook project](migrate-notebook-to-pipeline.md)** — already out of control?

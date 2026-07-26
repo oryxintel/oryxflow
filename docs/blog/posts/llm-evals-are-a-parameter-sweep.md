@@ -92,8 +92,6 @@ Everything you vary becomes a task parameter. oryxflow keys the cached output on
 import pandas as pd
 import oryxflow
 
-oryxflow.set_dir('data/')
-
 class EvalRun(oryxflow.tasks.TaskPqPandas):
     model           = oryxflow.Parameter(default='claude-sonnet-5-20260501')
     prompt_version  = oryxflow.Parameter(default='v3')

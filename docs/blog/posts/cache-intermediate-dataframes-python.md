@@ -90,8 +90,6 @@ no path to manage.
 ```python
 import oryxflow
 
-oryxflow.set_dir('data/')
-
 class LoadRaw(oryxflow.tasks.TaskPqPandas):        # DataFrame -> Parquet, automatically
     def run(self):
         self.save(load_raw())                       # no filename, ever

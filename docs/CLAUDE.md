@@ -87,12 +87,38 @@ python scripts/build_docs.py         # regenerate tests/test_docs_*.py, run them
 Commit the regenerated `tests/test_docs_*.py`. CI runs `python scripts/build_docs.py --check`,
 which fails if the committed generated files are stale relative to the Markdown.
 
-Isolation gotcha: doc examples call `oryxflow.set_dir('data/')` with a relative path. The
+Isolation gotcha: doc examples use the default output directory, the relative path `data/` —
+don't add `oryxflow.set_dir('data/')` to an example, it's a no-op that contradicts the "nothing to
+configure" pitch (only show `set_dir` where the point *is* a non-default directory). The
 `conftest.py` fixture runs each `test_docs_*` module in a throwaway working directory (module
 scope, so blocks on one page share the same cache dir). Because a whole page runs in one shared
 namespace + cache dir, **two tasks with the same family name and no distinguishing parameters
 collide** (the second reuses the first's cached output). Give distinct example tasks distinct
 class names — this is why the quickstart's ML loader is `GetDiabetes`, not a second `GetData`.
+
+## Claims about AI-readiness live on one page — keep them true
+
+`docs/docs/ai-ready.md` is the single place the docs claim oryxflow is "AI-coding ready" (README and
+the two index pages only link to it). It asserts three things that can silently rot, so if you touch
+them, update that page in the same commit:
+
+- **"The examples an agent reads first are executed by the test suite"** — deliberately scoped to
+  the three `TESTED_PAGES` (home, quickstart, targets) and paired with an explicit admission that
+  the deeper guides and blog aren't all executed. Only ~13 of ~214 python blocks in `docs/` run, so
+  do **not** upgrade this to "every example"; if you add a page to `TESTED_PAGES`, name it there.
+- **"100% of the public API carries a docstring"** — verify before restating it:
+
+  ```bash
+  python -c "import inspect,oryxflow,oryxflow.core,oryxflow.parameter,oryxflow.tasks,oryxflow.targets as t; \
+  m={'oryxflow':oryxflow,'core':oryxflow.core,'parameter':oryxflow.parameter,'tasks':oryxflow.tasks,'targets':t}; \
+  o=[f'{k}.{n}' for k,v in m.items() for n,x in vars(v).items() if not n.startswith('_') \
+  and (inspect.isfunction(x) or inspect.isclass(x)) and getattr(x,'__module__','').startswith('oryxflow') \
+  and not (inspect.getdoc(x) or '').strip()]; print('undocumented:', o or 'none')"
+  ```
+
+- **`llms.txt` / `llms-full.txt` exist and are complete** — they come from the `llmstxt` plugin's
+  `sections` in `mkdocs.yml`. A new page added to `nav` but not to `sections` is missing from both
+  files, so agents never see it. Add every new page to both.
 
 ## Building & AI-crawler outputs
 

@@ -55,8 +55,6 @@ Here's the canonical shape — `GetData` → `BuildFeatures` → `TrainModel` �
 ```python
 import oryxflow
 
-oryxflow.set_dir('data/')                          # where cached outputs live
-
 
 class GetData(oryxflow.tasks.TaskPqPandas):        # saves a DataFrame as parquet
     source = oryxflow.Parameter(default='raw.parquet')

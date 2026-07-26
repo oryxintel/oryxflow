@@ -39,8 +39,6 @@ Add a parameter to a task and oryxflow keys the cache on its value. Each paramet
 import oryxflow
 import pandas as pd
 
-oryxflow.set_dir('data/')
-
 class GetData(oryxflow.tasks.TaskPqPandas):
     def run(self):
         df = pd.read_csv('raw.csv')

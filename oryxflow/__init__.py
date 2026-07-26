@@ -309,6 +309,8 @@ def invalidate_downstream(task, task_downstream, confirm=False):
 
 
 def clone_parent(cls):
+    """Deprecated. Use :py:func:`requires` instead, which copies the parent's parameters
+    and defines `requires()` for you."""
     warnings.warn("This is replaced with `@oryxflow.requires()`", DeprecationWarning, stacklevel=2)
 
     def requires(self):
@@ -320,6 +322,10 @@ def clone_parent(cls):
 
 # Like core.inherits but for handling dictionaries
 class dict_inherits:
+    """Implements `@oryxflow.inherits({'name': Task, ...})`. Copies the parameters of every
+    task in the dict onto the decorated task and adds `clone_parents_dict()`, which returns
+    the parent tasks keyed by the same names. Reached via :py:func:`inherits`, not directly."""
+
     def __init__(self, *tasks_to_inherit):
         super(dict_inherits, self).__init__()
         if not tasks_to_inherit:
@@ -348,6 +354,11 @@ class dict_inherits:
 
 # Like core.requires but for handling dictionaries
 class dict_requires:
+    """Implements `@oryxflow.requires({'name': Task, ...})` — the named-dependency form.
+    Copies the parents' parameters, wires up `requires()`, and lets the task select a
+    parent by name (`self.inputLoad(task='name')`) instead of by position. Reached via
+    :py:func:`requires`, not directly."""
+
     def __init__(self, *tasks_to_require):
         super(dict_requires, self).__init__()
         if not tasks_to_require:
@@ -367,12 +378,56 @@ class dict_requires:
 
 
 def inherits(*tasks_to_inherit):
+    """
+    Class decorator. Copy parameters from one or more tasks onto the decorated task,
+    without wiring up the dependency — you write `requires()` yourself. Use
+    :py:func:`requires` instead unless you need that control.
+
+    Adds `clone_parent()` / `clone_parents()` helpers to the decorated class, which
+    build the parent task(s) with the shared parameter values.
+
+    Args:
+        *tasks_to_inherit: task classes, or a single `{name: task}` dict (then
+            `clone_parents_dict()` is added and returns a dict keyed by those names)
+
+    Example:
+        ```python
+        @oryxflow.inherits(TaskGetData)
+        class TaskProcess(oryxflow.tasks.TaskPqPandas):
+            def requires(self):
+                return self.clone_parent()
+        ```
+    """
     if isinstance(tasks_to_inherit[0], dict):
         return dict_inherits(*tasks_to_inherit)
     return core.inherits(*tasks_to_inherit)
 
 
 def requires(*tasks_to_require):
+    """
+    Class decorator. Declare the decorated task's dependencies: copies the parents'
+    parameters onto it **and** defines its `requires()` method. This is the normal way
+    to connect tasks — inside `run()`, `self.inputLoad()` then returns the parents'
+    output, already loaded.
+
+    Because parameters are copied, setting a parameter on the downstream task also sets
+    it upstream, so one value flows through the whole chain.
+
+    Args:
+        *tasks_to_require: task classes (positional — `self.input()` is a single target
+            for one task, a list for several), keyword tasks, or a single `{name: task}`
+            dict. Prefer the named form for more than one dependency: it lets you select
+            a parent by meaning (`self.inputLoad(task='features')`) rather than position.
+
+    Example:
+        ```python
+        @oryxflow.requires(TaskGetData)
+        class TaskProcess(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                df = self.inputLoad()          # TaskGetData's output
+                self.save(df.dropna())
+        ```
+    """
     # Check the type; if a dictionary call our custom requires decorator
     is_dict = isinstance(tasks_to_require[0], dict)
     if is_dict:
@@ -1076,6 +1131,26 @@ class dotdict(dict):
 
 
 def runLoad(task, params=None, load=True, taskLoad=None, reset=False):
+    """
+    Run a task and return its output, in one call. Shorthand for building a
+    :py:class:`Workflow`, running it, and calling `outputLoad()`.
+
+    Args:
+        task (obj): task class to run (its dependencies run first, as always)
+        params (dict): parameters for the flow, eg `{'model': 'gbm'}`
+        load (bool): return the output; False runs without loading (see :py:func:`runIt`)
+        taskLoad (obj): load this task's output instead of `task`'s — use it to run the
+            end of the pipeline but read an intermediate result
+        reset (bool): invalidate `task`'s cached output first, forcing it to recompute
+
+    Returns:
+        The task's output when `load` is True, else None.
+
+    Example:
+        ```python
+        df = oryxflow.runLoad(TaskProcess, {'model': 'gbm'})
+        ```
+    """
 
     params = dict() if params is None else params
     taskLoad = task if taskLoad is None else taskLoad
@@ -1090,6 +1165,15 @@ def runLoad(task, params=None, load=True, taskLoad=None, reset=False):
         return r
 
 def runIt(task, params=None, reset=False):
+    """
+    Run a task without loading its output — :py:func:`runLoad` with `load=False`.
+    Use it for a task whose point is the file it writes, not a value you want back.
+
+    Args:
+        task (obj): task class to run (its dependencies run first)
+        params (dict): parameters for the flow
+        reset (bool): invalidate `task`'s cached output first, forcing it to recompute
+    """
     return runLoad(task, params=params, reset=reset, load=False)
 
 def runIterConcat(task, params, load=True, taskLoad=None, reset=False,

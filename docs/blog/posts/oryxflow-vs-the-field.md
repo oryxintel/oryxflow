@@ -146,8 +146,6 @@ The whole scenario, in the code you'd actually keep:
 import oryxflow
 import pandas as pd
 
-oryxflow.set_dir('data/')
-
 class GetSource(oryxflow.tasks.TaskPqPandas):
     """The expensive, rate-limited call. Cached once — never repeated on rerun."""
     def run(self):

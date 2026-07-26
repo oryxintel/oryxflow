@@ -52,8 +52,6 @@ dask, SQL and pyspark are premium features, see below.
 ```python
 import oryxflow
 
-oryxflow.set_dir('data/')
-
 class GetConfig(oryxflow.tasks.TaskJson):
 
     def run(self):

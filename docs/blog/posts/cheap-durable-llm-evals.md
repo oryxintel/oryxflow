@@ -130,8 +130,6 @@ An oryxflow task is a class with parameters, a `run()`, and a `save()`. The engi
 import pandas as pd
 import oryxflow
 
-oryxflow.set_dir('data/')
-
 class EvalRun(oryxflow.tasks.TaskPqPandas):
     model           = oryxflow.Parameter(default='claude-sonnet-5-20260501')
     prompt_version  = oryxflow.Parameter(default='v3')

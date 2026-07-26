@@ -48,8 +48,6 @@ rather than reconstruct.
 ```python
 import oryxflow
 
-oryxflow.set_dir('data/')
-
 class GetData(oryxflow.tasks.TaskPqPandas):
     def run(self):
         df = load_raw()                  # your loader

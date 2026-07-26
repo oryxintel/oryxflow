@@ -79,8 +79,6 @@ Here's the whole loop in oryxflow — verified API, no config files anywhere:
 ```python
 import oryxflow
 
-oryxflow.set_dir('data/')
-
 class MakeFeatures(oryxflow.tasks.TaskPqPandas):
     horizon = oryxflow.IntParameter(default=30)
 

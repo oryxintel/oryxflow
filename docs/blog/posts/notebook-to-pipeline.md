@@ -55,8 +55,6 @@ Do not convert everything. Start with the one step that hurts most — usually t
 import oryxflow
 import pandas as pd
 
-oryxflow.set_dir('data/')                     # where cached outputs live
-
 class GetData(oryxflow.tasks.TaskPqPandas):   # TaskPqPandas = saves a DataFrame as parquet
     def run(self):
         df = pd.read_parquet('raw.parquet')

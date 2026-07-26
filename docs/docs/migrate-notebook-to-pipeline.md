@@ -186,8 +186,6 @@ import pandas as pd
 import oryxflow
 from sklearn.linear_model import LinearRegression
 
-oryxflow.set_dir('data/')            # where cached task outputs live
-
 
 class DataSales(oryxflow.tasks.TaskPqPandas):
     """Raw order rows, exactly as delivered by the source export.

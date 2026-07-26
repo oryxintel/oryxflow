@@ -24,8 +24,6 @@ import oryxflow
 import pandas as pd
 import sklearn.datasets, sklearn.ensemble, sklearn.linear_model
 
-oryxflow.set_dir('data/')
-
 
 class GetData(oryxflow.tasks.TaskPqPandas):
     """Load the raw training data once."""
@@ -51,13 +49,20 @@ class ModelTrain(oryxflow.tasks.TaskPickle):
         self.saveMeta({'score': clf.score(df_x, df_y)})
 
 
+# two named experiments; each name maps to the parameters that define that run
 flow = oryxflow.WorkflowMulti(ModelTrain, {'ols': {'model': 'ols'},
                                            'gbm': {'model': 'gbm'}})
-result = flow.run()
+result = flow.run()                              # runs both, in dependency order
 print(result.summary())                          # what ran, and what came from cache
-print(flow.outputLoadMeta())
+print(flow.outputLoadMeta())                     # results keyed by experiment name
 # {'ols': {'score': 0.5177484222203498}, 'gbm': {'score': 0.7990392018966864}}
 ```
+
+Each key in that dict names an experiment and its value sets that run's parameters — matched to the
+parameters the task declares, so `'gbm'` trains `ModelTrain(model='gbm')` with no code edit between
+runs. Results come back under the same names, and adding a third model is one more line. For a sweep
+rather than a few named runs, pass the values and oryxflow expands the grid itself:
+`WorkflowMulti(ModelTrain, params={'model': ['ols', 'gbm']})`.
 
 Look at what the summary says about the second experiment:
 
@@ -160,6 +165,27 @@ The `oryxflow` skill auto-activates whenever you work in a pipeline project. The
 | `/oryxflow:update-project` | Reconcile an older scaffold with the current template |
 
 More: [Claude Code for data science](https://docs.oryxflow.dev/docs/claude-code-for-data-science/).
+
+### The docs are written for agents too
+
+Whatever agent you use, it can read all of oryxflow in one request — no crawling, nothing missed:
+
+```text
+Read https://docs.oryxflow.dev/llms-full.txt, then convert my script into oryxflow tasks.
+```
+
+- **[`llms.txt`](https://docs.oryxflow.dev/llms.txt)** — a sectioned index of every page;
+  **[`llms-full.txt`](https://docs.oryxflow.dev/llms-full.txt)** — the whole documentation in a
+  single file.
+- **The examples an agent reads first are executed by the test suite** — the home page, the
+  [quickstart](https://docs.oryxflow.dev/docs/quickstart/) and the
+  [I/O formats guide](https://docs.oryxflow.dev/docs/targets/) run top-to-bottom on every build, so
+  a broken example fails CI instead of quietly misleading it.
+- **100% of the public API carries a docstring** with arguments, returns, and an example where the
+  call isn't obvious — so `help(oryxflow.requires)` answers in-process, and the
+  [API reference](https://docs.oryxflow.dev/docs/reference/) is generated from it and can't drift.
+
+The full picture: [Built for AI coding agents](https://docs.oryxflow.dev/docs/ai-ready/).
 
 ## When *not* to use oryxflow
 

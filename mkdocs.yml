@@ -165,6 +165,7 @@ plugins:
           - docs/functional_tasks.md
         Build with Claude Code:
           - docs/claude-code-for-data-science.md
+          - docs/ai-ready.md
           - docs/claude-plugin/index.md
           - docs/claude-plugin/commands.md
           - docs/claude-plugin/trust.md
@@ -232,6 +233,7 @@ nav:
       - Changelog: docs/changelog.md
   - Build with Claude Code:
       - Claude Code for data science: docs/claude-code-for-data-science.md
+      - Built for AI coding agents: docs/ai-ready.md
       - docs/claude-plugin/index.md
       - Commands: docs/claude-plugin/commands.md
       - Trustworthy AI data analysis: docs/claude-plugin/trust.md

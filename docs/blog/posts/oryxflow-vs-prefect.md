@@ -45,8 +45,6 @@ No cache keys, no result-storage config, no catalog file. Task base classes pick
 ```python
 import oryxflow
 
-oryxflow.set_dir('data/')
-
 class LoadData(oryxflow.tasks.TaskPqPandas):        # DataFrame -> parquet, automatically
     def run(self):
         self.save(load_data())                       # your loader; a stand-in here

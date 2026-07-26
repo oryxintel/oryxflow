@@ -25,7 +25,10 @@ database, and no account: `pip install oryxflow` and you're done.
 Working with an AI agent? The **[Claude Code plugin](docs/claude-code-for-data-science.md)**
 teaches Claude Code to build your data analysis this way — so the agent reuses expensive results
 instead of burning your time and tokens redoing them, and never trains a model on stale data. You
-get analysis you can **trust**, not just analysis that runs.
+get analysis you can **trust**, not just analysis that runs. Using a different agent? The docs are
+[machine-readable too](docs/ai-ready.md) — point it at
+[`llms-full.txt`](https://docs.oryxflow.dev/llms-full.txt) and it has read all of oryxflow in one
+request.
 
 ## Why oryxflow
 
@@ -59,8 +62,6 @@ name.
 ```python
 import oryxflow
 import pandas as pd
-
-oryxflow.set_dir('data/')
 
 class GetData(oryxflow.tasks.TaskPqPandas):        # output saved as parquet
     def run(self):

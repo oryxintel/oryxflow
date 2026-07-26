@@ -111,8 +111,6 @@ Now the sweep. One task, parameterized by the things you vary, saving one row pe
 import pandas as pd
 import oryxflow
 
-oryxflow.set_dir('data/')
-
 class EvalRun(oryxflow.tasks.TaskPqPandas):
     model           = oryxflow.Parameter(default='claude-sonnet-5-20260501')
     prompt_version  = oryxflow.Parameter(default='v3')

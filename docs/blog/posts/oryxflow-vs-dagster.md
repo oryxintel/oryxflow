@@ -74,8 +74,6 @@ nothing.
 
 ```python
 import oryxflow
-oryxflow.set_dir('data/')
-
 class LoadData(oryxflow.tasks.TaskPqPandas):
     def run(self):
         self.save(load_data())            # cached once, keyed on (code, params)
