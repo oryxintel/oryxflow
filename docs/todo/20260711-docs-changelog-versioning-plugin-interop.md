@@ -50,7 +50,7 @@ Confirmed with the user and a consuming-agent review; do not relitigate:
   - **`BREAKING:`** — a literal token beginning any breaking bullet, so an agent can grep for it.
     "Prioritize breaking changes" only works if "breaking" is a grep target, not a vibe.
   - **`Migration:`** — every `BREAKING:` bullet carries a same-entry old→new fix
-    (`import d6tflow` → `import oryxflow`), so the agent can auto-remediate.
+    (e.g. `RunResult.summary_text` → `summary()`), so the agent can auto-remediate.
   - **Backticked symbols** — name the actual API symbol (`` `RunResult.summary_text` -> `summary()` ``),
     never prose like "reworked the run API". Agents diagnose from a symbol in a traceback; they
     grep the changelog for that symbol and must land on the entry.
@@ -84,9 +84,7 @@ Confirmed with the user and a consuming-agent review; do not relitigate:
 ### 1. Create `CHANGELOG.md` at the repo root
 
 Seed with the convention header (which doubles as the contract for future editors) plus an
-`Unreleased` section and the historical package rename as the first real `BREAKING:` entry (the
-`d6tflow` → `oryxflow` rename is genuinely breaking and downstream projects still `import
-d6tflow`). Exact starting content:
+`Unreleased` section and the initial release as the oldest entry. Exact starting content:
 
 ```markdown
 # Changelog
@@ -106,14 +104,13 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 ## [Unreleased]
 
 ## [26.6.6] - 2026-06-06
-### Changed
-- BREAKING: package renamed `d6tflow` -> `oryxflow`. Migration: replace `import d6tflow` with
-  `import oryxflow` (and `from d6tflow...` -> `from oryxflow...`); the public API names are
-  otherwise unchanged.
+### Added
+- Initial release of `oryxflow`: the self-contained task engine (`Task`, `requires`/`inherits`,
+  the parameter set, `Workflow`/`WorkflowMulti`, targets and task I/O formats), with no external
+  workflow-engine dependency.
 ```
 
-(Backfill any other known-behavioral changes since the last public `d6tflow` release under
-`[26.6.6]` before committing; going forward, every PR that touches a public symbol adds a bullet
+(Backfill any other known behavioral changes under `[26.6.6]` before committing; going forward, every PR that touches a public symbol adds a bullet
 to `[Unreleased]`.)
 
 ### 2. Expose `oryxflow.__version__`

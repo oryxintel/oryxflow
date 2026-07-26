@@ -87,5 +87,3 @@ that name already exists under the data dir.
   carries per-flow `path`/`flows` to upstream tasks — separate concern from `task_id`, but it's
   why `Task(**same_params)` returns one object. See CLAUDE.md "Instance memoization is
   load-bearing".
-- d6tflow2 stable contract: `task_id`/`task_family`, `to_str_params(only_significant=…)`,
-  `external`/`persist` semantics must stay stable (CLAUDE.md).

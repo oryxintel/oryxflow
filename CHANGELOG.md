@@ -114,7 +114,7 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - Documentation rewrite and PyPI packaging updates; no API changes.
 
 ## [26.6.6] - 2026-06-06
-### Changed
-- BREAKING: package renamed `d6tflow` -> `oryxflow`. Migration: replace `import d6tflow` with
-  `import oryxflow` (and `from d6tflow...` -> `from oryxflow...`); the public API names are
-  otherwise unchanged.
+### Added
+- Initial release of `oryxflow`: the self-contained task engine (`Task`, `requires`/`inherits`,
+  the parameter set, `Workflow`/`WorkflowMulti`, targets and task I/O formats), with no external
+  workflow-engine dependency.

@@ -84,12 +84,13 @@ All confirmed by the user during planning:
      by **caching semantics keyed by `(code_hash, schema_hash)`** — identical code+schema →
      identical stored descriptor; regenerate only on change; record the model used +
      `review_status`. The enricher is **pluggable** (default: none in OSS; the plugin agent or
-     the d6t hosted service supplies it).
+     a hosted service supplies it).
 4. **SQLAlchemy backend**, SQLite file default, any DB via URL. **Lazy optional dependency**
    (`oryxflow[catalog]`), imported only inside `enable_catalog` — base install stays light
    (matches the cloud-storage extras pattern). Rejected JSON-lines and a hand-rolled sqlite
    layer.
-5. **Closed sink, no public `add_sink()`/callback API.** Data lands in d6t's environment;
+5. **Closed sink, no public `add_sink()`/callback API.** Data lands in the maintainer's hosted
+   environment;
    advanced analytics is the product. OSS = local store + thin raw readers only.
 6. **Versioned history** (one row per generation) — enables drift / change-vs-prior, supports
    the consistency pillar. Rejected current-state-only upsert.
@@ -417,7 +418,7 @@ catalog = _Catalog()
 ```python
 def set_enricher(fn):
     """Register callable(evidence_dict)->{'description', 'field_semantics', 'model'}.
-    Default None: enrich() is a no-op. The plugin agent / d6t service supplies this."""
+    Default None: enrich() is a no-op. The plugin agent / hosted service supplies this."""
     global _enricher; _enricher = fn
 
 def enrich(limit=50):

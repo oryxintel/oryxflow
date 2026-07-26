@@ -94,11 +94,6 @@ non-obvious decisions. Highlights:
   in an insignificant param share an id but are distinct cached instances). Dict/List values are
   stored raw (not frozen) and serialized with sorted keys for id determinism.
 
-- **Stable contract for d6tflow2** (a separate downstream repo): keep `tasks.TaskData`/
-  `TaskPqPandas`/`TaskAggregator`, `targets.DataTarget`/`_LocalPathTarget`/`Target`,
-  `Task.to_str_params(only_significant=…)`, `clone`, `get_params`, `task_id`/`task_family`,
-  and `external`/`persist` semantics stable.
-
 ## Logging (dev notes)
 
 loguru-based, designed to a plan: `docs/todo/20260606-sys-logging.md` (read it before changing

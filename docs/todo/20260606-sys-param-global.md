@@ -231,7 +231,7 @@ A global mutable dict is only safe for **config injected top-down** (case 1), ne
 - **Make `path`/`flows` `significant=False` Parameters.** Then they ride through the
   constructor *and* `clone()` to upstream tasks, don't affect `task_id`, and the cache is no
   longer needed for propagation. Bigger change: touches `TaskData.__init__`, `_getpath`,
-  kwargs filtering, and has d6tflow2 compatibility implications.
+  kwargs filtering.
 - **Metadata-backed "flow store" helper** (`task.flow_set(k, v)` / `task.flow_get(k)`) for the
   write-and-consume pattern that survives skipped producers — i.e. case 2 done correctly on
   top of persisted metadata. (Relevant only once run-2 / cross-process is back in scope.)

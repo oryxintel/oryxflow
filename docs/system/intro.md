@@ -21,6 +21,6 @@ The split:
 ## Conventions for these docs
 
 - Cite `path:line` and the enclosing function name (line numbers drift; names survive).
-- State the contract, not the implementation. If behavior is load-bearing for a downstream
-  repo (e.g. d6tflow2) or for backward compat, say so explicitly.
+- State the contract, not the implementation. If behavior is load-bearing for backward compat,
+  say so explicitly.
 - When a mechanism changes, update the relevant file here in the same commit.
