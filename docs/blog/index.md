@@ -70,6 +70,8 @@ lightweight caching DAG changes how you build data-science workflows.
 
 - [Parameter sweeps without rerunning upstream steps](posts/parameter-sweeps-without-rerunning.md)
   — compare many configurations while shared steps compute once.
+- [Migrate from d6tflow to oryxflow](posts/migrate-from-d6tflow.md) — a whole-word package rename,
+  not an API port; your cache comes with you.
 - [When *not* to use oryxflow](posts/when-not-to-use-oryxflow.md) — an honest guide to non-fit.
 
 ---

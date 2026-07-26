@@ -102,7 +102,7 @@ The first run computes all three steps. Edit `TrainModel.run` and rerun: `GetDat
 
 Reach for a reproducible DAG when a result needs to be defensible: something you'll hand to a colleague, revisit in a month, or make a decision on. The moment a workflow has more than one expensive step and you're iterating on the later ones, deterministic identity and automatic caching pay for themselves.
 
-Don't reach for it during throwaway exploratory data analysis. If you're eyeballing distributions in a scratch notebook and nothing downstream depends on the output, task boilerplate is pure overhead. Structure the workflow once the shape stabilizes and the results start to matter. There's a whole post on the boundary: [when not to use oryxflow](when-not-to-use-oryxflow.md).
+A first look doesn't need tasks — and it doesn't need a decision either. If you're eyeballing distributions and nothing downstream depends on the output, task boilerplate is pure overhead; write a plain script. But you don't have to choose a tool before you know how big the work will get: if you build with the [oryxflow Claude Code plugin](../../docs/claude-code-for-data-science.md), that first look already has a home in the project — a read-only probe that states the question it answers and still runs next session — and `/oryxflow:migrate` lifts it into cached, parameterized tasks the day something starts depending on its result. So you can start a small exploration here and let it scale as the shape stabilizes, with no rewrite in between. Where oryxflow genuinely doesn't fit — scheduling, distributed scale, dashboards — has a whole post: [when not to use oryxflow](when-not-to-use-oryxflow.md).
 
 ## Where oryxflow sits
 

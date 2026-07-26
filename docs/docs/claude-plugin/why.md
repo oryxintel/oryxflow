@@ -68,16 +68,22 @@ for the full boundary.
 
 ## Why the pairing scales *up*
 
-For throwaway exploration — load a CSV, group by, plot one thing — a task DAG is overhead; keep it
-in a plain notebook. But the value inverts, super-linearly, as a project gains **depth** (a silent
-stale intermediate near the top corrupts everything below), **expensive nodes** (the cache is the
-difference between a tractable inner loop and one where every experiment costs minutes or
-dollars), and **experiment matrices** (hand-managing output paths across a Cartesian product is
-hopeless). Those are exactly the traits that make an AI agent error-prone without a DAG — and
-exactly where the library-plus-plugin pairing helps most.
+A first look at a dataset needs no task graph, and the plugin doesn't force one on you: exploration
+gets a home of its own — read-only probes under `eda/<subject>/`, each documenting the question it
+answers — and `/oryxflow:migrate` promotes a probe into a cached task the day it turns out to be
+load-bearing. So you can start with simple scripts and grow, rather than deciding your architecture
+before you know what the analysis is.
+
+The value then inverts, super-linearly, as a project gains **depth** (a silent stale intermediate
+near the top corrupts everything below), **expensive nodes** (the cache is the difference between a
+tractable inner loop and one where every experiment costs minutes or dollars), and **experiment
+matrices** (hand-managing output paths across a Cartesian product is hopeless). Those are exactly
+the traits that make an AI agent error-prone without a DAG — and exactly where the
+library-plus-plugin pairing helps most.
 
 That's the whole point: this pairing gets *more* valuable as complexity rises, not less — the
-opposite of tooling that collapses under scale.
+opposite of tooling that collapses under scale. And because the same skill covers both ends, there's
+no cliff between the exploratory script and the pipeline it becomes.
 
 ## Get started
 
@@ -89,8 +95,8 @@ opposite of tooling that collapses under scale.
 - **[Commands](commands.md)** — scaffold, migrate, and maintain a project.
 - **[Trustworthy AI data analysis](trust.md)** — how the agent's work becomes cheap to verify.
 - **[Keep a data-science project clean](project-structure.md)** — the load-bearing scaffold.
-- **[Coding standards for AI data analysis](coding-standards.md)** — the conventions that ship with
-  the skill.
+- **[Stop AI data analysis turning into a mess](coding-standards.md)** — the conventions that ship
+  with the skill.
 - **[Why oryxflow](../why-oryxflow.md)** — the positioning in full.
 - **[Managing complex workflows](../managing-workflows.md)** — the cache, lineage, and
   invalidation the plugin drives.

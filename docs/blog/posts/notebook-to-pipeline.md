@@ -126,11 +126,15 @@ model = flow.outputLoad()
 
 **Load any result by name.** Every intermediate is addressable. Want the features without rerunning the model? `oryxflow.Workflow(BuildFeatures).outputLoad()` hands back the cached frame. Comparing two settings? `oryxflow.Workflow(TrainModel, {'power': 3}).outputLoad()` loads that configuration's model directly. No more scrolling for the cell that defined the variable you need.
 
-## When not to bother
+## What you do not have to decide upfront
 
-Throwaway exploration should stay a notebook. If you are poking at a new dataset for twenty minutes and will not run any of it twice, the task scaffolding is pure overhead — reach for oryxflow when a computation is slow enough to want caching, or a result is important enough to need reproducing. It is built for the research loop, not for production orchestration; if you need scheduling, retries, and alerting across a fleet, use a real orchestrator. oryxflow makes *your own analysis* trustworthy and fast to iterate on.
+A twenty-minute first look at a new dataset does not need tasks. If you will not run any of it twice, the task scaffolding is pure overhead — pull a step into a task when the computation is slow enough to want caching, or the result is important enough to need reproducing.
 
-A good rule of thumb: migrate a step the second time you find yourself waiting for it to recompute something that did not change.
+What you do not have to do is decide that in advance. If you use Claude Code, the oryxflow plugin gives that first look a home inside the project — a read-only probe that states the question it answers and still runs next session, instead of a cell you lose — and when a probe turns out to be load-bearing, `/oryxflow:migrate` promotes it into cached, parameterized tasks, reading your script as the spec and never deleting it. So "is this analysis big enough for a pipeline yet?" is a question you can answer by doing the work rather than guessing first: start with a simple script and let it scale as the work gets complex, with no rewrite in between. Walkthrough: [migrate a notebook to a pipeline](../../docs/migrate-notebook-to-pipeline.md).
+
+Where oryxflow genuinely stops is operations. It is built for the research loop, not for production orchestration; if you need scheduling, retries, and alerting across a fleet, use a real orchestrator. oryxflow makes *your own analysis* trustworthy and fast to iterate on.
+
+A good rule of thumb: pull a step into a task the second time you find yourself waiting for it to recompute something that did not change.
 
 ## Takeaway
 

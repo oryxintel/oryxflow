@@ -77,4 +77,4 @@ Learn more about [Writing and Managing Tasks](tasks.md) and [Running Workflows](
 
 ## Design Pattern Templates for Machine Learning Workflows
 
-See code templates for a larger real-life project at <https://github.com/d6t/d6tflow-template>. Clone & code!
+For a larger real-life project layout, run [`/oryxflow:init-project`](claude-plugin/commands.md) in Claude Code — it scaffolds the tasks, parameters, flow, config, and supporting folders for you. Already have a messy project rather than a blank one? See [Migrate a messy notebook project](migrate-notebook-to-pipeline.md).

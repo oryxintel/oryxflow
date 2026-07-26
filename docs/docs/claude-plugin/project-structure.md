@@ -105,8 +105,8 @@ work requires.
 
 **Read next**
 
-- [Coding standards for AI data analysis](coding-standards.md) — the conventions that ride alongside
-  the layout.
+- [Stop AI data analysis turning into a mess](coding-standards.md) — the conventions that ride
+  alongside the layout.
 - [Trustworthy AI data analysis](trust.md) — verifying what the agent actually did.
 - [Plugin commands](commands.md) — `init-project`, `migrate`, and the rest.
 - [Managing complex workflows](../managing-workflows.md) — the cache and lineage the structure

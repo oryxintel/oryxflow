@@ -38,11 +38,19 @@ works out the order. See [Writing tasks](tasks.md).
 
 ## What is the difference between a Claude Code plugin, a skill, and a slash command?
 
-A **plugin** is the installable package you add to Claude Code. A **skill** is one thing a plugin
-can contain — conventions the agent loads on its own when the context matches. A **slash command**
-is an action you invoke explicitly, like `/oryxflow:init-project`. oryxflow ships a plugin
-containing the oryxflow skill plus slash commands — not an MCP server. See
-[Build with Claude Code](claude-plugin/index.md).
+They're nested, not competing. A **plugin** is the installable package you add to Claude Code. A
+**skill** is one thing a plugin can contain — a bundle of instructions and conventions the agent
+loads *on its own* when the context matches, without you invoking anything. A **slash command** is
+an action you invoke explicitly, like `/oryxflow:init-project`. A plugin can also ship hooks and
+other pieces.
+
+oryxflow ships a plugin containing the `oryxflow` **skill** (the data-science conventions and cache
+disciplines, which auto-activate when you edit pipeline files) plus a handful of **slash commands**
+you call deliberately — `/oryxflow:init-project` to scaffold, `/oryxflow:migrate` to convert an
+existing script or notebook, and a few more. It is **not** an MCP server. In practice you install
+the plugin once and the skill just works in the background while you describe the analysis you want.
+See [Build with Claude Code](claude-plugin/index.md) and
+[the command reference](claude-plugin/commands.md).
 
 ## What is a cached intermediate?
 

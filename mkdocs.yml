@@ -138,11 +138,11 @@ plugins:
           - index.md
           - docs/index.md
           - docs/why-oryxflow.md
-          - docs/migrate-from-d6tflow.md
           - docs/installation.md
           - docs/quickstart.md
         Guide:
           - docs/transition.md
+          - docs/migrate-notebook-to-pipeline.md
           - docs/tasks.md
           - docs/workflow.md
           - docs/run.md
@@ -150,6 +150,7 @@ plugins:
           - docs/logging.md
           - docs/collaborate.md
           - docs/managing-workflows.md
+          - docs/experiment-tracking.md
         Advanced:
           - docs/advtasksdyn.md
           - docs/advparam.md
@@ -199,11 +200,11 @@ nav:
   - Docs:
       - docs/index.md
       - Why oryxflow: docs/why-oryxflow.md
-      - Migrate from d6tflow: docs/migrate-from-d6tflow.md
       - Installation: docs/installation.md
       - Quickstart: docs/quickstart.md
       - Guide:
           - Transition from scripts: docs/transition.md
+          - Migrate a messy notebook project: docs/migrate-notebook-to-pipeline.md
           - Writing and managing tasks: docs/tasks.md
           - Workflows: docs/workflow.md
           - Running workflows: docs/run.md
@@ -211,6 +212,7 @@ nav:
           - Logging: docs/logging.md
           - Collaborate & share flows: docs/collaborate.md
           - Managing complex workflows: docs/managing-workflows.md
+          - Experiment tracking (MLflow, W&B): docs/experiment-tracking.md
       - Advanced:
           - Dynamic tasks: docs/advtasksdyn.md
           - Parameters: docs/advparam.md
@@ -226,7 +228,7 @@ nav:
       - Commands: docs/claude-plugin/commands.md
       - Trustworthy AI data analysis: docs/claude-plugin/trust.md
       - Data-science project structure: docs/claude-plugin/project-structure.md
-      - Data-science coding standards: docs/claude-plugin/coding-standards.md
+      - Stop AI data analysis turning into a mess: docs/claude-plugin/coding-standards.md
       - Why library + plugin: docs/claude-plugin/why.md
   - Blog:
       - blog/index.md

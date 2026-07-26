@@ -3,12 +3,12 @@ date: 2026-07-23
 slug: when-not-to-use-oryxflow
 categories:
   - Guides
-description: An honest guide to when a caching pipeline library like oryxflow is the wrong tool — throwaway exploration, production orchestration, dashboards, and what caching can't check.
+description: An honest guide to when oryxflow is the wrong tool — production orchestration, distributed scale, dashboards, and what a caching pipeline library can't check.
 faq:
   - q: "When should I not use oryxflow?"
-    a: "Skip oryxflow for throwaway exploration that runs once, for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for the research loop; it caches task outputs and skips unchanged work, but it doesn't schedule, scale out, or display."
+    a: "Skip oryxflow for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for the research loop; it caches task outputs and skips unchanged work, but it doesn't schedule, scale out, or display."
   - q: "Is oryxflow overkill for a quick one-off analysis?"
-    a: "For a five-line notebook cell you run once, yes — a task DAG is pure ceremony, because the payoff of skipping re-computation never arrives when you only run it once. The value of caching rises with depth, cost, and parameter breadth; near zero of each means near-zero return. Stay in a plain notebook or script, and reach for oryxflow only when you're re-running a slow step for the tenth time or hand-managing intermediate files."
+    a: "No — a five-line cell you run once doesn't need task classes, and you don't have to decide upfront either way. If you build with the oryxflow Claude Code plugin, exploration gets a home in the project from the start: a read-only probe script that states the question it answers and still runs next session, instead of a snippet you lose. When a probe turns out to be load-bearing — you keep re-running it, or something downstream depends on its result — /oryxflow:migrate lifts it into cached, parameterized tasks and never deletes the original. So you can start small in oryxflow and scale to any complexity, with no rewrite in between."
   - q: "Does oryxflow check that my analysis is correct?"
     a: "No — and no workflow tool does. oryxflow guarantees an output was produced by the exact code and inputs it recorded, which makes your pipeline reproducible, not correct. It will happily cache, with full lineage, a leaked test set, a bad join, or a backtest that peeks at the future. Those bugs are caught by sanity checks, held-out validation, and reading your own numbers skeptically — not by any caching machinery."
 ---
@@ -21,15 +21,15 @@ faq:
 
 oryxflow is a local, zero-infrastructure library for the research loop: it caches task outputs, tracks lineage, and skips work whose inputs and code haven't changed, so your pipeline stays reproducible without a server, a scheduler, or a database. That's genuinely useful — but only for a specific shape of problem. Every honest tool has a boundary, and pretending oryxflow fits everywhere would waste your time and cost you trust. So here is where it doesn't fit, and what to reach for instead.
 
-## Don't reach for oryxflow when… it's throwaway exploration that runs once
+## A quick one-off doesn't need a pipeline — but you can still start here
 
-If your whole analysis is "load a CSV, group by a column, plot one thing," a task DAG is pure ceremony. You'd write more scaffolding than analysis, and the payoff — skipping re-computation — never arrives because you only run it once.
+If your whole analysis is "load a CSV, group by a column, plot one thing," you don't need task classes around it. Five lines you'll run once get no payoff from caching, and wrapping them in a DAG is ceremony.
 
 The value of a caching DAG rises with three things: **depth** (how many dependent steps), **cost** (how expensive each step is), and **breadth** (how many parameter combinations you sweep). For a five-line notebook cell, all three are near zero, so the return is near zero too.
 
-**Use instead:** a plain notebook or script for the first pass. Reach for oryxflow when the notebook starts to hurt — when you're re-running a slow step for the tenth time, or hand-managing intermediate files.
+**Use instead:** a plain script for the first pass — but keep it *inside the project*, not in a scratch folder you'll abandon. If you build with the [oryxflow Claude Code plugin](../../docs/claude-plugin/index.md), that's already the convention: exploration lives as a read-only probe at `eda/<subject>/<name>.py`, one line of docstring stating the question it answers, printing the answer legibly, run with `python -m eda.<subject>.<name>`. A probe writes no pipeline artifact — disposable scratch goes to a gitignored scratch area — and anything material it turns up gets written into the project's data doc, so a question you've answered once isn't re-asked next session.
 
-That threshold is softer than it used to be, though, if you build with the [oryxflow Claude Code plugin](../../docs/claude-plugin/index.md). The plugin keeps even exploratory work tidy — it organizes EDA and scratch code in a conventional place from the start, so early analysis isn't a mess you later regret. And when a throwaway script *does* grow teeth — you find yourself re-running it, depending on its output, or sweeping it over parameters — you don't rewrite by hand: `/oryxflow:migrate` restructures the script into a proper cached pipeline, one step at a time. So "start in a notebook, formalize when it earns it" stops being a painful cliff and becomes a one-command migration you run exactly when the work crosses the threshold above.
+Then, when a script turns out to be load-bearing — you keep re-running it, something depends on its output, or you start sweeping it over parameters — you don't rewrite it by hand. `/oryxflow:migrate` reads the script as the spec, shows you a step-to-task map, writes only on your approval, and never deletes the source. So there's no cliff between "exploring" and "having a pipeline": **you can start with a small EDA and let it scale to any complexity, with no rewrite in between.** More on both ends: [migrate a notebook to a pipeline](../../docs/migrate-notebook-to-pipeline.md) and [Claude Code for data science](../../docs/claude-code-for-data-science.md).
 
 ## Don't reach for oryxflow when… you need production orchestration
 
@@ -96,9 +96,9 @@ That's the sweet spot: enough depth and cost that caching pays for itself, run o
 
 ## Takeaway
 
-Use a plain script for quick exploration. Use Airflow, Prefect, or Dagster for production ops. Use Flyte or Metaflow for distributed scale. Use MLflow or W&B for dashboards, DVC for data versioning — and compose them with oryxflow where it helps. And never expect any of them, oryxflow included, to check your statistics for you.
+Start a quick exploration as a plain script — inside an oryxflow project, where `/oryxflow:migrate` can promote it the day it earns a pipeline. Use Airflow, Prefect, or Dagster for production ops. Use Flyte or Metaflow for distributed scale. Use MLflow or W&B for dashboards, DVC for data versioning — and compose them with oryxflow where it helps. And never expect any of them, oryxflow included, to check your statistics for you.
 
-Being honest about fit is the whole point: reach for oryxflow when you have a deep, expensive, reproducible research pipeline, and reach for something else when you don't.
+Being honest about fit is the whole point: reach for oryxflow when you have a research pipeline — or the first small script that might become one — and reach for something else when the job is scheduling, scaling out, or display.
 
 ```bash
 pip install oryxflow
@@ -108,11 +108,11 @@ pip install oryxflow
 
 ### When should I not use oryxflow?
 
-Skip oryxflow for throwaway exploration that runs once, for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for the research loop; it caches task outputs and skips unchanged work, but it doesn't schedule, scale out, or display.
+Skip oryxflow for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for the research loop; it caches task outputs and skips unchanged work, but it doesn't schedule, scale out, or display.
 
 ### Is oryxflow overkill for a quick one-off analysis?
 
-For a five-line notebook cell you run once, yes — a task DAG is pure ceremony, because the payoff of skipping re-computation never arrives when you only run it once. The value of caching rises with depth, cost, and parameter breadth; near zero of each means near-zero return. Stay in a plain notebook or script, and reach for oryxflow only when you're re-running a slow step for the tenth time or hand-managing intermediate files.
+No — a five-line cell you run once doesn't need task classes, and you don't have to decide upfront either way. If you build with the oryxflow Claude Code plugin, exploration gets a home in the project from the start: a read-only probe script that states the question it answers and still runs next session, instead of a snippet you lose. When a probe turns out to be load-bearing — you keep re-running it, or something downstream depends on its result — /oryxflow:migrate lifts it into cached, parameterized tasks and never deletes the original. So you can start small in oryxflow and scale to any complexity, with no rewrite in between.
 
 ### Does oryxflow check that my analysis is correct?
 

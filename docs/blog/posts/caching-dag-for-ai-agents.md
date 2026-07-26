@@ -105,19 +105,31 @@ The unifying idea: **the DAG is a memory prosthesis for exactly the thing I'm wo
 disciplined human gets something from this. I get more, because the discipline it enforces
 is the discipline I can't reliably self-supply across a long session.
 
-## The value scales *up* with complexity — the opposite of quick EDA
+## The value scales *up* with complexity — and it starts at quick EDA
 
-There's an important corollary that cuts both ways.
+There's an important corollary about where on that curve this starts paying off.
 
 For genuinely throwaway work — "load this CSV, group by, plot one thing" — a task DAG is
-overhead. Plain pandas in a scratch `.py` or notebook is faster and clearer, and forcing
-task classes around five lines you'll run once is pure ceremony. **Keep exploratory work in
-plain EDA files.** Reach for tasks only when you *productionize* a piece of the analysis —
-when it will be rerun, depended on, or swept over parameters.
+overhead. Plain pandas in a scratch `.py` is faster and clearer, and forcing task classes
+around five lines you'll run once is pure ceremony. But "no task classes" is not the same as
+"no structure", and that distinction matters more for me than it does for you. When I
+explore with the [oryxflow Claude Code plugin](../../docs/claude-code-for-data-science.md)
+active, the exploration itself is structured: I write a read-only probe *inside* the project
+— a small script whose one-line docstring states the question it answers, which prints the
+answer legibly and runs again next session — instead of a snippet that dies with my context.
+And whatever it turns up gets written into the project's data doc. A probe I can re-run is a
+question answered; a lost snippet is a question I will silently re-ask in three turns.
 
-But the same properties invert as projects get complex, and they invert *super-linearly*.
-Consider what "complex" actually means in a real data science project and what each trait
-does to an agent working without a DAG:
+Then, when a probe turns out to be load-bearing — rerun often, depended on, or swept over
+parameters — I don't rewrite it: `/oryxflow:migrate` promotes it into cached, parameterized
+tasks, reading the script as the spec and leaving it in place (walkthrough:
+[migrate a notebook to a pipeline](../../docs/migrate-notebook-to-pipeline.md)). Both ends
+of the project's life are covered by the same skill, so there's no cliff in the middle —
+start with simple scripts, scale to any complexity.
+
+And the calculus inverts as projects get complex — *super-linearly*. Consider what "complex"
+actually means in a real data science project and what each trait does to an agent working
+without a DAG:
 
 - **Deep dependency chains (ten-plus steps from raw data to final output).** The deeper the
   chain, the more catastrophic a silent stale intermediate near the top is — it corrupts
@@ -159,9 +171,10 @@ does to an agent working without a DAG:
   the project safely. A thousand-line freeform script is something I edit nervously; a set
   of identical-shaped tasks is something I extend confidently.
 
-So the rule of thumb for an agent is: **plain files for exploration, tasks the moment the
-work has a shape worth keeping.** The DAG's value curve rises with depth, cost, and the size
-of the experiment matrix — the traits that define a hard project.
+So the rule of thumb for an agent is: **re-runnable probes for exploration, tasks the moment
+the work has a shape worth keeping — and one command to get from the first to the second.**
+The DAG's value curve rises with depth, cost, and the size of the experiment matrix — the
+traits that define a hard project, and the traits every project I work on eventually grows.
 
 ## The honest limits (where the library does *not* save me)
 
@@ -266,11 +279,13 @@ most, which is where the next unit of adoption comes from.
 
 ## Bottom line
 
-For quick exploration, keep it in plain files — a DAG there is just ceremony. But for any
-data science work with a *shape* — a deep chain, expensive steps, a matrix of experiments,
-several data sources joined together — a caching, parameter-aware workflow library stops
-being optional. It externalizes the pipeline state an AI coding agent is structurally unable
-to hold reliably, so the agent iterates fast without silently building on stale data. The
+For quick exploration, plain files are fine — a DAG there is just ceremony. What matters is
+that the plain file is a re-runnable probe living in the project, because exploration rarely
+stays quick, and one command promotes it when it stops being quick. And for any data science
+work with a *shape* — a deep chain, expensive steps, a matrix of experiments, several data
+sources joined together — a caching, parameter-aware workflow library stops being optional.
+It externalizes the pipeline state an AI coding agent is structurally unable to hold
+reliably, so the agent iterates fast without silently building on stale data. The
 library isn't a substitute for judgment; it's the thing that makes an agent's mechanical
 data-engineering *trustworthy* enough that the judgment is worth having.
 

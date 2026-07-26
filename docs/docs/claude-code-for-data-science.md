@@ -1,61 +1,59 @@
 ---
 title: Claude Code for data science
-description: The oryxflow plugin turns Claude Code into a data-science agent whose analysis is reproducible by default — it caches your pipeline, reruns only what changed, and never builds on stale data. What Claude Code plugins and skills for data science do, and how to make AI data analysis you can trust.
+description: The oryxflow plugin makes AI data analysis faster, cheaper, and more trustworthy — a Claude Code plugin and skill for data science that reuses expensive results to save time and tokens, and stops the agent building on stale data.
 faq:
   - q: "Does oryxflow work with any AI coding agent, or only Claude Code?"
     a: "The library is a plain Python package — it works no matter who writes the code, including you by hand. The plugin packages the disciplines specifically for Claude Code; other agents can follow the same CLAUDE.md conventions manually."
   - q: "How do I stop Claude Code from rerunning expensive steps or building on stale data?"
     a: "Install the oryxflow Claude Code plugin. It teaches the agent to cache every step, verify after each edit that the right tasks actually reran, and answer staleness warnings instead of ignoring them — so it reuses expensive results and never trains on stale intermediates. The library externalizes the 'did I already run this, is it still valid?' state the agent can't reliably hold across a long session."
   - q: "Is there a Claude Code skill or plugin for data science?"
-    a: "Yes — oryxflow ships an official Claude Code plugin for data science: a skill plus slash commands that make an AI agent's analysis reproducible and cached by default. The skill auto-activates in an oryxflow project and applies data-science conventions as the agent writes; the slash commands scaffold a project, migrate an existing notebook, and check standards. It runs on a local Python library — no server or account, and not an MCP server."
+    a: "Yes — oryxflow ships an official Claude Code plugin (skill + slash commands) for data science that makes an AI agent's analysis reproducible and cached by default. The skill auto-activates in an oryxflow project and applies data-science conventions as the agent writes; the slash commands scaffold a project, migrate an existing notebook, and check standards. It runs on a local Python library — no server or account, and not an MCP server."
   - q: "Do I have to restructure my project to use it?"
     a: "No — adopt it one task at a time. Point the agent at an existing script with /oryxflow:migrate, or start fresh with /oryxflow:init-project."
+  - q: "Is the oryxflow plugin overkill for a quick exploratory analysis?"
+    a: "No, because it covers exploration too rather than demanding a pipeline upfront. Ask the agent to look at a new dataset and it writes a re-runnable read-only probe under eda/, documenting the question and recording anything it learns, instead of scattering one-off snippets. When a probe turns out to be load-bearing, /oryxflow:migrate lifts it into cached tasks. So you start with simple scripts and scale to any complexity later, with no rewrite in between."
 ---
 
-# Claude Code for data science: plugins and skills for reproducible AI data analysis
+# Claude Code for data science: faster, cheaper, more trustworthy AI data analysis
 
-**oryxflow makes AI data analysis faster, cheaper, and more trustworthy.** It's a Claude Code
-plugin, backed by a Python library, that teaches your coding agent to build the work as a
-reproducible pipeline. The agent reuses expensive results instead of recomputing them — and never
-trains a model on stale data.
+**oryxflow makes AI data analysis faster, cheaper, and more trustworthy.** It's a Claude Code plugin
+and skill for data science, backed by a Python library, that teaches your coding agent to build the
+work as a cached pipeline. Two things follow immediately:
 
-If you only remember one thing: AI writes the analysis fast, but the hard part — *is it
-reproducible, and did the right data produce this result?* — is exactly what a plugin can enforce
-and a raw agent can't.
+- **It stops paying twice.** The agent reuses results it already computed instead of recomputing
+  them — so you're not waiting on the 10-minute data pull again, or spending tokens on an agent
+  watching it run.
+- **It stops being confidently wrong.** The agent can't quietly train a model on last week's
+  features, because a change to the data, a parameter, or the code reruns exactly what that change
+  affects. You get the number your current code actually implies.
+
+If you only remember one thing: AI writes the analysis fast, but the hard part — *did the right data
+produce this result, and can I check that?* — is exactly what a plugin can enforce and a raw agent
+can't.
 
 ## What are Claude Code plugins and skills for data science?
 
 Claude Code plugins extend the agent with new abilities; **skills** are the part that teaches it
 *how to work* — conventions and procedures that load into context automatically when they're
-relevant. For data science, the useful plugins fall into a few jobs: connecting to your data,
-running notebooks, scaffolding a project, and — the one most tools skip — keeping the analysis
-**reproducible** as the agent iterates.
+relevant. (For the precise distinction, see
+[the glossary](glossary.md#what-is-the-difference-between-a-claude-code-plugin-a-skill-and-a-slash-command).)
+For data science, the useful plugins fall into a few jobs: connecting to your data, running
+notebooks, scaffolding a project, and — the one most tools skip — making sure the analysis is still
+**accurate** ten iterations in, when the agent has edited half the pipeline and nothing has raised an
+error.
 
 The oryxflow plugin owns that last job. It installs an `oryxflow` skill that activates whenever
 you work in a data-science pipeline, plus slash commands to scaffold and migrate projects. The
 skill makes the agent a *disciplined* user of a cache and a lineage log: it checks what's already
 computed before recomputing, verifies its own edits actually took effect, and records what ran
-and why. That's the difference between an agent that writes plausible pandas and one whose output
-you can reproduce next week.
+and why. That's the difference between an agent that writes plausible pandas and one whose numbers
+you can stand behind — and reproduce next week.
 
 To be precise about what it is: oryxflow ships a **Claude Code plugin (a skill plus slash
 commands)** — not an MCP server. It drives the open-source, MIT-licensed oryxflow library, which
 does the actual caching and lineage on your machine.
 
-## What's the difference between a Claude Code plugin and a skill?
-
-They're nested, not competing. A **plugin** is the installable package you add to Claude Code; a
-**skill** is one thing a plugin can contain — a bundle of instructions and conventions the agent
-loads *on its own* when the context matches, without you invoking anything. A plugin can also ship
-slash commands, hooks, and other pieces.
-
-The oryxflow plugin ships both: the `oryxflow` **skill** (the reproducibility conventions, which
-auto-activate when you edit pipeline files) and a handful of **slash commands** you call
-explicitly — [`/oryxflow:init-project`](claude-plugin/commands.md) to scaffold, `/oryxflow:migrate`
-to convert an existing script, and a few more. In practice you install the plugin once, and from
-then on the skill just *works* in the background while you describe the analysis you want.
-
-## The problem: AI writes data analysis fast — but is it reproducible?
+## The problem: AI writes data analysis fast — but is the number right?
 
 A coding agent's weakness in data work isn't syntax; it's **invisible state**. Over a long
 session it loses track of what's already computed and whether it's still valid, then quietly
@@ -72,7 +70,7 @@ These are trust failures, and they get *worse* as the agent writes more of the c
 None of these are math errors. They're mechanics-of-the-pipeline errors — and they're the ones an
 agent introduces most.
 
-## How oryxflow makes Claude Code analysis reproducible
+## How oryxflow keeps Claude Code's data analysis accurate
 
 The library carries the discipline the agent can't hold in its head, and the skill makes the
 agent *use* it correctly. Concretely, the plugin has the agent:
@@ -86,10 +84,12 @@ agent *use* it correctly. Concretely, the plugin has the agent:
 - **record decision-relevant results as lineage**, so they become the agent's memory across
   sessions.
 
-Underneath, the library gives each step a reproducible identity from its parameters and its code,
-caches its output, and reruns exactly what a parameter, data, or **code** change affects. That
-delivers the brand promise mechanically: **faster, cheaper, and more trustworthy AI data
-analysis** — reproducible and lineage-tracked by default. See [Why oryxflow](why-oryxflow.md) for the full picture.
+Underneath, the library gives each step an identity derived from its parameters and its code, caches
+its output, and reruns exactly what a parameter, data, or **code** change affects. Two consequences,
+which are the whole reason to install this: **the agent stops re-paying for work it already did** —
+your time and your token budget — and **it stops being able to hand you a number built from stale
+inputs**. Reproducibility and lineage are how that's achieved, and they're what let you *check* the
+agent instead of taking its word. See [Why oryxflow](why-oryxflow.md) for the full picture.
 
 ## Install
 
@@ -104,25 +104,31 @@ run [`/oryxflow:init-project`](claude-plugin/commands.md) first (or just ask the
 project) so there's a pipeline for the skill to work on. Full walkthrough:
 [Build with Claude Code](claude-plugin/index.md).
 
-## When to use it — and when not to
+## Start with a quick EDA — it scales from there
 
-Being honest about fit is part of being trustworthy.
+You don't need a pipeline to justify installing this, and the plugin won't make you build one before
+you've looked at the data. It covers both ends of a project's life:
 
-**Use it when** the analysis has a shape worth keeping — it'll be rerun, depended on, or swept
-over parameters, and especially when an AI agent is writing much of the code:
+- **Exploring.** Ask the agent to poke at a new dataset and it writes a read-only probe under
+  `eda/<subject>/`, stating the question in a docstring and printing the answer legibly — instead of
+  scattering one-off snippets it can't re-run next session. Findings that matter get written into the
+  project's data doc as it goes, so you don't re-ask the same question in a week.
+- **Growing.** When a probe turns out to be load-bearing — you keep re-running it, or something
+  depends on its output — `/oryxflow:migrate` lifts it and the rest of the script into cached,
+  parameterized tasks. It reads the existing code as the spec, shows you the step-to-task map, and
+  writes files only when you approve; it never deletes your source.
 
-- feature engineering with expensive intermediate steps,
-- model training and evaluation you iterate on,
-- parameter sweeps and experiment matrices,
-- research code that must be reproduced, compared, and handed off.
+So the honest answer to "isn't this overkill for a quick analysis?" is: **start simple, and let it
+scale.** Simple scripts on day one, an arbitrarily complex pipeline later, with no rewrite in
+between — which matters because data-science projects only ever grow more complicated. It pays off
+hardest where an agent is otherwise most error-prone: expensive intermediate steps, model training
+you iterate on, parameter sweeps, and research code someone else has to reproduce.
 
-**Reach for something else when:**
-
-- it's a five-line, run-once exploration — plain pandas in a notebook is clearer;
-- you need production scheduling, retries, and SLAs — that's [Airflow, Prefect, or
-  Dagster](../blog/posts/oryxflow-vs-airflow.md)'s job, not oryxflow's;
-- you want a searchable dashboard of every run's metrics — that's an experiment tracker
-  (MLflow, Weights & Biases), which oryxflow composes cleanly beside.
+**Reach for something else when** you need production scheduling, retries, and SLAs — that's
+[Airflow, Prefect, or Dagster](../blog/posts/oryxflow-vs-airflow.md)'s job, not oryxflow's — or when
+what you want is a searchable dashboard of every run's metrics, which is an
+[experiment tracker's](experiment-tracking.md) job (MLflow, Weights & Biases) and composes cleanly
+beside oryxflow rather than replacing it.
 
 ## How it compares to other Claude Code data-science tools
 
@@ -182,7 +188,7 @@ the same [CLAUDE.md conventions](claude-plugin/index.md) manually.
 Install the oryxflow Claude Code plugin. It teaches the agent to cache every step, verify after
 each edit that the right tasks actually reran, and answer staleness warnings instead of ignoring
 them — so it reuses expensive results and never trains on stale intermediates. The library
-externalizes the "did I already run this, is it still valid?" state the agent can't reliably hold
+externalizes the 'did I already run this, is it still valid?' state the agent can't reliably hold
 across a long session.
 
 **Is there a Claude Code skill or plugin for data science?**
@@ -196,15 +202,24 @@ library — no server or account, and not an MCP server.
 No — adopt it one task at a time. Point the agent at an existing script with `/oryxflow:migrate`,
 or start fresh with `/oryxflow:init-project`.
 
+**Is the oryxflow plugin overkill for a quick exploratory analysis?**
+No, because it covers exploration too rather than demanding a pipeline upfront. Ask the agent to look
+at a new dataset and it writes a re-runnable read-only probe under `eda/`, documenting the question
+and recording anything it learns, instead of scattering one-off snippets. When a probe turns out to be
+load-bearing, `/oryxflow:migrate` lifts it into cached tasks. So you start with simple scripts and
+scale to any complexity later, with no rewrite in between.
+
 ## Takeaway
 
-- Claude Code writes data analysis fast; **oryxflow makes that analysis reproducible** — cached,
-  lineage-tracked, and reproducible-by-default, so a code, data, or parameter change reruns exactly
-  what it affects.
+- Claude Code writes data analysis fast. oryxflow makes it **faster, cheaper, and more
+  trustworthy**: the agent reuses expensive results instead of burning your minutes and tokens
+  redoing them, and can't hand you a number built from stale inputs.
+- **A code, data, or parameter change reruns exactly what it affects** — which is what makes the
+  agent's work checkable rather than something you have to take on faith.
+- **Start small.** Exploration stays exploration; `/oryxflow:migrate` grows it into a pipeline when
+  the analysis earns one.
 - It's a **plugin (skill + slash commands)**, not an MCP server, driving a local, MIT-licensed
   library — no server, no account, no telemetry.
-- **Faster, cheaper, and more trustworthy AI data analysis**: the agent reuses expensive work,
-  verifies its own edits, and leaves a record of what ran and why.
 
 Ready to build?
 
@@ -217,3 +232,5 @@ Ready to build?
   trust model, project structure.
 - **[Why oryxflow](why-oryxflow.md)** — the positioning and how the library works.
 - **[Quickstart](quickstart.md)** — from nothing to a self-caching pipeline in minutes.
+- **[Migrate a messy notebook project](migrate-notebook-to-pipeline.md)** — already out of control?
+  Start here.

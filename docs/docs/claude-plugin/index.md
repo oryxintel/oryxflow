@@ -88,7 +88,7 @@ copy you paste and forget.
     The load-bearing scaffold that keeps AI-generated data-science code from rotting — separation
     of concerns that's the shape of the code, not just its filing — and grows with the project.
 
--   :material-format-list-checks: **[Data-science coding standards](coding-standards.md)**
+-   :material-format-list-checks: **[Stop AI data analysis turning into a mess](coding-standards.md)**
 
     Canonical names, code grouped by subject, docstrings as documentation — loaded into the
     agent's context so they shape the analysis code as it's written, not audited after.

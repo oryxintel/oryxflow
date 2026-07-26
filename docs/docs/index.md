@@ -9,10 +9,13 @@ Everything you need to build data-science pipelines with oryxflow. Declare each 
 **task**. The engine runs your steps in dependency order, skips what's already computed, and
 reruns exactly what a parameter, data, or code change affects — and you load any result by name.
 You get faster, cheaper, more **trustworthy** data analysis, reproducible and lineage-tracked by
-default, for humans and AI coding agents alike.
+default, for humans and AI coding agents alike — with no filenames to invent and no note about
+which parameters produced which output.
 
 New here? Read **[Why oryxflow](why-oryxflow.md)** for the positioning, then start with
-**[Installation](installation.md)** and the **[Quickstart](quickstart.md)**.
+**[Installation](installation.md)** and the **[Quickstart](quickstart.md)**. Already have a project
+that got out of hand? Go straight to
+**[Migrate a messy notebook project](migrate-notebook-to-pipeline.md)**.
 
 <div class="grid cards" markdown>
 
@@ -33,6 +36,11 @@ New here? Read **[Why oryxflow](why-oryxflow.md)** for the positioning, then sta
 
     Turn an existing analysis script into cached tasks.
 
+-   :material-broom: **[Migrate a messy notebook project](migrate-notebook-to-pipeline.md)**
+
+    Nine notebooks and a folder of `clean_v3.csv`? Restructure it so a wrong number stops being
+    possible — by hand or in one command.
+
 -   :material-cube-outline: **[Writing & managing tasks](tasks.md)**
 
     Dependencies, inputs, outputs, and save formats.
@@ -52,6 +60,10 @@ New here? Read **[Why oryxflow](why-oryxflow.md)** for the positioning, then sta
 -   :material-layers-triple: **[Managing complex workflows](managing-workflows.md)**
 
     Automatic code invalidation, selective resets, multi-experiment flows.
+
+-   :material-chart-line: **[Experiment tracking](experiment-tracking.md)**
+
+    How oryxflow pairs with MLflow or Weights & Biases — different halves of the same project.
 
 -   :material-robot: **[Build with Claude Code](claude-plugin/index.md)**
 

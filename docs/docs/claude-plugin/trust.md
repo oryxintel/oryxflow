@@ -91,8 +91,8 @@ trustworthy* AI data analysis.
 - [Why library + plugin is a matched pair](why.md) — the division of labor in full.
 - [The load-bearing project scaffold](project-structure.md) — the shape that keeps AI code from
   rotting.
-- [Data-science coding standards](coding-standards.md) — the conventions loaded where the
-  work happens.
+- [Stop AI data analysis turning into a mess](coding-standards.md) — the conventions loaded where
+  the work happens.
 - [What caching does *not* protect against](../managing-workflows.md#what-caching-does-not-protect-against)
   — the full boundary.
 - [Best practices for AI-assisted data analysis](../../blog/posts/ai-data-analysis-best-practices.md)

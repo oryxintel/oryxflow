@@ -133,7 +133,7 @@ For another ML example, see [Example (ML)](example-ml.md).
 
 For more details, see the [API reference](reference.md).
 
-The project template also implements task parameter inheritance <https://github.com/d6t/d6tflow-template>
+A project scaffolded with [`/oryxflow:init-project`](claude-plugin/commands.md) wires parameter inheritance in for you.
 
 ## Avoid repeating parameters when referring to tasks
 

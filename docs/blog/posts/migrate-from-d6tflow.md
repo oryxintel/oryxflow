@@ -1,4 +1,8 @@
 ---
+date: 2026-07-26
+slug: migrate-from-d6tflow-to-oryxflow
+categories:
+  - Guides
 title: Migrate from d6tflow to oryxflow
 description: oryxflow is the maintained successor to d6tflow. Migrating is a whole-word d6tflow → oryxflow package rename, not an API port — the task API kept its shape, and your existing data/ cache stays valid because task identities come from your class names and parameters, not the package name.
 faq:
@@ -11,6 +15,10 @@ faq:
 ---
 
 # Migrating from d6tflow to oryxflow
+
+*The rename is the migration: your task classes, your API, and your cache all come with you.*
+
+<!-- more -->
 
 **oryxflow is the maintained successor to d6tflow.** The library was renamed
 `d6tflow` → `oryxflow` and its engine made self-contained; the public API kept its shape.
@@ -135,17 +143,17 @@ A clean, modern d6tflow project renames without surprises. Flag these for a quic
 rather than a blind swap:
 
 - **Module-level `d6tflow.run(...)`** from a very old idiom — oryxflow drives runs through the
-  [`Workflow`](workflow.md) object (`oryxflow.Workflow(task).run()`).
+  [`Workflow`](../../docs/workflow.md) object (`oryxflow.Workflow(task).run()`).
 - **Engine-specific parameter types** that aren't in oryxflow's
-  [focused parameter set](advparam.md) — pick the closest oryxflow type.
+  [focused parameter set](../../docs/advparam.md) — pick the closest oryxflow type.
 - **Removed helpers** from the old API — a survivor after the rename is a signal to check the
-  [API reference](reference.md), not to loosen the find-and-replace.
+  [API reference](../../docs/reference.md), not to loosen the find-and-replace.
 
 If the token survives the pass in a spot the word-boundary rule skipped, resolve it by hand.
 
 ## Let Claude Code do the migration for you
 
-If you use [Claude Code](claude-code-for-data-science.md), install the oryxflow plugin and just
+If you use [Claude Code](../../docs/claude-code-for-data-science.md), install the oryxflow plugin and just
 ask it to migrate — it runs the detect → plan → apply → smoke-test flow above for you, shows the
 rename plan before touching anything, and offers to commit the result as one clean change.
 
@@ -158,28 +166,37 @@ Then, in your d6tflow project: *"migrate from d6tflow to oryxflow using the plug
 migration instructions."* (This is a guided rename, distinct from `/oryxflow:migrate`, which
 restructures a loose script or notebook into a pipeline.)
 
-## Frequently asked questions
-
-**Do I have to migrate all at once?**
-The rename is one atomic pass, so yes — do it in a single commit. It's mechanical and reversible
-(it's in version control), and there's no half-renamed state worth keeping.
-
-**Will oryxflow keep receiving updates?**
-Yes — oryxflow is the actively maintained line. See the [changelog](changelog.md) for what's
-shipping.
-
-**Is the on-disk cache format the same?**
-Yes. Outputs are the same formats (parquet, pickle, CSV, JSON, …) in the same per-task layout,
-keyed by the same task identities — which is why your existing `data/` directory keeps working.
-
 ## Takeaway
 
 - oryxflow **is** d6tflow, renamed and made self-contained — migrating is a whole-word
   `d6tflow` → `oryxflow` rename, not an API port.
 - Your **cached results stay valid**, because task identity comes from your class names and
   parameters, not the package name.
-- Reinstall with `pip install oryxflow`, run the one-line rename, smoke-test — or let the
-  [Claude Code plugin](claude-code-for-data-science.md) do it for you.
+- Reinstall, run the one-line rename, smoke-test — or let the
+  [Claude Code plugin](../../docs/claude-code-for-data-science.md) do it for you.
 
-Next: [Why oryxflow](why-oryxflow.md) for the full positioning, or the
-[Quickstart](quickstart.md) to see the engine in action.
+    pip install oryxflow
+
+## Frequently asked questions
+
+### Do I have to migrate all at once?
+The rename is one atomic pass, so yes — do it in a single commit. It's mechanical and reversible
+(it's in version control), and there's no half-renamed state worth keeping.
+
+### Will oryxflow keep receiving updates?
+Yes — oryxflow is the actively maintained line. See the [changelog](../../docs/changelog.md) for
+what's shipping.
+
+### Is the on-disk cache format the same?
+Yes. Outputs are the same formats (parquet, pickle, CSV, JSON, …) in the same per-task layout,
+keyed by the same task identities — which is why your existing `data/` directory keeps working.
+
+Then keep going:
+
+- [Migrate a messy notebook project into a pipeline](../../docs/migrate-notebook-to-pipeline.md) —
+  the *other* migration: restructuring loose scripts, not renaming a package.
+- [Why oryxflow](../../docs/why-oryxflow.md) — the positioning in full.
+- [Quickstart](../../docs/quickstart.md) — see the engine in action.
+- [Managing complex workflows](../../docs/managing-workflows.md) — what the maintained line added:
+  code invalidation, selective resets, multi-experiment flows.
+- [oryxflow on GitHub](https://github.com/oryxintel/oryxflow)

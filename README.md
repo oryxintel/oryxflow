@@ -1,213 +1,285 @@
 # oryxflow
 
-[![Socket Badge](https://socket.dev/api/badge/pypi/package/oryxflow)](https://socket.dev/pypi/package/oryxflow)
 [![PyPI version](https://img.shields.io/pypi/v/oryxflow.svg)](https://pypi.org/project/oryxflow/)
 [![License: MIT](https://img.shields.io/pypi/l/oryxflow.svg)](https://github.com/oryxintel/oryxflow/blob/main/LICENSE)
+[![Socket Badge](https://socket.dev/api/badge/pypi/package/oryxflow)](https://socket.dev/pypi/package/oryxflow)
+[![Docs](https://img.shields.io/badge/docs-docs.oryxflow.dev-blue)](https://docs.oryxflow.dev/)
 
-Vetting oryxflow for a corporate package firewall? See [Security & supply chain](https://docs.oryxflow.dev/docs/supply-chain/).
+**Faster, cheaper, more trustworthy data analysis — for humans and AI coding agents.**
 
-For data scientists and data engineers, `oryxflow` is a python library which makes building complex data science workflows easy, fast and intuitive. It is **primarily designed for data scientists to build better models faster**. For data engineers, it can also be a lightweight alternative and help productionize data science models faster. Unlike other data pipeline/workflow solutions, `oryxflow` focuses on managing data science research workflows instead of managing production data pipelines. 
+oryxflow turns a data-science script into a pipeline that caches every step, reruns exactly what a
+change affects, and records how each result was made. You never name an intermediate file or track
+which parameters produced which output again.
 
-## Why use oryxflow?
+It's a Python library. No server, no database, no account, no config files.
 
-Data science workflows typically look like this.
-
-![Sample Data Workflow](docs/oryxflow-docs-graph.png?raw=true "Sample Data Workflow")
-
-The workflow involves chaining together parameterized tasks which pass multiple inputs and outputs between each other. The output data gets stored in multiple dataframes, files and databases but you have to manually keep track of where everything is. And often you want to rerun tasks with different parameters without inadvertently rerunning long-running tasks. The workflows get complex and your code gets messy, difficult to audit and doesn't scale well.
-
-`oryxflow` to the rescue! **With oryxflow you can easily chain together complex data flows and execute them. You can quickly load input and output data for each task.** It makes your workflow very clear and intuitive.
-
-#### Read more at:  
-[4 Reasons Why Your Machine Learning Code is Probably Bad](https://github.com/d6t/d6t-python/blob/master/blogs/reasons-why-bad-ml-code.rst)  
-[How oryxflow is different from airflow/luigi](https://github.com/d6t/d6t-python/blob/master/blogs/datasci-dags-airflow-meetup.md)
-
-![Badge](https://www.kdnuggets.com/images/tkb-1904-p.png "Badge")
-![Badge](https://www.kdnuggets.com/images/tkb-1902-g.png "Badge")
-
-## When to use oryxflow?
-
-* Data science: you want to build better models faster. Your workflow is EDA, feature engineering, model training and evaluation. oryxflow works with ANY ML library including sklearn, pytorch, keras
-* Data engineering: you want to build robust data pipelines using a lightweight yet powerful library. You workflow is load, filter, transform, join data in pandas, dask, pyspark, sql, athena
-
-## What can oryxflow do for you?
-
-* Data science  
-	* Experiment management: easily manage workflows that compare different models to find the best one
-	* Scalable workflows: build an efficient data workflow that support rapid prototyping and iterations
-	* Cache data: easily save/load intermediary calculations to reduce model training time
-	* Model deployment: oryxflow workflows are easier to deploy to production
-* Data engineering  
-	* Build a data workflow made up of tasks with dependencies and parameters
-	* Visualize task dependencies and their execution status
-	* Execute tasks including dependencies
-	* Intelligently continue workflows after failed tasks
-	* Intelligently rerun workflow after changing parameters, code or data
-	* Quickly share and hand off output data to others
-
-
-## Installation
-
-Install with `pip install oryxflow`. To update, run `pip install oryxflow -U`.
-
-If you are behind an enterprise firewall, you can also clone/download the repo and run `pip install .`
-
-**Python3 only** You might need to call `pip3 install oryxflow` if you have not set python 3 as default.
-
-To install latest DEV `pip install git+git://github.com/oryxintel/oryxflow.git` or upgrade `pip install git+git://github.com/oryxintel/oryxflow.git -U --no-deps`
-
-## Claude Code plugin
-
-Build oryxflow workflows faster with AI assistance. The [oryxflow Claude Code plugin](https://github.com/oryxintel/oryxflow-claude-plugin) adds a skill that auto-activates when you edit pipeline files (`tasks.py`, `flow.py`, `run.py`) plus slash commands to scaffold and manage projects:
-
-* `/oryxflow:init-project` – scaffold a new oryxflow project from templates
-* `/oryxflow:init-gitlfs` – set up Git LFS to version data outputs (see [Sharing data](#sharing-data))
-* `/oryxflow:oryxflow` – manually invoke the skill (optional; it auto-activates on pipeline files)
-
-Install in [Claude Code](https://claude.com/claude-code):
-
+```bash
+pip install oryxflow
 ```
+
+## 30 seconds: compare two models without rebuilding the features
+
+```python
+import oryxflow
+import pandas as pd
+import sklearn.datasets, sklearn.ensemble, sklearn.linear_model
+
+oryxflow.set_dir('data/')
+
+
+class GetData(oryxflow.tasks.TaskPqPandas):
+    """Load the raw training data once."""
+    persists = ['x', 'y']
+
+    def run(self):
+        ds = sklearn.datasets.load_diabetes()
+        self.save({'x': pd.DataFrame(ds.data, columns=ds.feature_names),
+                   'y': pd.DataFrame(ds.target, columns=['target'])})
+
+
+@oryxflow.requires(GetData)                      # declare the dependency
+class ModelTrain(oryxflow.tasks.TaskPickle):
+    """Fit one model. `model` is part of the output's identity."""
+    model = oryxflow.ChoiceParameter(default='ols', choices=['ols', 'gbm'])
+
+    def run(self):
+        df_x, df_y = self.inputLoad()            # GetData's output, already loaded
+        clf = {'ols': sklearn.linear_model.LinearRegression,
+               'gbm': sklearn.ensemble.GradientBoostingRegressor}[self.model]()
+        clf.fit(df_x, df_y.values.ravel())
+        self.save(clf)                           # cached; no filename to invent
+        self.saveMeta({'score': clf.score(df_x, df_y)})
+
+
+flow = oryxflow.WorkflowMulti(ModelTrain, {'ols': {'model': 'ols'},
+                                           'gbm': {'model': 'gbm'}})
+result = flow.run()
+print(result.summary())                          # what ran, and what came from cache
+print(flow.outputLoadMeta())
+# {'ols': {'score': 0.5177484222203498}, 'gbm': {'score': 0.7990392018966864}}
+```
+
+Look at what the summary says about the second experiment:
+
+```text
+===== gbm =====
+Scheduled 2 tasks of which:
+* 1 complete ones were encountered:
+    - GetData                        <- loaded from cache, not recomputed
+* 1 ran successfully:
+    - ModelTrain(model=gbm)
+```
+
+`GetData` ran **once** and was reused. Run `flow.run()` again and nothing happens at all — every
+task is a cache hit. Add a third model tomorrow and only that one trains. Now edit the body of
+`GetData`: oryxflow notices the *code* changed and retrains both models on the new data, so you
+can't compare a new model against stale features by accident. (Reformat the code or add a comment
+and nothing reruns — it compares what the code *does*. And a step that last took over ten minutes
+warns instead of silently recomputing, so a refactor can't quietly burn a long run.)
+
+That's the whole idea. Caching is how it works; **trust is what you get.**
+
+## What you get
+
+- **You always get the right result.** Change a parameter, the data, or a task's code and oryxflow
+  reruns exactly what that change affects — and everything downstream. Cosmetic edits (comments,
+  formatting) don't trigger a rerun.
+- **No file mess, no parameter bookkeeping.** No `features_v3_final.pkl`, no `to_pickle` /
+  `read_pickle` plumbing, no spreadsheet of which run used which settings. Ask for a result by the
+  task and parameters that made it.
+- **Seconds instead of minutes.** Finished steps load from cache, so the 10-minute data pull runs
+  once, not once per edit.
+- **An answer to "is this stale?"** oryxflow records what ran, when, with which code and inputs, and
+  why it recomputed — so staleness and provenance are queries, not guesses.
+- **Works with anything.** A task's `run()` is just Python, so any ML library (sklearn, PyTorch,
+  Keras, XGBoost) and any data stack works inside it. oryxflow manages the graph and the storage,
+  not your math. Outputs save as parquet, pickle, CSV, JSON, Excel, Markdown, or an in-memory cache
+  — locally or on S3/GCS.
+
+## How oryxflow compares
+
+oryxflow doesn't replace an experiment tracker or a production orchestrator — it fills the gap
+between an ad-hoc script and a heavyweight platform, and composes with both. What's distinctive is
+the combination of local-first simplicity, invalidation that notices a **code** change, and
+always-on lineage.
+
+| | Local, zero-infra | Automatic caching & reruns | Reruns on a **code** change | Queryable lineage | Experiment dashboard | Production scheduling |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **oryxflow** | ✅ | ✅ | ✅ automatic | ✅ | — (use a tracker) | — (use an orchestrator) |
+| Notebooks + pickle files | ✅ | ❌ hand-rolled | ❌ | ❌ | ❌ | ❌ |
+| MLflow / W&B | partial | ❌ (tracks, doesn't rerun) | ❌ | logs runs | ✅ | ❌ |
+| Airflow / Prefect / Dagster | ❌ server/infra | opt-in / configured | ❌ | run history | partial | ✅ |
+| DVC | ✅ | ✅ (file-hash stages) | on declared file deps | via Git | ❌ | ❌ |
+
+- **vs Airflow / Prefect / Dagster** — a different job. Those run scheduled production pipelines on
+  real infrastructure; oryxflow is a `pip install` for the local research loop.
+  [Read more →](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-airflow/)
+- **vs MLflow / W&B** — complementary, and you should expect to use both. Trackers answer "which run
+  scored 0.91?"; oryxflow answers "which steps must rerun to reproduce it, and are its inputs
+  stale?" Keep logging to your tracker *inside* oryxflow tasks.
+  [Read more →](https://docs.oryxflow.dev/docs/experiment-tracking/)
+- **vs DVC** — both cache pipelines. DVC hashes files and YAML-declared stages; oryxflow keeps
+  identity in native Python, so a parameter change is a new cached result automatically and a code
+  edit reruns the affected tasks on its own — no config files to maintain.
+  [Read more →](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-dvc/)
+- **The full landscape** (Metaflow, Kedro, Ploomber, Flyte, ZenML, Snakemake…):
+  [oryxflow vs the field](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-pipeline-frameworks/)
+
+## Start with a quick EDA — it scales from there
+
+You don't need a task graph on day one, and you don't have to decide upfront. Start with a plain
+script or an exploratory probe; as the work gains steps, cost, and parameter combinations — as it
+always does — `/oryxflow:migrate` lifts what you already wrote into cached tasks. Simple scripts at
+the start, arbitrary complexity later, with no rewrite and no cliff in between.
+
+Already have a project that got away from you? Nine notebooks and a folder of `clean_v3.csv` is
+exactly the starting point that
+[Migrate a messy notebook project](https://docs.oryxflow.dev/docs/migrate-notebook-to-pipeline/) is
+written for.
+
+## Build it with Claude Code
+
+The [oryxflow Claude Code plugin](https://github.com/oryxintel/oryxflow-claude-plugin) teaches your
+coding agent to build the analysis this way — so it reuses expensive results instead of burning your
+time and tokens redoing them, and can't quietly train a model on stale data. It's a plugin (a skill
+plus slash commands), not an MCP server.
+
+```text
 /plugin marketplace add oryxintel/oryxflow-claude-plugin
 /plugin install oryxflow@oryxflow
 ```
 
-See the [plugin repo](https://github.com/oryxintel/oryxflow-claude-plugin) for more details.
+The `oryxflow` skill auto-activates whenever you work in a pipeline project. The slash commands:
 
-## Example: Model Comparison
+| Command | What it does |
+| --- | --- |
+| `/oryxflow:init-project` | Scaffold a runnable project — tasks, params, flow, config, layout |
+| `/oryxflow:migrate` | Restructure a messy notebook or script project into cached tasks |
+| `/oryxflow:check-standards` | Review an existing project against the data-science conventions |
+| `/oryxflow:init-gitlfs` | Set up Git LFS to version data outputs |
+| `/oryxflow:update-project` | Reconcile an older scaffold with the current template |
 
-Below is an introductory example that gets training data, trains two models and compares their performance.  
+More: [Claude Code for data science](https://docs.oryxflow.dev/docs/claude-code-for-data-science/).
 
-**[See the full ML workflow example here](http://tiny.cc/d6tflow-start-example)**  
-**[Interactive mybinder jupyter notebook](http://tiny.cc/d6tflow-start-interactive)**
+## When *not* to use oryxflow
 
-```python
+Being honest about fit is part of being trustworthy:
 
-import oryxflow
-import sklearn.datasets, sklearn.ensemble, sklearn.linear_model
-import pandas as pd
+- **Production orchestration.** If you need cron-style scheduling, retries across a cluster, and
+  SLAs, use Airflow, Prefect, or Dagster. oryxflow is built for the research loop, not production
+  ops.
+- **Experiment dashboards.** If you want a searchable UI charting every run's metrics, that's an
+  experiment tracker's job (MLflow, Weights & Biases) — and oryxflow composes cleanly beside one.
+- **Distributed or larger-than-memory execution.** That's Flyte or Metaflow territory.
 
-
-# get training data and save it
-class GetData(oryxflow.tasks.TaskPqPandas):
-    persists = ['x','y']
-
-    def run(self):
-        ds = sklearn.datasets.load_boston()
-        df_trainX = pd.DataFrame(ds.data, columns=ds.feature_names)
-        df_trainY = pd.DataFrame(ds.target, columns=['target'])
-        self.save({'x': df_trainX, 'y': df_trainY}) # persist/cache training data
-
-
-# train different models to compare
-@oryxflow.requires(GetData)  # define dependency
-class ModelTrain(oryxflow.tasks.TaskPickle):
-    model = oryxflow.Parameter()  # parameter for model selection
-
-    def run(self):
-        df_trainX, df_trainY = self.inputLoad()  # quickly load input data
-
-        if self.model=='ols':  # select model based on parameter
-            model = sklearn.linear_model.LinearRegression()
-        elif self.model=='gbm':
-            model = sklearn.ensemble.GradientBoostingRegressor()
-
-        # fit and save model with training score
-        model.fit(df_trainX, df_trainY)
-        self.save(model)  # persist/cache model
-        self.saveMeta({'score': model.score(df_trainX, df_trainY)})  # save model score
-
-# goal: compare performance of two models
-# define workflow manager
-flow = oryxflow.WorkflowMulti(ModelTrain, {'model1':{'model':'ols'}, 'model2':{'model':'gbm'}})
-flow.reset_upstream(confirm=False) # DEMO ONLY: force re-run
-flow.run()  # execute model training including all dependencies
-
-'''
-Scheduled 2 tasks
-* 2 ran successfully
-* 0 complete
-* 0 failed
-'''
-
-scores = flow.outputLoadMeta()  # load model scores
-print(scores)
-# {'model1': {'score': 0.7406426641094095}, 'gbm': {'model2': 0.9761405838418584}}
-
-
-```
-
-
-## Example Library
-
-* [Minimal example](https://github.com/oryxintel/oryxflow/blob/main/docs/example-minimal.py)
-* [Multi-parameter example](https://github.com/oryxintel/oryxflow/blob/main/docs/example-flow-multi.py)
-* [Rapid Prototyping for Quantitative Investing with oryxflow](https://github.com/d6tdev/d6tflow-binder-interactive/blob/master/example-trading.ipynb) 
-* oryxflow with functions only: get the power of oryxflow with little change in code. **[Jupyter notebook example](https://github.com/oryxintel/oryxflow/blob/main/docs/example-functional.ipynb)**
+And one boundary worth stating plainly: oryxflow makes your analysis **reproducible, not correct**.
+It guarantees a result came from the code and inputs it recorded, and that stale steps rerun. It
+does not check that your join grain was right or your denominator sensible.
+[The full honest guide →](https://docs.oryxflow.dev/blog/guides/when-not-to-use-oryxflow/)
 
 ## Documentation
 
-Library usage and reference https://docs.oryxflow.dev/
+**[docs.oryxflow.dev](https://docs.oryxflow.dev/)** — the full guide and API reference.
 
-## Getting started resources
+Start here:
 
-[Transition to oryxflow from typical scripts](https://docs.oryxflow.dev/docs/transition/)
+- [Why oryxflow](https://docs.oryxflow.dev/docs/why-oryxflow/) — the positioning in full
+- [Quickstart](https://docs.oryxflow.dev/docs/quickstart/) — a running, self-caching pipeline in
+  minutes
+- [Transition from scripts](https://docs.oryxflow.dev/docs/transition/) — convert an existing
+  analysis
+- [Managing complex workflows](https://docs.oryxflow.dev/docs/managing-workflows/) — code
+  invalidation, selective resets, multi-experiment flows
 
-[5 Step Guide to Scalable Deep Learning Pipelines with oryxflow](https://htmlpreview.github.io/?https://github.com/d6t/d6t-python/blob/master/blogs/blog-20190813-d6tflow-pytorch.html)
+Worth reading:
 
-[Data science project starter templates](https://github.com/d6t/d6tflow-template)
+- [4 reasons your machine learning code is probably bad](https://docs.oryxflow.dev/blog/machine-learning/why-machine-learning-code-is-bad/)
+- [Why a caching DAG makes your AI coding agent a better data scientist](https://docs.oryxflow.dev/blog/ai-agents/caching-dag-for-ai-coding-agents/)
+- [From notebook to a reproducible, cached pipeline](https://docs.oryxflow.dev/blog/reproducibility/notebook-to-reproducible-pipeline/)
 
-# Sharing data
+Runnable examples in this repo:
 
-By default data gets written to `data/` which is gitignored to avoid writing large files to source control.
+- [Minimal example](docs/example-minimal.py)
+- [Multi-parameter workflow](docs/example-flow-multi.py)
+- [Full ML model comparison](docs/example-ml-compare.py)
+- [Functions-only API](docs/example-functional.ipynb) — most of the benefit, barely any change to
+  your code
 
-To source control you can use git lfs to dvc.
+## Installation
 
-## Git lfs
-
-1. Install the LFS extension (once per machine)
-
+```bash
+pip install oryxflow          # install
+pip install oryxflow -U       # update
 ```
-  winget install GitHub.GitLFS   # or: choco install git-lfs
-  git lfs install                 # hooks LFS into your git config
+
+Python 3 only — use `pip3 install oryxflow` if `python` still points at Python 2 on your machine.
+
+Behind an enterprise firewall, clone the repo and run `pip install .`
+
+Latest development version:
+
+```bash
+pip install git+https://github.com/oryxintel/oryxflow.git -U
 ```
 
-2. adjust .gitignore to track `data/` and `reports/render`
+<details>
+<summary><b>Sharing data and version-controlling outputs</b></summary>
 
-3. Tell LFS which files to track
-```shell
+By default, data is written to `data/`, which is gitignored so large files stay out of source
+control. To version outputs, use Git LFS (or DVC):
+
+1. Install the LFS extension, once per machine:
+
+```bash
+winget install GitHub.GitLFS   # or: choco install git-lfs, or: apt install git-lfs
+git lfs install                # hooks LFS into your git config
+```
+
+2. Adjust `.gitignore` so `data/` and `reports/render` are tracked.
+
+3. Tell LFS which files to track:
+
+```bash
 git lfs track "data/**"
 git lfs track "reports/render/**"
 git lfs track "*.ipynb"
 ```
 
-4. commit `.gitattributes` and `.gitignore`
+4. Commit `.gitattributes` and `.gitignore`.
 
+In Claude Code, `/oryxflow:init-gitlfs` does all of this for you. To hand a whole flow — code and
+cached outputs — to a colleague, see
+[Collaborate & share flows](https://docs.oryxflow.dev/docs/collaborate/).
+
+</details>
 
 ## Pro version
 
-Additional features:  
-* Team sharing of workflows and data
-* Integrations for datbase and cloud storage (SQL, S3)
-* Integrations for distributed compute (dask, pyspark)
-* Integrations for cloud execution (athena)
-* Workflow deployment and scheduling
+Additional features for teams:
 
-[Schedule demo](https://calendar.app.google/FkNWJE9u7QuowfH89)
+- Team sharing of workflows and data
+- Integrations for databases and cloud storage (SQL, S3)
+- Integrations for distributed compute (dask, PySpark)
+- Integrations for cloud execution (Athena)
+- Workflow deployment and scheduling
 
-## Accelerate Data Science
+[Schedule a demo](https://calendar.app.google/FkNWJE9u7QuowfH89)
 
-Check out other d6t libraries, including  
-* import data: quickly ingest messy raw CSV and XLS files to pandas, SQL and more
-* join data: quickly combine multiple datasets using fuzzy joins
+## Contributing
 
-https://github.com/d6t/d6t-python
+Contributions are welcome. Fork the repo, pick an open issue, then:
 
-## How To Contribute
+- Create a branch named `[issue_no]_yyyymmdd_[feature]`
+- Implement the change
+- Write unit tests for the desired behavior
+- Open a pull request against `main`
 
-Thank you for considering to contribute to the project. First, fork the code repository and then pick an issue that is open. Afterwards follow these steps
-* Create a branch called \[issue_no\]\_yyyymmdd\_\[feature\]
-* Implement the feature
-* Write unit tests for the desired behaviour
-* Create a pull request to merge branch with master
+Bug fixes follow the same flow — just use the bug name instead of a feature name. Make sure the
+existing test suite still passes.
 
-A similar workflow applies to bug-fixes as well. In the case of a fix, just change the feature name with the bug-fix name. And make sure the code passes already written unit tests.
+## License and security
+
+MIT licensed — see [LICENSE](LICENSE).
+
+Vetting oryxflow for a corporate package firewall? See
+[Security & supply chain](https://docs.oryxflow.dev/docs/supply-chain/).

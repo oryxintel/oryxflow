@@ -149,10 +149,7 @@ class TaskExternalData(oryxflow.tasks.TaskPqPandas):
         data = pd.read_parquet('/some/folder/file.pq')
 
         # multiple files
-        from d6tstack.combine_csv import CombinerCSV
-        def do_stuff(df):
-            return df
-        df = CombinerCSV(glob.glob('*.csv'), apply_after_read=do_stuff).to_pandas()
+        data = pd.concat([pd.read_csv(f) for f in glob.glob('*.csv')], ignore_index=True)
 ```
 
 For more advanced options see [Sharing Workflows and Outputs](collaborate.md)
@@ -271,9 +268,10 @@ data2['use_params']['data2']
 
 ## Putting it all together
 
-See full example <https://github.com/oryxintel/oryxflow/blob/master/docs/example-ml.md>
+See the full [ML example](example-ml.md).
 
-See real-life project template <https://github.com/d6t/d6tflow-template>
+To scaffold a real-life project layout, run [`/oryxflow:init-project`](claude-plugin/commands.md) in
+Claude Code.
 
 ## Advanced: task attribute overrides
 

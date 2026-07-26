@@ -1,9 +1,9 @@
 ---
-title: Data-science coding standards for Claude Code
-description: The oryxflow Claude Code plugin ships pro-level data-science coding conventions — canonical column names, code grouped by subject, docstrings as documentation — loaded into the agent's context so they shape the analysis code as it's written, not audited after.
+title: Stop AI data analysis turning into a mess
+description: How the oryxflow Claude Code plugin keeps AI-written data analysis from drifting into a mess — canonical column names, code grouped by subject, docstrings as documentation, applied as the agent writes rather than audited afterward.
 ---
 
-# Data-science coding standards Claude Code applies as it writes
+# Stop AI data analysis from turning into a mess
 
 **A data-analysis project rarely starts messy — it turns messy.** One clean notebook becomes a
 tangle of drifting column names, copy-pasted cleaning, and functions that never got written; hand

@@ -12,30 +12,48 @@ faq:
   - q: "Is there a Claude Code plugin to make AI-generated data analysis reproducible and trustworthy?"
     a: "Yes — the oryxflow Claude Code plugin. It teaches your coding agent to build the analysis as a cached, reproducible pipeline: reusing expensive results, verifying its own reruns, and never training on stale intermediates. oryxflow guarantees a result was produced by the code and inputs it recorded — reproducible, not automatically correct — so you can check AI-written analysis instead of trusting it blindly. It ships as a skill plus slash commands, not an MCP server."
   - q: "When should I not use oryxflow?"
-    a: "Skip it for throwaway exploration — a quick CSV load, a group-by, one plot — where a plain notebook is faster and a task graph is just overhead. oryxflow earns its keep once a project gains depth (a stale early step silently corrupts everything below it), expensive steps (caching makes the inner loop tractable), or experiment matrices. Those are exactly the conditions where hand-managed scripts and AI coding agents tend to go wrong."
+    a: "You don't need a task graph for a first look at a dataset — a quick CSV load, a group-by, one plot is fine as a plain script. You don't have to choose upfront, though: start there and run /oryxflow:migrate when the work gains depth, cost, or parameter combinations, and what you already wrote becomes cached tasks. oryxflow earns its keep the moment a stale early step can silently corrupt everything below it, an expensive step makes the edit-run loop painful, or you're sweeping an experiment matrix — which is also where hand-managed scripts and AI coding agents go wrong. It isn't a production orchestrator (use Airflow or Prefect) or an experiment dashboard (use MLflow or Weights & Biases); it composes beside both."
 ---
 
 # oryxflow
 
 **Faster, cheaper, and more trustworthy data analysis — for humans and AI coding agents.**
-oryxflow turns a data-science script into a reproducible, lineage-tracked pipeline that reruns
-only what changed. It's a Python library with no server, no database, and no account:
-`pip install oryxflow` and you're done.
+oryxflow turns a data-science script into a pipeline that caches every step, reruns exactly what
+a change affects, and records how each result was made. It's a Python library with no server, no
+database, and no account: `pip install oryxflow` and you're done.
 
 Working with an AI agent? The **[Claude Code plugin](docs/claude-code-for-data-science.md)**
-teaches Claude Code to build your data analysis as a cached, reproducible pipeline — so
-AI-written analysis is reproducible by default.
+teaches Claude Code to build your data analysis this way — so the agent reuses expensive results
+instead of burning your time and tokens redoing them, and never trains a model on stale data. You
+get analysis you can **trust**, not just analysis that runs.
+
+## Why oryxflow
+
+Four things you get on day one — the full argument is in
+**[Why oryxflow](docs/why-oryxflow.md)**:
+
+- **You always get the right result.** Change a parameter, the data, or a task's code and oryxflow
+  reruns exactly what that change affects. You can't accidentally evaluate a new model on stale
+  features.
+- **No file mess, no parameter bookkeeping.** You never name, path, or version an intermediate file
+  again — no `features_v3_final.pkl`, no `to_pickle`/`read_pickle` plumbing, no spreadsheet of which
+  run used which settings. Ask for a result by the task and parameters that made it.
+- **Seconds instead of minutes.** Finished steps load from cache, so the 10-minute data pull runs
+  once, not once per edit.
+- **An answer to "is this stale?"** oryxflow records what ran, when, with which code and inputs, and
+  why it recomputed — so staleness and provenance are queries, not guesses.
+
+**Start small; it scales with you.** A first pass can be a plain script or a quick exploratory
+probe — you don't need a task graph on day one. As the work gains steps, cost, and parameter
+combinations (as it always does), the plugin's `/oryxflow:migrate` command lifts what you already
+wrote into cached tasks. No rewrite, and no cliff between "exploring" and "pipeline" —
+[migrate a messy project](docs/migrate-notebook-to-pipeline.md).
+
+## oryxflow in brief
 
 You declare each step of your analysis as a **task**: what it depends on and what it produces. The
-engine runs them in the right order and skips anything already computed. Change a parameter, the
-data, or the code, and it **reruns exactly what that change affects** — then hands you any result
-by name.
-
-It also records **what ran, when, and why**, so "is this result stale?", "was it produced by the
-current code?", and "did I already run this?" become queries, not guesses. The payoff: outputs
-you can **trust** and reproduce, with no wasted recomputation. Sharing a pipeline replaces the
-fragile chain of scripts and files you used to manage by hand. Caching is how it works;
-**trust is what you get** — [see the full positioning](docs/why-oryxflow.md).
+engine runs them in dependency order, skips anything already computed, and hands you any result by
+name.
 
 <!--phmdoctest-share-names-->
 ```python
@@ -61,7 +79,31 @@ df = flow.outputLoad()                             # load the result by name
 ```
 
 Run `flow.run()` again and nothing happens — both outputs already exist, so the engine skips
-them. That is the core payoff: re-running a pipeline only pays for what actually changed.
+them. That is the core payoff: re-running a pipeline only pays for what actually changed. Caching is
+how it works; **trust is what you get**. Next step:
+**[Quickstart](docs/quickstart.md)** — a real pipeline in a few minutes.
+
+## How oryxflow compares to Airflow, MLflow, DVC, and notebooks
+
+oryxflow doesn't replace an experiment tracker or a production orchestrator — it fills the gap
+between an ad-hoc script and a heavyweight platform, and composes with both. What's distinctive is
+the combination of local-first simplicity, invalidation that notices a **code** change, and
+always-on lineage.
+
+| | Local, zero-infra | Automatic caching & reruns | Reruns on a **code** change | Queryable lineage | Experiment dashboard | Production scheduling |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **oryxflow** | ✅ | ✅ | ✅ automatic | ✅ | — (use a tracker) | — (use an orchestrator) |
+| Notebooks + pickle files | ✅ | ❌ hand-rolled | ❌ | ❌ | ❌ | ❌ |
+| MLflow / W&B | partial | ❌ (tracks, doesn't rerun) | ❌ | logs runs | ✅ | ❌ |
+| Airflow / Prefect / Dagster | ❌ server/infra | opt-in / configured | ❌ | run history | partial | ✅ |
+| DVC | ✅ | ✅ (file-hash stages) | on declared file deps | via Git | ❌ | ❌ |
+
+The per-tool detail is in
+[Why oryxflow](docs/why-oryxflow.md#how-oryxflow-compares-to-mlflow-airflow-and-dvc), and the
+head-to-heads are on the blog: [vs Airflow](blog/posts/oryxflow-vs-airflow.md),
+[vs MLflow](blog/posts/mlflow-alternatives.md), [vs DVC](blog/posts/oryxflow-vs-dvc.md),
+[vs Dagster](blog/posts/oryxflow-vs-dagster.md), [vs Prefect](blog/posts/oryxflow-vs-prefect.md),
+and [the whole field](blog/posts/oryxflow-vs-the-field.md).
 
 ## Where to next
 
@@ -69,8 +111,8 @@ them. That is the core payoff: re-running a pipeline only pays for what actually
 
 -   :material-shield-check: **[Why oryxflow](docs/why-oryxflow.md)**
 
-    The positioning in full: reproducibility, lineage, and trustworthy AI data analysis — and
-    when *not* to reach for it.
+    The argument in full: trustworthy AI data analysis, no file mess, honest tool comparisons —
+    and how it scales from a first EDA script upward.
 
 -   :material-download: **[Installation](docs/installation.md)**
 
@@ -92,6 +134,11 @@ them. That is the core payoff: re-running a pipeline only pays for what actually
 -   :material-sitemap: **[Managing complex workflows](docs/managing-workflows.md)**
 
     Automatic code invalidation, selective resets, and multi-experiment flows.
+
+-   :material-broom: **[Migrate a messy notebook project](docs/migrate-notebook-to-pipeline.md)**
+
+    Nine notebooks and a folder of `clean_v3.csv`? Restructure it so a wrong number stops being
+    possible — by hand, or in one command.
 
 -   :material-post: **[Blog](blog/index.md)**
 
@@ -137,14 +184,17 @@ it recorded — reproducible, not automatically *correct* — so you can check A
 instead of trusting it blindly. It ships as a skill plus slash commands, not an MCP server.
 
 **When should I not use oryxflow?**
-Skip it for throwaway exploration — a quick CSV load, a group-by, one plot — where a plain notebook
-is faster and a task graph is just overhead. oryxflow earns its keep once a project gains depth (a
-stale early step silently corrupts everything below it), expensive steps (caching makes the inner
-loop tractable), or experiment matrices. Those are exactly the conditions where hand-managed
-scripts and AI coding agents tend to go wrong.
+You don't need a task graph for a first look at a dataset — a quick CSV load, a group-by, one plot
+is fine as a plain script. You don't have to choose upfront, though: start there and run
+`/oryxflow:migrate` when the work gains depth, cost, or parameter combinations, and what you already
+wrote becomes cached tasks. oryxflow earns its keep the moment a stale early step can silently
+corrupt everything below it, an expensive step makes the edit-run loop painful, or you're sweeping an
+experiment matrix — which is also where hand-managed scripts and AI coding agents go wrong. It isn't
+a production orchestrator (use Airflow or Prefect) or an experiment dashboard (use MLflow or
+Weights & Biases); it composes beside both.
 
 ## Learn more
 
-- **Real-life project template:** [d6tflow-template](https://github.com/d6t/d6tflow-template)
-- **Why this matters:** [4 Reasons Why Your Machine Learning Code is Probably Bad](https://medium.com/@citynorman/4-reasons-why-your-machine-learning-code-is-probably-bad-c291752e4953)
+- **Scaffold a real project:** [`/oryxflow:init-project`](docs/claude-plugin/commands.md) in Claude Code
+- **Why this matters:** [4 reasons your machine learning code is probably bad](blog/posts/4-reasons-your-ml-code-is-bad.md)
 - **API details:** [API Reference](docs/reference.md)
