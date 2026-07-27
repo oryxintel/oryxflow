@@ -1,0 +1,15 @@
+# Cloudflare Pages redirects.
+# https://developers.cloudflare.com/pages/configuration/redirects/
+#
+# MkDocs copies this file verbatim to the site root (site/_redirects), where
+# Cloudflare Pages reads it — same mechanism as the sibling `_headers` file.
+#
+# Format: <from-path> <to-path> <status>. One rule per line, most specific first.
+# Cloudflare caps static redirects at 2100 rules; we are nowhere near that.
+
+# 2026-07-26: "Stop rerunning your whole pipeline" originally shipped under the
+# slug `cache-intermediate-dataframes-python`, which collided with the sibling
+# post `cache-intermediate-dataframes-in-python` — two URLs in the same category
+# competing for one phrase. The sibling keeps the DataFrame-caching phrase; this
+# post moved to the framing its own H1 already owned.
+/blog/caching/cache-intermediate-dataframes-python/ /blog/caching/stop-rerunning-your-pipeline/ 301

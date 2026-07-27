@@ -1,6 +1,6 @@
 ---
 date: 2026-07-11
-slug: cache-intermediate-dataframes-python
+slug: stop-rerunning-your-pipeline
 categories:
   - Caching
 description: How data scientists waste hours recomputing steps that never changed — and a lightweight way to fix it.
@@ -11,7 +11,7 @@ faq:
     a: "Turn your script into tasks that declare what they depend on and what they produce, then let an engine track each task's identity from its code and parameters. When something changes, only the affected tasks are stale. oryxflow, a small local-first Python library, caches every task output and reruns only what changed on the next run, so unchanged upstream steps load from disk instead of recomputing."
 ---
 
-# Stop rerunning your whole pipeline: caching intermediary DataFrames in Python
+# Stop rerunning your whole pipeline when one step changes
 
 *How data scientists waste hours recomputing steps that never changed — and a lightweight way to fix it.*
 

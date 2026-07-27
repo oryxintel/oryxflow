@@ -18,8 +18,8 @@ lightweight caching DAG changes how you build data-science workflows.
 
 **Reproducibility & caching**
 
-- [Stop rerunning your whole pipeline](posts/stop-rerunning-your-pipeline.md) — caching
-  intermediate DataFrames without the stale-`.pkl` graveyard.
+- [Stop rerunning your whole pipeline](posts/stop-rerunning-your-pipeline.md) — why a one-line
+  edit costs you a fifteen-minute recompute, and what to do about it.
 - [Cache intermediate DataFrames in Python](posts/cache-intermediate-dataframes-python.md) — why
   hand-rolled pickle caches go stale, and caching by task identity instead.
 - [From notebook to a reproducible, cached pipeline](posts/notebook-to-pipeline.md) — migrate an
