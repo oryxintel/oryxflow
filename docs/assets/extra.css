@@ -118,3 +118,17 @@
 [data-md-color-scheme="slate"] {
   --md-typeset-a-color: #6ea8ff;
 }
+
+/* The site-name home links added by extra.js (top banner + sidebar heading).
+   They must look exactly like the text they replaced — only the pointer and a
+   slight fade on hover reveal that they're clickable. */
+a.of-home-link,
+a.of-home-link:hover,
+a.of-home-link:focus {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.of-home-link:hover {
+  opacity: 0.75;
+}

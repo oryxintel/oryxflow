@@ -99,7 +99,7 @@ class Features(oryxflow.tasks.TaskPqPandas):
 
 That one change buys you three things:
 
-- **You always get the right result.** Ask for `window=60` and you get the output built with
+- **No result is ever built on stale data.** Ask for `window=60` and you get the output built with
   `window=60` and the current code — not whichever file was written last. There is no way to point
   at the wrong pickle, because you never point at a pickle.
 - **No file mess.** No `_v3_final_FIXED` suffixes, no path constants threaded through modules, no

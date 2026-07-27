@@ -15,10 +15,10 @@
 site_name: oryxflow
 site_url: https://docs.oryxflow.dev/
 site_description: >-
-  oryxflow is an open-source Python library and Claude Code plugin for faster, cheaper, more
-  reliable AI data analysis: it makes your data-science pipeline reproducible and lineage-tracked,
-  caching results and rerunning exactly what a parameter, data, or code change affects —
-  local-first, no server or account.
+  oryxflow is an open-source Python library and Claude Code plugin for more trustworthy, faster,
+  cheaper AI data analysis: it reruns exactly what a parameter, data, or code change affects and
+  records how each result was made, so nothing is ever built on stale data — a reproducible,
+  lineage-tracked, cached pipeline, local-first, no server or account.
 site_author: Oryx Intelligence LLC
 copyright: Copyright &copy; 2026 Oryx Intelligence LLC
 
@@ -73,6 +73,11 @@ theme:
 
 extra_css:
   - assets/extra.css
+
+extra_javascript:
+  # Turns the "oryxflow" wordmark in the top banner and the sidebar heading into
+  # links home — Material renders both as dead text. See the file's comment.
+  - assets/extra.js
 
 markdown_extensions:
   - toc:

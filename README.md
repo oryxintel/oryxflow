@@ -7,9 +7,9 @@
 
 **Faster, cheaper, more trustworthy data analysis — for humans and AI coding agents.**
 
-oryxflow turns a data-science script into a pipeline that caches every step, reruns exactly what a
-change affects, and records how each result was made. You never name an intermediate file or track
-which parameters produced which output again.
+oryxflow turns a data-science script into a pipeline that reruns exactly what a change affects,
+records how each result was made, and caches every step so you never pay twice for the same work.
+You never name an intermediate file or track which parameters produced which output again.
 
 It's a Python library. No server, no database, no account, no config files.
 
@@ -17,7 +17,7 @@ It's a Python library. No server, no database, no account, no config files.
 pip install oryxflow
 ```
 
-## 30 seconds: compare two models without rebuilding the features
+## 30 seconds: two models, no chance of a stale comparison
 
 ```python
 import oryxflow
@@ -76,19 +76,34 @@ Scheduled 2 tasks of which:
 ```
 
 `GetData` ran **once** and was reused. Run `flow.run()` again and nothing happens at all — every
-task is a cache hit. Add a third model tomorrow and only that one trains. Now edit the body of
-`GetData`: oryxflow notices the *code* changed and retrains both models on the new data, so you
-can't compare a new model against stale features by accident. (Reformat the code or add a comment
-and nothing reruns — it compares what the code *does*. And a step that last took over ten minutes
-warns instead of silently recomputing, so a refactor can't quietly burn a long run.)
+task is a cache hit. Add a third model tomorrow and only that one trains.
+
+Now edit the body of `GetData` — add a feature, fix a filter, point it at a new source:
+
+```text
+===== ols =====
+Scheduled 2 tasks of which:
+* 0 complete ones were encountered
+* 2 ran successfully:
+    - GetData                        <- its code changed, so it reran
+    - ModelTrain(model=ols)          <- its input changed, so it reran
+```
+
+Both models retrained and both scores moved. You didn't ask for that, and you don't have to work out
+which cached results are still valid — oryxflow does, from the code, the parameters, and the inputs.
+That's what separates this from a cache you manage yourself: the comparison you print is a
+comparison of your current code, never a mix of yesterday's features and today's. (Reformat the code
+or add a comment and nothing reruns — it compares what the code *does*. And a step that last took
+over ten minutes warns instead of silently recomputing, so a refactor can't quietly burn a long
+run.)
 
 That's the whole idea. Caching is how it works; **trust is what you get.**
 
 ## What you get
 
-- **You always get the right result.** Change a parameter, the data, or a task's code and oryxflow
-  reruns exactly what that change affects — and everything downstream. Cosmetic edits (comments,
-  formatting) don't trigger a rerun.
+- **No result is ever built on stale data.** Change a parameter, the data, or a task's code and
+  oryxflow reruns exactly what that change affects — and everything downstream. Cosmetic edits
+  (comments, formatting) don't trigger a rerun.
 - **No file mess, no parameter bookkeeping.** No `features_v3_final.pkl`, no `to_pickle` /
   `read_pickle` plumbing, no spreadsheet of which run used which settings. Ask for a result by the
   task and parameters that made it.
@@ -144,10 +159,15 @@ written for.
 
 ## Build it with Claude Code
 
+A coding agent's real weakness in data work isn't writing the pandas — it's keeping track of what it
+already ran, what's still valid, and what its last edit just invalidated. That's too important to
+leave in a context window.
+
 The [oryxflow Claude Code plugin](https://github.com/oryxintel/oryxflow-claude-plugin) teaches your
 coding agent to build the analysis this way — so it reuses expensive results instead of burning your
-time and tokens redoing them, and can't quietly train a model on stale data. It's a plugin (a skill
-plus slash commands), not an MCP server.
+time and tokens redoing them, and can't quietly train a model on stale data. oryxflow keeps the
+record of what ran outside the agent; the plugin teaches the agent to check that record instead of
+trusting its own memory. It's a plugin (a skill plus slash commands), not an MCP server.
 
 ```text
 /plugin marketplace add oryxintel/oryxflow-claude-plugin

@@ -18,9 +18,10 @@ faq:
 # oryxflow
 
 **Faster, cheaper, and more trustworthy data analysis — for humans and AI coding agents.**
-oryxflow turns a data-science script into a pipeline that caches every step, reruns exactly what
-a change affects, and records how each result was made. It's a Python library with no server, no
-database, and no account: `pip install oryxflow` and you're done.
+oryxflow turns a data-science script into a pipeline that reruns exactly what a change affects,
+records how each result was made, and caches every step so you never pay twice for the same work.
+It's a Python library with no server, no database, and no account: `pip install oryxflow` and
+you're done.
 
 Working with an AI agent? The **[Claude Code plugin](docs/claude-code-for-data-science.md)**
 teaches Claude Code to build your data analysis this way — so the agent reuses expensive results
@@ -35,9 +36,9 @@ request.
 Four things you get on day one — the full argument is in
 **[Why oryxflow](docs/why-oryxflow.md)**:
 
-- **You always get the right result.** Change a parameter, the data, or a task's code and oryxflow
-  reruns exactly what that change affects. You can't accidentally evaluate a new model on stale
-  features.
+- **No result is ever built on stale data.** Change a parameter, the data, or a task's code and
+  oryxflow reruns exactly what that change affects. You can't accidentally evaluate a new model on
+  stale features.
 - **No file mess, no parameter bookkeeping.** You never name, path, or version an intermediate file
   again — no `features_v3_final.pkl`, no `to_pickle`/`read_pickle` plumbing, no spreadsheet of which
   run used which settings. Ask for a result by the task and parameters that made it.
@@ -146,6 +147,11 @@ and [the whole field](blog/posts/oryxflow-vs-the-field.md).
     Reproducibility and trust, tool comparisons (vs Airflow, MLflow, DVC), and trustworthy
     AI-assisted data science.
 
+-   :fontawesome-brands-github: **[Source on GitHub](https://github.com/oryxintel/oryxflow)**
+
+    Read the code, open an issue, or star the project. MIT-licensed, and on
+    [PyPI](https://pypi.org/project/oryxflow/).
+
 </div>
 
 ## Frequently asked questions
@@ -199,3 +205,4 @@ Weights & Biases); it composes beside both.
 - **Scaffold a real project:** [`/oryxflow:init-project`](docs/claude-plugin/commands.md) in Claude Code
 - **Why this matters:** [4 reasons your machine learning code is probably bad](blog/posts/4-reasons-your-ml-code-is-bad.md)
 - **API details:** [API Reference](docs/reference.md)
+- **Source & issues:** [oryxintel/oryxflow on GitHub](https://github.com/oryxintel/oryxflow)
