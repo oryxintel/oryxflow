@@ -59,8 +59,9 @@ they get worse, not better, as projects grow in complexity and an AI agent write
   state.
 
 Caching is the *engine*. Trust — reproducible, lineage-tracked reruns that update exactly what
-changed — is the *product*.
+changed — is the *outcome*.
 
+[More on why oryxflow](https://docs.oryxflow.dev/docs/why-oryxflow/).
 
 ## 30 second example: two models, no chance of a stale comparison
 
