@@ -713,6 +713,201 @@ class TestMain:
         assert sorted(SectorCombine(sector='b').requires()) == ['east', 'south']
         assert SectorCombine(sector='b').requires()['east'].sector == 'b'
 
+    def test_requires_grid_key_collision_raises(self):
+        # values joined with '_' that themselves contain '_' can produce ONE key from two
+        # combos -- which used to overwrite, dropping a branch that then never ran and never
+        # showed in preview()
+        class CollideLeaf(oryxflow.tasks.TaskPqPandas):
+            x = oryxflow.Parameter(default='a')
+            y = oryxflow.Parameter(default='c')
+
+        class CollideFan(oryxflow.tasks.TaskPqPandas):
+            pass
+
+        fan = CollideFan()
+        with pytest.raises(ValueError) as e:
+            fan.requires_grid(CollideLeaf, x=['a_y_b', 'a'], y=['c', 'b_y_c'])
+        assert 'x_a_y_b_y_c' in str(e.value)
+
+        # 4 combos, 4 distinct keys -> fine
+        assert len(fan.requires_grid(CollideLeaf, x=['a', 'b'], y=['c', 'd'])) == 4
+
+    # -- derive=: a further parameter per branch, computed from its fanned values --------------
+
+    @staticmethod
+    def _derive_leaf():
+        class DeriveLeaf(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+            region = oryxflow.Parameter(default='north')
+            source = oryxflow.Parameter(default='')
+
+            def run(self):
+                self.save(pd.DataFrame({'region': [self.region], 'source': [self.source]}))
+
+        return DeriveLeaf
+
+    def test_requires_each_derive(self):
+        DeriveLeaf = self._derive_leaf()
+        urls = {'north': 'n.csv', 'south': 's.csv'}
+
+        @oryxflow.requires_each(DeriveLeaf, region=list(urls),
+                                derive={'source': lambda v: urls[v['region']]})
+        class DeriveCombine(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(self.inputLoadConcat())
+
+        # the derived name is excluded from the combining task, exactly like the fanned one
+        assert [n for n, _ in DeriveCombine.get_params()] == ['date_asof']
+
+        deps = DeriveCombine(date_asof='2026-03-31').requires()
+        # the dependency key stays the bare fanned value -- the derived value is a function of it
+        assert list(deps) == ['north', 'south']
+        assert deps['north'].source == 'n.csv'
+        assert deps['south'].source == 's.csv'
+        # and everything the flow passed down still reaches the branches
+        assert all(d.date_asof == '2026-03-31' for d in deps.values())
+
+        # the derived value is IN the branch's identity: editing the lookup invalidates just the
+        # branch it changed, which is the whole point
+        before = deps['north'].task_id
+        urls['north'] = 'n2.csv'
+        after = DeriveCombine(date_asof='2026-03-31').requires()['north'].task_id
+        assert before != after
+
+    def test_requires_each_derive_multi_param(self):
+        class TuneLeaf(oryxflow.tasks.TaskPqPandas):
+            model = oryxflow.Parameter(default='ridge')
+            horizon = oryxflow.IntParameter(default=1)
+            alpha = oryxflow.FloatParameter(default=0.0)
+
+        tuning = {('ridge', 1): 0.1, ('ridge', 5): 0.2, ('forest', 1): 0.3, ('forest', 5): 0.4}
+
+        @oryxflow.requires_each(TuneLeaf, model=['ridge', 'forest'], horizon=[1, 5],
+                                derive={'alpha': lambda v: tuning[(v['model'], v['horizon'])]})
+        class TuneCombine(oryxflow.tasks.TaskPqPandas):
+            pass
+
+        deps = TuneCombine().requires()
+        assert len(deps) == 4
+        assert deps['horizon_1_model_ridge'].alpha == 0.1
+        assert deps['horizon_5_model_forest'].alpha == 0.4
+        # the derived name is not part of the key
+        assert all('alpha' not in k for k in deps)
+
+    def test_requires_each_derive_runs(self, cleanup):
+        DeriveLeaf = self._derive_leaf()
+        urls = {'north': 'n.csv', 'south': 's.csv'}
+
+        @oryxflow.requires_each(DeriveLeaf, region=list(urls),
+                                derive={'source': lambda v: urls[v['region']]})
+        class DeriveRun(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(self.inputLoadConcat())
+
+        flow = oryxflow.Workflow(DeriveRun)
+        flow.run()
+        df = flow.outputLoad()
+        assert dict(zip(df['region'], df['source'])) == urls
+
+    def test_requires_each_derive_validation(self):
+        DeriveLeaf = self._derive_leaf()
+
+        with pytest.raises(TypeError) as e:                     # not a dict
+            oryxflow.requires_each(DeriveLeaf, region=['north'], derive=['source'])
+        assert 'derive=' in str(e.value)
+
+        with pytest.raises(TypeError) as e:                     # not a callable
+            oryxflow.requires_each(DeriveLeaf, region=['north'], derive={'source': 'n.csv'})
+        assert 'function of the fanned values' in str(e.value)
+
+        with pytest.raises(ValueError) as e:                    # both fanned and derived
+            oryxflow.requires_each(DeriveLeaf, region=['north'],
+                                   derive={'region': lambda v: 'x'})
+        assert 'can only be one' in str(e.value)
+
+        # no such parameter on the dependency -- clone() would silently drop it and the branch
+        # would run with the default
+        with pytest.raises(TypeError) as e:
+            oryxflow.requires_each(DeriveLeaf, region=['north'], derive={'nope': lambda v: 'x'})
+        assert 'silently dropped' in str(e.value)
+
+    def test_reserved_param_names(self):
+        # 'cls' and 'derive' are clone()/requires_grid() arguments: a Parameter of that name is
+        # shadowed by the argument, so it is rejected where it is written
+        for name in ('cls', 'derive', 'path', 'flows'):
+            with pytest.raises(ValueError) as e:
+                type('Reserved' + name, (oryxflow.tasks.TaskPqPandas,),
+                     {name: oryxflow.Parameter(default='x')})
+            assert 'reserved' in str(e.value)
+
+    def test_requires_each_fanned_param_must_exist(self):
+        # clone() drops a name the class has no parameter for, so fanning out over one used to
+        # produce N keys pointing at ONE identical task -- N copies of the same output, tagged as
+        # if they were different branches
+        class ExistLeaf(oryxflow.tasks.TaskPqPandas):
+            region = oryxflow.Parameter(default='north')
+
+        with pytest.raises(TypeError) as e:
+            oryxflow.requires_each(ExistLeaf, sector=['a', 'b'])
+        assert 'no such parameter' in str(e.value)
+        assert 'its parameters: region' in str(e.value)         # names what it CAN fan out over
+
+        with pytest.raises(TypeError):
+            class ExistFan(oryxflow.tasks.TaskPqPandas):
+                def requires(self):
+                    return self.requires_grid(ExistLeaf, sector=['a', 'b'])
+            ExistFan().requires()
+
+    def test_requires_each_derive_declared_on_combiner_raises(self):
+        DeriveLeaf = self._derive_leaf()
+
+        with pytest.raises(TypeError) as e:
+            @oryxflow.requires_each(DeriveLeaf, region=['north', 'south'],
+                                    derive={'source': lambda v: v['region'] + '.csv'})
+            class BadDerive(oryxflow.tasks.TaskPqPandas):
+                source = oryxflow.Parameter(default='')
+        assert 'derives' in str(e.value)
+
+    def test_requires_grid_derive(self):
+        DeriveLeaf = self._derive_leaf()
+        urls = {'north': 'n.csv', 'south': 's.csv'}
+
+        class GridDerive(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+
+            def requires(self):
+                return self.requires_grid(DeriveLeaf, region=list(urls),
+                                          derive={'source': lambda v: urls[v['region']]})
+
+        deps = GridDerive().requires()
+        assert list(deps) == ['north', 'south']
+        assert deps['south'].source == 's.csv'
+
+        with pytest.raises(TypeError):
+            GridDerive().requires_grid(DeriveLeaf, region=['north'], derive={'nope': lambda v: 1})
+
+    def test_input_load_group_by_class(self, cleanup):
+        # a group name is a string naming a class: renaming the class leaves it stale and it
+        # fails at runtime. Passing the class can't go stale.
+        StackInput, StackNarrative = self._stack_tasks()
+        regions = ['north', 'south']
+
+        @oryxflow.requires({'input': StackInput})
+        @oryxflow.requires_each(StackNarrative, region=regions)
+        class ClassSelReport(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(pd.DataFrame({'a': [1]}))
+
+        t = ClassSelReport()
+        oryxflow.Workflow(ClassSelReport).run()
+
+        assert t.inputLoad(task=StackNarrative).keys() == t.inputLoad(task='StackNarrative').keys()
+        assert set(t.inputLoad(task=StackNarrative)) == set(regions)
+        assert len(t.inputLoadConcat(task=StackNarrative)) == len(regions)
+        # the group key in the flatten=False dict is the family, so `Cls.task_family` is the
+        # refactor-safe spelling there
+        assert StackNarrative.task_family in t.inputLoad(flatten=False)
+
     def test_input_load_flatten_false(self, cleanup):
         StackInput, StackNarrative = self._stack_tasks()
         regions = ['north', 'south']
@@ -1275,4 +1470,16 @@ class TestMain:
         assert not ULeaf(grp='x', sub='a').complete(cascade=False)
         assert not UMid(grp='x').complete(cascade=False)
         assert UTop().complete(cascade=False)      # not in the list
+
+        flow.run()  # rebuild
+        # no anchor -> the flow's default task, matching Workflow.reset() and
+        # WorkflowMulti.reset_upstream() (the docs' bare flow.reset_upstream() form)
+        flow.reset_upstream()
+        assert not ULeaf(grp='x', sub='a').complete(cascade=False)
+        assert not UTop().complete(cascade=False)
+
+        flow.run()  # rebuild
+        flow.reset_upstream(confirm=False, only=UMid)     # kwargs-only, no anchor
+        assert ULeaf(grp='x', sub='a').complete(cascade=False)
+        assert not UMid(grp='x').complete(cascade=False)
 

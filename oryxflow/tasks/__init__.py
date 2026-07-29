@@ -246,9 +246,10 @@ class TaskData(core.Task):
 
         Args:
             keys (list): list of data to load
-            task (str): if requires multiple tasks load that task 'input1' for eg `def requires: {'input1':Task1(), 'input2':Task2()}`.
-                For a fan-out, name the group (the dependency's own name by default) to get
-                just its branches.
+            task (str, class): if requires multiple tasks load that task 'input1' for eg `def requires: {'input1':Task1(), 'input2':Task2()}`.
+                For a fan-out, name the group to get just its branches — pass the dependency
+                **class** (`task=RegionNarrative`) rather than its name and a rename can't
+                break it.
             cached (bool): cache data in memory
             as_dict (bool): if the inputs were saved as a dictionary. use this to return them as dictionary.
             flatten (bool): False groups a fan-out's branches under one key, so a task that
@@ -256,6 +257,7 @@ class TaskData(core.Task):
         Returns: list or dict of all task output
         """
         groups = core._requires_groups(self)
+        task = core._group_key(task, groups)
         if task is not None and task in groups:
             # a whole fan-out group, keyed by branch
             return {label: self.inputLoad(keys=keys, task=key, cached=cached, as_dict=as_dict)
@@ -314,7 +316,8 @@ class TaskData(core.Task):
         requires() ({key: Task(...)}) and the list/positional form. By default each dependency's
         significant params are added as columns. concat_fn(identifier, params, df)->df overrides.
 
-        task: concatenate only one fan-out group, or only one dependency.
+        task: concatenate only one fan-out group (the group name, or the dependency class --
+        pass the class and a rename can't break it), or only one dependency.
         flatten: False returns {name: DataFrame} -- each fan-out group concatenated within
         itself, every other dependency its own entry."""
         requires = self.requires()
@@ -325,6 +328,7 @@ class TaskData(core.Task):
         else:
             items = [(None, requires)]            # single dep
         groups = core._requires_groups(self)
+        task = core._group_key(task, groups)
 
         def _concat(subitems):
             def _gen():

@@ -82,6 +82,8 @@ flow = oryxflow.WorkflowMulti(Task1, {'flow1':{'preprocess':False},'flow2':{'pre
 flow.run() # will run all flow with all parameters
 ```
 
+That gives you a separately managed run per parameter set — its own output, summary and reset scope. When you instead want *one* run that combines every value into a single result, that's a fan-out rather than a `WorkflowMulti`; [Which one do I need?](advtasksdyn.md#which-one-do-i-need) tells the two apart in three questions.
+
 ### Disable Dependency Checks
 
 By default, for a task to be complete, it checks if all dependencies are complete also, not just the task itself. To check if just the task is complete without checking dependencies, set `oryxflow.settings.check_dependencies=False`

@@ -2,6 +2,36 @@
 
 You don't have to write out every task by hand. When the shape of the work comes from a list — one task per region, per file, per model — you write the list once and let oryxflow generate the tasks from it. Everything on this page builds on that one idea.
 
+## Which one do I need?
+
+Three things look alike when you're staring at a `for` loop: a fan-out, a `WorkflowMulti`, and a loop that should stay exactly where it is. Ask these three questions in order, about one loop at a time.
+
+**1. Would you ever want to re-run one item on its own?**
+
+If the loop body is arithmetic over a frame you already have in memory, the answer is no — **leave the loop alone**. Not every loop is a workflow. Turning cheap work into tasks buys you nothing and costs you a line in every `preview()` forever.
+
+If the body fetches, calls an API, fits a model, or parses a file — anything you'd be annoyed to repeat — keep going.
+
+**2. Does something downstream need all the items together?**
+
+One combined frame, one report, one comparison across items → **fan-out**. Declare one dependency per item and let a single task combine them.
+
+**3. Otherwise, are the items separate end-products you manage independently?**
+
+Each with its own output, its own run summary, its own reset scope → **`WorkflowMulti`**.
+
+| Reach for | When | What you get |
+| --- | --- | --- |
+| **Plain loop** in `run()` | the body is cheap and you'd never re-run one item alone | one task, no bookkeeping |
+| **Fan-out** — `@oryxflow.requires_each` | the per-item work is worth caching *and* something downstream combines it | one run, one combined output, one reset scope; every item visible in `preview()` |
+| **`WorkflowMulti`** | the items are independent experiments you compare by hand | a separate flow per item — its own output, summary and resets |
+
+!!! danger "One rule overrides all three"
+
+    If the loop currently builds a `Workflow` and calls `run()` **inside** a task's `run()`, make it a fan-out whatever else you decided. Tasks started that way are not dependencies, so nothing can find them: a targeted reset reports no error and invalidates nothing, and you get stale results back from a green run. This is the one shape that is wrong rather than merely untidy — worked through in [Avoid building a flow inside a task](advparam.md#avoid-building-a-flow-inside-a-task).
+
+Two follow-on notes. Fan-out and `WorkflowMulti` **compose** — fan out within a flow, and drive the outer dimension with `WorkflowMulti` when you want those managed separately ([side by side](#fan-out-vs-independent-runs-do-you-need-workflowmulti)). And a fan-out's list can be fixed config *or* computed from the combining task's own parameters; both are covered below, and neither requires you to write `requires()` by hand.
+
 ## One task per item in a list
 
 Instead of naming each dependency, point a task at a list and oryxflow declares one dependency per item in it — a workflow that grows and shrinks with your data instead of with your typing.
@@ -194,7 +224,7 @@ dfall = flow.outputLoadConcat(Sector)                   # combine the per-sector
 flow.reset_upstream(Sector, only=DataLoadState)         # reset one family, all sectors
 ```
 
-Same result frame either way. Reach for fan-out (`AllSectors`) when you want one combined run; reach for `WorkflowMulti` when sectors are separately-managed experiments.
+Same result frame either way. Reach for fan-out (`AllSectors`) when you want one combined run; reach for `WorkflowMulti` when sectors are separately-managed experiments. This is question 3 of [Which one do I need?](#which-one-do-i-need), applied to the outermost dimension.
 
 A complete, runnable version of this sector → country → state example — including the dev loop where you add a feature to the country-level task, iterate on one `(sector, country)` first, then roll it out to every flow *without re-fetching the expensive per-state source* — is in `docs/example-flow-multi.py`.
 
@@ -299,6 +329,40 @@ class ModelCombine(oryxflow.tasks.TaskPqPandas):
 
 Each keyword takes the **list** of values to run for. Every branch is tagged with its own values in
 the combined frame, so `df.groupby(['model', 'horizon'])` works straight away.
+
+### A setting that varies per branch
+
+Branches often need a second thing that follows from the value they were built for — the source file
+for that region, the tuning for that model, the row threshold for that market. Pass `derive=` a
+function of the branch's values and it becomes a parameter of that branch:
+
+```python
+# cfg.py
+SOURCE = {'north': 'north-2026.csv', 'south': 'south-2026.csv', 'east': 'east-2026.csv'}
+
+@oryxflow.requires_each(RegionLoad, region=list(cfg.SOURCE),
+                        derive={'source': lambda v: cfg.SOURCE[v['region']]})
+class RegionCombine(oryxflow.tasks.TaskPqPandas):
+
+    def run(self):
+        self.save(self.inputLoadConcat())
+```
+
+Each function is handed that branch's values (`v['region']`, or `v['model']` and `v['horizon']` when
+you fan out over both) and must be a plain lookup or calculation on them.
+
+**What you get is correct caching.** Because the result is a parameter of the branch, it counts
+towards which cached output that branch uses. Point `cfg.SOURCE['south']` at a new file and
+re-running redoes south and leaves north and east alone.
+
+Doing the lookup inside the branch's `run()` instead — `df = read(cfg.SOURCE[self.region])` — is the
+version to avoid. It runs correctly the first time and then goes quiet: the branch's cached output
+doesn't know which file it came from, so changing `cfg.SOURCE` gives you the old numbers back with
+nothing to tell you. Bumping `code_version` is not the fix either — that reruns *every* region.
+
+Two things to know: the branch keys are unchanged (`self.inputLoad(task='north')`, not the file
+name), and the combining task doesn't get a `source` parameter — like the fanned `region`, it is
+something the branches differ on, so declaring it on the combining task is an error.
 
 ### Combining a fan-out with something shared
 

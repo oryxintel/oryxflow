@@ -434,7 +434,7 @@ def requires(*tasks_to_require):
     return core.requires(*tasks_to_require)
 
 
-def requires_each(task_to_require, /, *extra, **grid):
+def requires_each(task_to_require, /, *extra, derive=None, **grid):
     """
     Class decorator. Declare one dependency **per value** instead of one dependency: the
     decorated task depends on `task_to_require` run once for every value you list, and its
@@ -451,6 +451,8 @@ def requires_each(task_to_require, /, *extra, **grid):
     Args:
         task_to_require: the task class to run once per value, or a single `{name: task}`
             dict to name the group (it defaults to the task's own name)
+        derive: parameter name -> function of that branch's fanned values, for a setting
+            that varies per branch — see "Settings that vary per branch" below
         **grid: parameter name -> list of values to run it for, or a function taking the
             task and returning that list
 
@@ -481,12 +483,31 @@ def requires_each(task_to_require, /, *extra, **grid):
     Decorators stack in any order. If two of them would produce the same key, name one:
     `@oryxflow.requires_each({'chart': RegionChart}, region=REGIONS)`.
 
+    **Settings that vary per branch.** When each branch needs something else that follows from
+    its value — a per-region source file, a per-model tuning dict — use `derive=` rather than
+    looking it up inside the branch's `run()`:
+
+        ```python
+        SOURCE = {'north': 'north.csv', 'south': 'south.csv'}
+
+        @oryxflow.requires_each(RegionLoad, region=list(SOURCE),
+                                derive={'source': lambda v: SOURCE[v['region']]})
+        class RegionCombine(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(self.inputLoadConcat())
+        ```
+
+    Each function is given that branch's values (`v['region']`) and its result is passed to the
+    branch as a parameter — so it counts towards which cached output the branch uses. Change one
+    entry in `SOURCE` and re-running redoes just that region; look the same thing up inside
+    `run()` instead and re-running gives you the old output back with no warning.
+
     When the values depend on one of the task's own parameters, pass a function instead of a
     list — `region=lambda self: REGIONS[self.sector]`. For anything the decorators still
     don't cover, write `requires()` yourself and call
     :py:meth:`~oryxflow.core.Task.requires_grid`, which is what this decorator uses.
     """
-    return core.requires_each(task_to_require, *extra, **grid)
+    return core.requires_each(task_to_require, *extra, derive=derive, **grid)
 
 
 class Workflow(object):
@@ -661,7 +682,17 @@ class Workflow(object):
         task_downstream_inst = self.get_task(task_downstream)
         return invalidate_downstream(task, task_downstream_inst, confirm)
 
-    def reset_upstream(self, task, confirm=False, only=None):
+    def reset_upstream(self, task=None, confirm=False, only=None):
+        """
+        Invalidate a task and everything upstream of it.
+
+        Args:
+            task (obj, class): anchor to walk up from. Defaults to the flow's default task,
+                so a bare ``flow.reset_upstream()`` resets the whole flow.
+            confirm (bool): confirm operation
+            only (class, list): invalidate just these task families across the upstream DAG,
+                leaving the rest cached
+        """
         task_inst = self.get_task(task)
         return invalidate_upstream(task_inst, confirm, only=only)
 

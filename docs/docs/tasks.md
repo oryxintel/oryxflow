@@ -44,7 +44,20 @@ class TaskSingleInput(oryxflow.tasks.TaskPqPandas):
 @oryxflow.requires({'input1':TaskSingleOutput1, 'input2':TaskSingleOutput2})
 class TaskMultipleInput(oryxflow.tasks.TaskPqPandas):
     #[...]
+
+# one dependency per item in a list -- one TaskPerRegion per region
+@oryxflow.requires_each(TaskPerRegion, region=cfg.REGIONS)
+class TaskCombineRegions(oryxflow.tasks.TaskPqPandas):
+    #[...]
+
+# a fan-out plus a shared input: decorators stack, in any order
+@oryxflow.requires({'input':TaskSingleOutput})
+@oryxflow.requires_each(TaskPerRegion, region=cfg.REGIONS)
+class TaskReport(oryxflow.tasks.TaskPqPandas):
+    #[...]
 ```
+
+The last two are how you avoid writing out one dependency per region by hand. `@oryxflow.requires_each` declares one dependency *per value*, so adding a region to the list adds a task; stack it with `@oryxflow.requires` when the combining task also needs something shared that isn't fanned out — the table the per-region work was built from, a baseline to compare against. Both are covered in [Dynamic Workflow Generation](advtasksdyn.md), which also has a [decision test](advtasksdyn.md#which-one-do-i-need) for whether a given loop wants this, a `WorkflowMulti`, or nothing at all.
 
 ## Process Data
 
@@ -130,6 +143,20 @@ class TaskMultipleInput(oryxflow.tasks.TaskPqPandas):
         # or
         data1a, data1b = self.inputLoad(task=0)
         data2a, data2b = self.inputLoad(task=1)
+
+# one dependency per item, plus a shared input
+@oryxflow.requires({'input':TaskSingleOutput})
+@oryxflow.requires_each(TaskPerRegion, region=cfg.REGIONS)
+class TaskReport(oryxflow.tasks.TaskPqPandas):
+    def run(self):
+        deps = self.inputLoad(flatten=False)   # keeps the two kinds apart
+        shared = deps['input']
+        for region, data in deps['TaskPerRegion'].items():
+            pass
+        # or get just the per-region ones
+        by_region = self.inputLoad(task='TaskPerRegion')
+        # or stack them into one frame, tagged by region
+        df = self.inputLoadConcat(task='TaskPerRegion')
 ```
 
 ### Load External Files
@@ -156,7 +183,9 @@ For more advanced options see [Sharing Workflows and Outputs](collaborate.md)
 
 ### Dynamic Inputs
 
-See [Dynamic Workflow Generation](advtasksdyn.md)
+When the number of inputs comes from a list — one per region, per file, per model — you write the list once instead of writing out the dependencies. `@oryxflow.requires_each(TaskLoadFile, file=glob.glob('data-raw/*.csv'))` gives you one task per file, each cached on its own, so dropping a new CSV in the folder reads only that one.
+
+See [Dynamic Workflow Generation](advtasksdyn.md), and start with its [decision test](advtasksdyn.md#which-one-do-i-need) if you're not sure whether a loop you already have wants this at all.
 
 ## Save Output Data
 

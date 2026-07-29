@@ -123,22 +123,28 @@ class Register(type):
     ``Workflow``'s path/flow propagation depends on.
     """
 
-    # Names the engine sets on task instances itself (see TaskData.__init__, which takes both
-    # as keyword-only args). A Parameter of the same name never receives the value you pass --
-    # it keeps its default, and that default then gets used as the data directory -- so reject
-    # it where it is written rather than let the output land somewhere surprising.
-    RESERVED_PARAM_NAMES = {
-        'path': "the flow's data directory",
-        'flows': 'flows attached with attach_flow()',
+    # Names oryxflow already uses around a task, which a Parameter of the same name shadows --
+    # silently, in both cases, which is why the name is rejected where it is WRITTEN rather than
+    # at the far-away call that breaks:
+    #   path/flows  the engine sets on instances itself (see TaskData.__init__, which takes both
+    #               as keyword-only args), so the Parameter never receives the value you pass --
+    #               it keeps its default, and that default becomes the data directory.
+    #   cls/derive  are clone()/requires_grid() arguments, so clone(cls=Other) or a fan-out over
+    #               a parameter of that name binds to the argument instead of the parameter.
+    RESERVED_PARAM_NAMES = {                       # name: (what it is reserved for, rename to)
+        'path': ("the flow's data directory", 'file'),
+        'flows': ('flows attached with attach_flow()', 'flow_name'),
+        'cls': ('the target class in clone() / requires_grid()', 'model_cls'),
+        'derive': ("requires_grid()'s per-branch derived parameters", 'derive_features'),
     }
 
     def __init__(cls, name, bases, namespace):
         super().__init__(name, bases, namespace)
-        for attr, what in Register.RESERVED_PARAM_NAMES.items():
+        for attr, (what, suggestion) in Register.RESERVED_PARAM_NAMES.items():
             if isinstance(namespace.get(attr), Parameter):
                 raise ValueError(
                     "{}: '{}' cannot be a Parameter -- the name is reserved for {}. "
-                    "Rename it (eg 'file' instead of 'path').".format(name, attr, what))
+                    "Rename it (eg '{}').".format(name, attr, what, suggestion))
 
     @property
     def task_family(cls):
@@ -305,7 +311,7 @@ class Task(metaclass=Register):
 
         return cls(**new_k)
 
-    def requires_grid(self, cls=None, **grid):
+    def requires_grid(self, cls=None, derive=None, **grid):
         """
         Build the ``requires()`` dict for depending on ``cls`` once per value -- the runtime
         form of the ``@requires_each`` decorator, for when the values are only known here
@@ -322,6 +328,12 @@ class Task(metaclass=Register):
         A value may also be a callable taking this task and returning the list, for a grid
         computed from this task's own **parameters**. It may not read this task's inputs --
         ``input()`` is defined as ``getpaths(self.requires())``, so that recurses forever.
+
+        ``derive={'name': fn}`` sets a FURTHER parameter per branch, computed from that branch's
+        fanned values: ``derive={'source': lambda v: URLS[v['region']]}``. It lands in the
+        branch's parameters, and therefore in its ``task_id`` -- so editing the lookup
+        invalidates exactly the branches it changes. The derived name stays OUT of the dict key
+        (the key remains the fanned value, which the derived value is a function of).
 
         ::
 
@@ -344,15 +356,30 @@ class Task(metaclass=Register):
                     '{}: requires_grid values must be a list of values to fan out over, got {} for {}'.format(
                         self.task_family, repr(values), name))
             resolved[name] = values
+        derive = _check_grid(cls, set(names), derive, self.task_family)
 
-        out = {}
+        out, seen = {}, {}
         for combo in itertools.product(*(resolved[n] for n in names)):
             values = dict(zip(names, combo))
             if len(names) == 1:
                 key = values[names[0]]
             else:
                 key = '_'.join('{}_{}'.format(n, values[n]) for n in names)
-            out[key] = self.clone(cls, **values)
+            # Two combos can produce one key -- values joined with '_' that themselves contain
+            # '_' ({'x': ['a_y_b', 'a'], 'y': ['c', 'b_y_c']}), or values that merely hash
+            # equal (1 and True). Assigning would DROP a branch: it would never run and never
+            # show in preview(). Raise instead.
+            if key in seen:
+                raise ValueError(
+                    '{}: fan-out values {} and {} both produce the dependency key {!r}, so one '
+                    'branch would be silently dropped. Rename a value so the keys differ (a '
+                    "value containing '_' can collide once several parameters are joined).".format(
+                        self.task_family, seen[key], values, key))
+            seen[key] = values
+            # a copy per callable: one that mutates its argument must not corrupt the key
+            # bookkeeping above or another branch's values
+            extra = {n: fn(dict(values)) for n, fn in derive.items()}
+            out[key] = self.clone(cls, **values, **extra)
         return out
 
     def __hash__(self):
@@ -470,7 +497,8 @@ class LocalTarget(Target):
 # An entry is one of:
 #   {'kind': 'inherit', 'tasks': (Cls, ...) or {name: Cls}}   params only, no dependency
 #   {'kind': 'fixed',   'tasks': (Cls, ...) or {name: Cls}}   params + dependency
-#   {'kind': 'each',    'cls': Cls, 'group': str or None, 'grid': {name: values-or-callable}}
+#   {'kind': 'each',    'cls': Cls, 'group': str or None, 'grid': {name: values-or-callable},
+#                       'derive': {name: fn(fanned values)}}
 
 def _spec_entries(cls):
     """This class's own spec list (never a base class's -- copy on first write)."""
@@ -487,40 +515,88 @@ def _entry_sources(entry):
     return list(tasks.values()) if isinstance(tasks, dict) else list(tasks)
 
 
+def _check_grid(cls, fanned, derive, where):
+    """Validate a fan-out spec against the dependency class; return ``derive`` as a dict.
+
+    Both halves guard the same silent failure: ``clone()`` builds its kwargs from
+    ``cls.get_params()`` and DROPS anything else, so a name ``cls`` has no parameter for never
+    reaches the branch at all.
+    """
+    params = dict(cls.get_params())
+
+    missing = [n for n in sorted(fanned) if n not in params]
+    if missing:
+        raise TypeError(
+            '{}: cannot fan {} out over {} -- it has no such parameter, so every branch would '
+            'come out identical (one task under several keys) instead of one per value. Declare '
+            'it on {}, or fan out over one of its parameters: {}.'.format(
+                where, cls.__name__, ' / '.join(repr(n) for n in missing), cls.__name__,
+                ', '.join(sorted(params)) or 'it has none'))
+
+    if not derive:
+        return {}
+    if not isinstance(derive, dict):
+        raise TypeError(
+            '{}: derive= must be a dict of {{parameter name: function of the fanned values}}, '
+            'got {}'.format(where, repr(derive)))
+    for name, fn in sorted(derive.items()):
+        if not callable(fn):
+            raise TypeError(
+                '{}: derive[{!r}] must be a function of the fanned values -- '
+                'lambda v: LOOKUP[v[<fanned parameter>]] -- got {}'.format(
+                    where, name, repr(fn)))
+        if name in fanned:
+            raise ValueError(
+                "{}: '{}' is both fanned out over and derived -- it can only be one. Drop it "
+                'from one of them.'.format(where, name))
+        if name not in params:
+            raise TypeError(
+                "{}: derive[{!r}] has no matching parameter on {} -- the derived value would be "
+                'silently dropped and the branch would run with the default. Declare '
+                '{} = oryxflow.Parameter() on {}.'.format(
+                    where, name, cls.__name__, name, cls.__name__))
+    return derive
+
+
 def _apply_spec(cls):
     """Re-derive the copied parameters and the generated ``requires()`` from the whole spec.
 
     Run from scratch after every decorator, so decorator ORDER cannot matter.
     """
     spec = cls.__dict__.get('_requires_spec', [])
-    fanned = set()
+    fanned, derived = set(), set()
     for entry in spec:
         if entry['kind'] == 'each':
             fanned.update(entry['grid'])
+            derived.update(entry.get('derive') or ())
+    # both differ per branch, so neither belongs on the task the branches converge into
+    excluded = fanned | derived
 
     injected = set(cls.__dict__.get('_requires_injected', ()))
 
-    # (a) a fanned parameter declared in the class body is a mistake, not something to drop
-    for name in sorted(fanned):
+    # (a) a fanned or derived parameter declared in the class body is a mistake, not something
+    # to drop
+    for name in sorted(excluded):
         if isinstance(cls.__dict__.get(name), Parameter) and name not in injected:
+            what = "fans out over '{}'".format(name) if name in fanned \
+                else "derives '{}' per branch".format(name)
             raise TypeError(
-                "{}: declares a '{}' parameter and also fans out over '{}'. The task the "
-                "branches converge into must not carry the fanned parameter -- it would put "
-                "one branch's value in the combining task's task_id. Remove the "
-                "declaration.".format(cls.__name__, name, name))
+                "{}: declares a '{}' parameter and also {}. The task the branches converge "
+                "into must not carry it -- it would put one branch's value in the combining "
+                "task's task_id. Remove the declaration.".format(cls.__name__, name, what))
 
     # (b) drop parameters a previous decorator injected that a later one fans out over
-    for name in sorted(injected & fanned):
+    for name in sorted(injected & excluded):
         delattr(cls, name)
         injected.discard(name)
 
-    # (c) copy parameters from every entry, skipping every fanned name GLOBALLY (not
+    # (c) copy parameters from every entry, skipping every fanned/derived name GLOBALLY (not
     # per-decorator): @requires(X) copying an 'X.region' that @requires_each deliberately
     # excluded is the exact bug @requires_each exists to prevent, and it would be silent.
     for entry in spec:
         for src in _entry_sources(entry):
             for pname, pobj in src.get_params():
-                if pname in fanned or hasattr(cls, pname):
+                if pname in excluded or hasattr(cls, pname):
                     continue
                 setattr(cls, pname, pobj)
                 injected.add(pname)
@@ -580,7 +656,7 @@ def _resolve_requires(task):
             for name, c in pairs:
                 _put(name, task.clone(c), c.task_family)
         else:
-            grid = task.requires_grid(entry['cls'], **entry['grid'])
+            grid = task.requires_grid(entry['cls'], derive=entry.get('derive'), **entry['grid'])
             name = entry['group'] or entry['cls'].task_family
             labels = {}
             for label, dep in grid.items():
@@ -598,6 +674,20 @@ def _spec_requires(_self):
 # one shared function object, so the marker below is set once and every generated requires()
 # carries it (see _check_requires_not_overwritten)
 _spec_requires._oryxflow_generated = True
+
+
+def _group_key(task, groups=None):
+    """Resolve a dependency/group selector to its key, accepting the dependency CLASS as well
+    as its name: ``inputLoad(task=RegionNarrative)`` instead of ``task='RegionNarrative'``.
+
+    A group name is a string naming a class, so renaming the class leaves the string stale and
+    it fails at runtime with a KeyError; passing the class itself cannot go stale. Resolves to
+    the family either way -- which is also the key a positional ``@requires`` produces -- and
+    an unknown one falls through to the normal lookup, which raises naming it.
+    """
+    if isinstance(task, type) and hasattr(task, 'task_family'):
+        return task.task_family
+    return task
 
 
 def _requires_groups(task):
@@ -680,9 +770,13 @@ class requires_each:
     single-entry ``{name: Cls}`` dict to name the group; it defaults to the dependency's
     task family. A grid value may be a callable taking the task, resolved at ``requires()``
     time against its parameters.
+
+    ``derive={'name': fn}`` sets a further parameter per branch from that branch's fanned values
+    (see :py:meth:`Task.requires_grid`); derived names are excluded from the decorated task's
+    parameters for the same reason fanned ones are.
     """
 
-    def __init__(self, task_to_require, /, *extra, **grid):
+    def __init__(self, task_to_require, /, *extra, derive=None, **grid):
         super(requires_each, self).__init__()
         if extra:
             raise TypeError(
@@ -707,11 +801,16 @@ class requires_each:
         self.task_to_require = task_to_require
         self.group = group
         self.grid = grid
+        # the dependency class is fully defined by the time it is decorated with, so the whole
+        # spec is checked HERE -- at class definition, not at the first requires() call
+        self.derive = _check_grid(task_to_require, set(grid), derive,
+                                  '@requires_each({})'.format(task_to_require.__name__))
 
     def __call__(self, task_that_requires):
         _check_requires_not_overwritten(task_that_requires, 'requires_each')
         return _add_spec(task_that_requires, {'kind': 'each', 'cls': self.task_to_require,
-                                              'group': self.group, 'grid': self.grid})
+                                              'group': self.group, 'grid': self.grid,
+                                              'derive': self.derive})
 
 
 class requires:

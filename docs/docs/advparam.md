@@ -184,6 +184,14 @@ class Report(oryxflow.tasks.TaskJson):
 
 When the country list is computed from the report's own parameters rather than fixed, pass a function instead of a list; all of these forms are covered in [Dynamic Workflow Generation](advtasksdyn.md).
 
+!!! warning "Check where the old nested flow was writing before you convert"
+
+    The inner `oryxflow.Workflow(...)` above was built with no `path` or `env`, so its outputs went to the default `data/`. The `Report` you convert to probably runs in a flow that *does* set one — `oryxflow.Workflow(Report, path=..., env='prod')` — and a task's outputs live under its flow's directory. Convert without checking and the per-country work is looked for somewhere it was never written: the cache looks empty and every country re-runs.
+
+    Nothing warns you, because "no output at that path" is indistinguishable from "never ran". If the per-item work is expensive — an LLM call, a paid API — that silence has a price. So before converting, find where the nested flow actually wrote, and either move those outputs under the outer flow's directory or accept the one-off recompute knowingly.
+
+    The reverse is worth noticing too: a nested flow with no `env=` was writing to one directory *regardless of the environment the outer flow was running in*, so `prod` and `dev` were sharing those outputs. Converting is what fixes that — the re-run is the cost of un-sharing them.
+
 ## Avoid repeating parameters when referring to tasks
 
 To run tasks and load their output for different parameters, you have to pass them to the task. Instead of hardcoding them each time, it is best to keep them in a dictionary and pass that to the task.

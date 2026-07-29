@@ -39,6 +39,17 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   `region=lambda self: REGIONS[self.sector]` — for a fan-out computed from the task's own
   parameters, which previously forced a hand-written `requires()`. The callable sees the task's
   parameters, not its inputs.
+- `@oryxflow.requires_each` and `Task.requires_grid` accept `derive={'name': fn}` — a further
+  parameter set **per branch** from that branch's fanned values, for the setting that follows from
+  the value the branch was built for:
+  `@oryxflow.requires_each(RegionLoad, region=list(SOURCE), derive={'source': lambda v: SOURCE[v['region']]})`.
+  Each function is handed that branch's values (`v['region']`) and its result is passed to the branch
+  as a parameter, so it counts towards the branch's `task_id`: editing one entry in `SOURCE`
+  invalidates exactly that branch. Previously the only places to put such a lookup were the branch's
+  `run()` — where it is invisible to the cache, so changing it silently returned the old output — or
+  a hand-written `requires()`, which drops every parameter you forget to forward. Derived names stay
+  out of the dependency keys (`inputLoad(task='north')` is unchanged) and off the combining task, for
+  the same reason fanned names are.
 - `inputLoad(flatten=False)` groups a fan-out's branches under one key
   (`{'input': df, 'RegionNarrative': {'north': ..., 'south': ...}}`), so a task that mixes a fan-out
   with shared dependencies no longer has to pop the keys it recognises and assume the rest are
@@ -46,6 +57,19 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   branches; `inputLoadConcat(flatten=False)` returns one DataFrame per group.
 
 ### Changed
+- BREAKING: `cls` and `derive` join `path` and `flows` as **reserved parameter names** — declaring
+  `derive = oryxflow.Parameter(...)` (or `cls`) on a task now raises `ValueError` at class
+  definition. Both are arguments of `Task.clone()` / `Task.requires_grid()`, so the argument
+  shadows the parameter: `self.clone(cls=Other)` and
+  `@oryxflow.requires_each(Dep, derive={...})` would bind to the argument and the parameter would
+  never receive a value. Migration: rename the parameter (`derive_features`, `model_cls`).
+- BREAKING: fanning out over a name the dependency has no parameter for now raises `TypeError`
+  (`@oryxflow.requires_each(RegionLoad, sector=[...])` where `RegionLoad` has no `sector`). It used
+  to produce one dependency key per value all pointing at the **same** task, because `clone()`
+  builds its kwargs from the target's `get_params()` and drops the rest — so `inputLoadConcat()`
+  returned N copies of one branch's output, tagged as if they were different branches. The error
+  lists the parameters the dependency does have. Migration: declare the parameter on the
+  dependency, or fan out over one it has.
 - BREAKING: a task decorated with `@oryxflow.requires_each(Dep, x=[...])` that also declares its own
   `x = oryxflow.Parameter(...)` now raises `TypeError` at class definition. The declaration used to
   survive, putting one branch's value into the combining task's `task_id` — so you got one combining

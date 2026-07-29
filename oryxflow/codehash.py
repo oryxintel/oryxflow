@@ -63,6 +63,14 @@ _module_cache = {}
 # (modname, clsname, root) -> (((abspath, mtime_ns), ...), hashes) closure result
 _task_hash_cache = {}
 
+# (cls, PROJECT_ROOT) -> (abspath, root, modname). _class_source runs on EVERY
+# completeness check -- ahead of the walk caches, because it computes their key -- and both
+# _project_root and _is_local call Path.resolve(), which stats. On a fan-out that dominates:
+# one 41-branch tree spent ~89% of its stat calls here, and memoizing made a no-op run() ~10x
+# faster. Safe to cache because a class's defining file cannot change once imported (see the
+# negative-result guard in _class_source).
+_class_source_cache = {}
+
 # sentinel: distinguishes "name absent from the module namespace" from a None value
 _MISSING = object()
 
@@ -271,16 +279,34 @@ def _package_of(modname, path):
 
 def _class_source(cls):
     """``(abspath, root, modname)`` for a class's defining module; ``abspath`` is None
-    when the module has no project-local ``.py`` source (feature inert for it)."""
+    when the module has no project-local ``.py`` source (feature inert for it).
+
+    Memoized per ``(cls, PROJECT_ROOT)``: once a module is imported its ``__file__`` is
+    fixed, so this is pure -- and it is hot enough to dominate a fan-out's completeness
+    checks (see ``_class_source_cache``).
+    """
+    key = (cls, PROJECT_ROOT)
+    cached = _class_source_cache.get(key)
+    if cached is not None:
+        return cached
+
     modname = cls.__module__
     mod = sys.modules.get(modname)
     start = getattr(mod, '__file__', None) if mod is not None else None
     if start is None:
         start = _module_file(modname)
+    if start is None:
+        # NOT cached: a module absent from sys.modules now may be imported later and would
+        # then resolve to a real file -- caching this miss would pin the feature off for it
+        return None, _project_root(start), modname
+
     root = _project_root(start)
-    if start is None or not _is_local(start, root):
-        return None, root, modname
-    return str(Path(start).resolve()), root, modname
+    # A known file that simply sits outside the root IS a stable answer, and it is the hot
+    # one for tasks defined in a notebook or a script outside the project -- cache it too.
+    result = (str(Path(start).resolve()), root, modname) if _is_local(start, root) \
+        else (None, root, modname)
+    _class_source_cache[key] = result
+    return result
 
 
 def root_for(task_or_cls):
