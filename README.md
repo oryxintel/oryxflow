@@ -20,7 +20,7 @@ pip install oryxflow
 ## The problem: iterative analysis quietly stops being trustworthy
 
 Almost every project starts as a script that works. Then it accumulates the failures that
-erode trust in the result long before anyone questions the math:
+make your workflow inefficient and erode trust in the result:
 
 - **Wasted recomputation.** A one-line change downstream re-runs the 10-minute data pull, so you
   either wait or start hand-rolling `if os.path.exists(...)` caches that themselves go stale.
@@ -32,7 +32,7 @@ erode trust in the result long before anyone questions the math:
 - **Lost lineage.** Six months (or six hours) later, no one can say which code and which inputs
   produced `model_final_v3.pkl`.
 - **AI-generated code you can't fully trust.** Coding agents write plausible pandas and
-  scikit-learn fast — but across a long session they lose track of what's already computed and
+  scikit-learn fast — but across a long session they lose track of lineage and what's already computed and
   whether it's still valid, and silently build on stale state.
 
 The result are **trust** errors — in the mechanics of the pipeline. And
@@ -149,35 +149,6 @@ And it Works with anything. A task's `run()` is just Python, so any ML library (
   not your math. Outputs save as parquet, pickle, CSV, JSON, Excel, Markdown, or an in-memory cache
   — locally or on S3/GCS.
 
-## How oryxflow compares
-
-oryxflow doesn't replace an experiment tracker or a production orchestrator — it fills the gap
-between an ad-hoc script and a heavyweight platform, and composes with both. What's distinctive is
-the combination of local-first simplicity, invalidation that notices a **code** change, and
-always-on lineage.
-
-| | Local, zero-infra | Automatic caching & reruns | Reruns on a **code** change | Queryable lineage | Experiment dashboard | Production scheduling |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **oryxflow** | ✅ | ✅ | ✅ automatic | ✅ | — (use a tracker) | — (use an orchestrator) |
-| Notebooks + pickle files | ✅ | ❌ hand-rolled | ❌ | ❌ | ❌ | ❌ |
-| MLflow / W&B | partial | ❌ (tracks, doesn't rerun) | ❌ | logs runs | ✅ | ❌ |
-| Airflow / Prefect / Dagster | ❌ server/infra | opt-in / configured | ❌ | run history | partial | ✅ |
-| DVC | ✅ | ✅ (file-hash stages) | on declared file deps | via Git | ❌ | ❌ |
-
-- **vs Airflow / Prefect / Dagster** — a different job. Those run scheduled production pipelines on
-  real infrastructure; oryxflow is a `pip install` for the local research loop.
-  [Read more →](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-airflow/)
-- **vs MLflow / W&B** — complementary, and you should expect to use both. Trackers answer "which run
-  scored 0.91?"; oryxflow answers "which steps must rerun to reproduce it, and are its inputs
-  stale?" Keep logging to your tracker *inside* oryxflow tasks.
-  [Read more →](https://docs.oryxflow.dev/docs/experiment-tracking/)
-- **vs DVC** — both cache pipelines. DVC hashes files and YAML-declared stages; oryxflow keeps
-  identity in native Python, so a parameter change is a new cached result automatically and a code
-  edit reruns the affected tasks on its own — no config files to maintain.
-  [Read more →](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-dvc/)
-- **The full landscape** (Metaflow, Kedro, Ploomber, Flyte, ZenML, Snakemake…):
-  [oryxflow vs the field](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-pipeline-frameworks/)
-
 ## Start with a quick EDA — it scales from there
 
 You don't need a task graph on day one, and you don't have to decide upfront. Start with a plain
@@ -219,26 +190,34 @@ The `oryxflow` skill auto-activates whenever you work in a pipeline project. The
 
 More: [Claude Code for data science](https://docs.oryxflow.dev/docs/claude-code-for-data-science/).
 
-### The docs are written for agents too
+## How oryxflow compares
 
-Whatever agent you use, it can read all of oryxflow in one request — no crawling, nothing missed:
+oryxflow doesn't replace an experiment tracker or a production orchestrator — it fills the gap
+between an ad-hoc script and a heavyweight platform, and composes with both. What's distinctive is
+the combination of local-first simplicity, invalidation that notices a **code** change, and
+always-on lineage.
 
-```text
-Read https://docs.oryxflow.dev/llms-full.txt, then convert my script into oryxflow tasks.
-```
+| | Local, zero-infra | Automatic caching & reruns | Reruns on a **code** change | Queryable lineage | Experiment dashboard | Production scheduling |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **oryxflow** | ✅ | ✅ | ✅ automatic | ✅ | — (use a tracker) | — (use an orchestrator) |
+| Notebooks + pickle files | ✅ | ❌ hand-rolled | ❌ | ❌ | ❌ | ❌ |
+| MLflow / W&B | partial | ❌ (tracks, doesn't rerun) | ❌ | logs runs | ✅ | ❌ |
+| Airflow / Prefect / Dagster | ❌ server/infra | opt-in / configured | ❌ | run history | partial | ✅ |
+| DVC | ✅ | ✅ (file-hash stages) | on declared file deps | via Git | ❌ | ❌ |
 
-- **[`llms.txt`](https://docs.oryxflow.dev/llms.txt)** — a sectioned index of every page;
-  **[`llms-full.txt`](https://docs.oryxflow.dev/llms-full.txt)** — the whole documentation in a
-  single file.
-- **The examples an agent reads first are executed by the test suite** — the home page, the
-  [quickstart](https://docs.oryxflow.dev/docs/quickstart/) and the
-  [I/O formats guide](https://docs.oryxflow.dev/docs/targets/) run top-to-bottom on every build, so
-  a broken example fails CI instead of quietly misleading it.
-- **100% of the public API carries a docstring** with arguments, returns, and an example where the
-  call isn't obvious — so `help(oryxflow.requires)` answers in-process, and the
-  [API reference](https://docs.oryxflow.dev/docs/reference/) is generated from it and can't drift.
-
-The full picture: [Built for AI coding agents](https://docs.oryxflow.dev/docs/ai-ready/).
+- **vs Airflow / Prefect / Dagster** — a different job. Those run scheduled production pipelines on
+  real infrastructure; oryxflow is a `pip install` for the local research loop.
+  [Read more →](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-airflow/)
+- **vs MLflow / W&B** — complementary, and you should expect to use both. Trackers answer "which run
+  scored 0.91?"; oryxflow answers "which steps must rerun to reproduce it, and are its inputs
+  stale?" Keep logging to your tracker *inside* oryxflow tasks.
+  [Read more →](https://docs.oryxflow.dev/docs/experiment-tracking/)
+- **vs DVC** — both cache pipelines. DVC hashes files and YAML-declared stages; oryxflow keeps
+  identity in native Python, so a parameter change is a new cached result automatically and a code
+  edit reruns the affected tasks on its own — no config files to maintain.
+  [Read more →](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-dvc/)
+- **The full landscape** (Metaflow, Kedro, Ploomber, Flyte, ZenML, Snakemake…):
+  [oryxflow vs the field](https://docs.oryxflow.dev/blog/comparisons/oryxflow-vs-pipeline-frameworks/)
 
 ## When *not* to use oryxflow
 
@@ -331,18 +310,6 @@ cached outputs — to a colleague, see
 [Collaborate & share flows](https://docs.oryxflow.dev/docs/collaborate/).
 
 </details>
-
-## Pro version
-
-Additional features for teams:
-
-- Team sharing of workflows and data
-- Integrations for databases and cloud storage (SQL, S3)
-- Integrations for distributed compute (dask, PySpark)
-- Integrations for cloud execution (Athena)
-- Workflow deployment and scheduling
-
-[Schedule a demo](https://calendar.app.google/FkNWJE9u7QuowfH89)
 
 ## Contributing
 
