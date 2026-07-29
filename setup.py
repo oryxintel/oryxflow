@@ -18,7 +18,7 @@ setup(
     license='MIT',
     author='Oryx Intelligence LLC',
     author_email='dev@oryxintel.com',
-    description='For data scientists and data engineers, oryxflow is a python library which makes building complex data science workflows easy, fast and intuitive.',
+    description='Faster, cheaper, more trustworthy data analysis — for humans and AI coding agents.',
     long_description=long_description,
     long_description_content_type='text/markdown',
     install_requires=['pandas', 'pyarrow', 'markdown', 'openpyxl', 'loguru'

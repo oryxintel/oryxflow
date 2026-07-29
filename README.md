@@ -17,7 +17,52 @@ It's a Python library. No server, no database, no account, no config files.
 pip install oryxflow
 ```
 
-## 30 seconds: two models, no chance of a stale comparison
+## The problem: iterative analysis quietly stops being trustworthy
+
+Almost every project starts as a script that works. Then it accumulates the failures that
+erode trust in the result long before anyone questions the math:
+
+- **Wasted recomputation.** A one-line change downstream re-runs the 10-minute data pull, so you
+  either wait or start hand-rolling `if os.path.exists(...)` caches that themselves go stale.
+- **Stale intermediates.** You change a feature, forget to regenerate a cached file, and train
+  on yesterday's data. Nothing errors. The number is just wrong.
+- **A folder full of files you have to keep straight.** `features_v3.pkl`,
+  `features_v3_final.pkl`, `features_v3_final_FIXED.pkl` — plus the mental note about which
+  settings each one used, which nobody wrote down.
+- **Lost lineage.** Six months (or six hours) later, no one can say which code and which inputs
+  produced `model_final_v3.pkl`.
+- **AI-generated code you can't fully trust.** Coding agents write plausible pandas and
+  scikit-learn fast — but across a long session they lose track of what's already computed and
+  whether it's still valid, and silently build on stale state.
+
+The result are **trust** errors — in the mechanics of the pipeline. And
+they get worse, not better, as projects grow in complexity and an AI agent writes more of the code.
+
+## The solution: What oryxflow gives you
+
+- **Reproducibility by default.** Every output is tied to the exact task, parameters, and code
+  version that produced it. "Can I reproduce last week's result?" becomes yes, mechanically.
+- **Lineage you can query.** oryxflow records what ran, when, with which parameters and code,
+  and *why* it recomputed. "Is this stale? Was it built with current code?" are queries, not
+  guesses.
+- **Reruns exactly what changed.** Change a parameter, a data input, or a task's code and exactly
+  the affected outputs rebuild — you can't accidentally evaluate a new model on old features.
+- **No storage or parameter boilerplate.** You never name a file, build a path, or track which
+  settings produced which output. `self.save(df)` puts it away, `flow.outputLoad()` gets it back,
+  and oryxflow works out where it lives from the task and its parameters.
+- **Speed and cost savings.** Completed steps load from cache instead of recomputing, so the
+  edit–run loop drops from minutes to seconds. An AI agent stops paying — in time and tokens — to
+  redo expensive work it already did.
+- **AI-agent reliability.** The same cache and lineage log become an agent's memory across
+  sessions. The companion [Claude Code plugin](claude-plugin/index.md) ships these disciplines
+  as an auto-activating skill, so the agent uses the cache correctly instead of trusting stale
+  state.
+
+Caching is the *engine*. Trust — reproducible, lineage-tracked reruns that update exactly what
+changed — is the *product*.
+
+
+## 30 second example: two models, no chance of a stale comparison
 
 ```python
 import oryxflow
@@ -99,19 +144,7 @@ run.)
 
 That's the whole idea. Caching is how it works; **trust is what you get.**
 
-## What you get
-
-- **No result is ever built on stale data.** Change a parameter, the data, or a task's code and
-  oryxflow reruns exactly what that change affects — and everything downstream. Cosmetic edits
-  (comments, formatting) don't trigger a rerun.
-- **No file mess, no parameter bookkeeping.** No `features_v3_final.pkl`, no `to_pickle` /
-  `read_pickle` plumbing, no spreadsheet of which run used which settings. Ask for a result by the
-  task and parameters that made it.
-- **Seconds instead of minutes.** Finished steps load from cache, so the 10-minute data pull runs
-  once, not once per edit.
-- **An answer to "is this stale?"** oryxflow records what ran, when, with which code and inputs, and
-  why it recomputed — so staleness and provenance are queries, not guesses.
-- **Works with anything.** A task's `run()` is just Python, so any ML library (sklearn, PyTorch,
+And it Works with anything. A task's `run()` is just Python, so any ML library (sklearn, PyTorch,
   Keras, XGBoost) and any data stack works inside it. oryxflow manages the graph and the storage,
   not your math. Outputs save as parquet, pickle, CSV, JSON, Excel, Markdown, or an in-memory cache
   — locally or on S3/GCS.
