@@ -40,7 +40,8 @@ def print_tree(task, indent='', last=True, show_params=True, clip_params=False):
     result += '[{0}-{1} ({2})]'.format(name, params, is_complete)
     children = flatten(task.requires())
     for index, child in enumerate(children):
-        result += print_tree(child, indent, (index+1) == len(children), clip_params)
+        result += print_tree(child, indent, (index+1) == len(children),
+                             show_params=show_params, clip_params=clip_params)
     return result
 
 
@@ -147,6 +148,15 @@ def params_generator_dictlist(params_dict, params_base=None):
     
     return result
 
+def _tag_changes_data(col, val):
+    """True if overwriting `col` with `val` would lose information. Comparison failures
+    (odd dtypes) count as 'changes' -- better a spurious warning than a silent overwrite."""
+    try:
+        return bool((col != val).any())
+    except Exception:
+        return True
+
+
 def concat_iter(items, concat_fn=None, keys=None, ignore_index=True):
     """Stack an iterable of (identifier, params, data) triples into one DataFrame.
     params: dict of raw values -> added as columns by default (groupby keys survive).
@@ -155,6 +165,7 @@ def concat_iter(items, concat_fn=None, keys=None, ignore_index=True):
     keys: subset of param names to tag (default all)."""
     import pandas as pd
     frames = []
+    clashed = set()
     for identifier, params, data in items:
         subframes = list(data.values()) if isinstance(data, dict) \
             else list(data) if isinstance(data, (list, tuple)) else [data]
@@ -166,15 +177,20 @@ def concat_iter(items, concat_fn=None, keys=None, ignore_index=True):
                 df = df.copy()                       # avoid mutating cached inputs
                 tagcols = params if keys is None else {k: params[k] for k in keys if k in params}
                 for col, val in tagcols.items():
+                    # A param whose name is already a data column: tagging replaces real
+                    # per-row values with one scalar. Warn -- silently is how that hurts.
+                    # Not when every existing value already equals the tag: re-tagging with
+                    # the same value is how multi-level aggregation legitimately works.
+                    if col in df.columns and col not in clashed and _tag_changes_data(df[col], val):
+                        clashed.add(col)
+                        warnings.warn(
+                            "concat: column '{}' already holds data and is being overwritten by the "
+                            "'{}' parameter value. Pass tagkeys=[...] to tag only the params you "
+                            "want, or tag=False for none.".format(col, col),
+                            UserWarning, stacklevel=3)
                     df[col] = val
             frames.append(df)
     return pd.concat(frames, ignore_index=ignore_index) if frames else pd.DataFrame()
-
-
-def requires_grid(task_cls, param, values, **base):
-    """Build a requires() dict {value: task_cls(param=value, **base)} for a native
-    iterate-and-aggregate task. Sugar for the house-style dict comprehension."""
-    return {v: task_cls(**{param: v}, **base) for v in values}
 
 
 def apply_noise(dfg, cfg_cols, seed=123):

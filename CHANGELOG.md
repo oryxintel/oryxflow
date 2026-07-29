@@ -13,6 +13,98 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   prose. Agents grep this file for the symbol in their traceback.
 
 ## [Unreleased]
+### Added
+- `@oryxflow.requires_each(task, **grid)` — declare one dependency **per value** instead of one
+  dependency: `@oryxflow.requires_each(ModelTrain, model=MODELS)` on the task that combines them.
+  Like `@oryxflow.requires` it copies the dependency's parameters onto the decorated task, minus
+  the ones being fanned out (those differ per branch, so the combining task must not carry them),
+  and it defines `requires()` as a `requires_grid` over the values. Naming several parameters fans out
+  over their cartesian product. Use it instead of hand-writing
+  `{v: Task(param=v, shared=self.shared) for v in values}`, which only reaches the branches with
+  the parameters you remember to forward.
+- `@oryxflow.requires`, `@oryxflow.inherits` and `@oryxflow.requires_each` now **stack** on the same
+  task, in any order and any number. The normal combining task needs the fan-out *and* a shared
+  dependency that is deliberately not fanned out — the table the branches were built from, a
+  baseline to score them against, labels to render with:
+  `@oryxflow.requires({'input': ReportInput})` above
+  `@oryxflow.requires_each(RegionNarrative, region=REGIONS)`. Previously each decorator owned
+  `requires()` outright, so the second one raised and the only way through was `@oryxflow.inherits`
+  plus a hand-written `requires()`. The parameter rule holds across all of them: the combining task
+  gets every dependency's parameters except the fanned-out ones.
+- `@oryxflow.requires_each` accepts a single-entry `{name: Task}` dict to name the fan-out group;
+  the group defaults to the dependency's own task family. A named group qualifies its dependency
+  keys with that name (`chart_north`), which is how two fan-outs over the same values are
+  disambiguated. Unnamed groups keep bare value keys, so existing tasks are unaffected.
+- `@oryxflow.requires_each` and `Task.requires_grid` accept a **callable** grid value —
+  `region=lambda self: REGIONS[self.sector]` — for a fan-out computed from the task's own
+  parameters, which previously forced a hand-written `requires()`. The callable sees the task's
+  parameters, not its inputs.
+- `inputLoad(flatten=False)` groups a fan-out's branches under one key
+  (`{'input': df, 'RegionNarrative': {'north': ..., 'south': ...}}`), so a task that mixes a fan-out
+  with shared dependencies no longer has to pop the keys it recognises and assume the rest are
+  branches. `inputLoad(task='<group>')` and `inputLoadConcat(task='<group>')` select just the
+  branches; `inputLoadConcat(flatten=False)` returns one DataFrame per group.
+
+### Changed
+- BREAKING: a task decorated with `@oryxflow.requires_each(Dep, x=[...])` that also declares its own
+  `x = oryxflow.Parameter(...)` now raises `TypeError` at class definition. The declaration used to
+  survive, putting one branch's value into the combining task's `task_id` — so you got one combining
+  task *per value*, each combining all the branches, cached under different ids at N times the cost,
+  with no warning. Migration: delete the declaration; the combining task is the point the branches
+  converge into and must not carry the fanned parameter.
+- BREAKING: two dependencies resolving to the same key now raise `ValueError` from `requires()`
+  instead of one silently replacing the other (previously reachable when a fan-out value collided
+  with a named dependency). Migration: name one of them —
+  `@oryxflow.requires_each({'chart': Chart}, region=REGIONS)` or
+  `@oryxflow.requires({'input': ReportInput})`.
+- `python_requires` raised to `>=3.9` — up from `>=3.5`, which never held: the package has used
+  f-strings (3.6+) throughout for some time, and `install_requires` already imposes 3.9 in practice
+  via pandas and pyarrow. PyPI version classifiers added to match. This corrects the metadata; it
+  does not drop support for any interpreter the package actually ran on.
+- BREAKING: `oryxflow.utils.requires_grid(task_cls, param, values, **base)` is now the
+  `Task.requires_grid(cls, **grid)` method — same job, done properly. As a free function it had no
+  `self`, so it could not carry the calling task's parameters down to the branches: every shared
+  parameter had to be repeated in its `base` kwargs, and one left out was silently missing from the
+  children (they got the default instead of the flow's value — a wrong result, not an error). The
+  method clones per branch, so parameters propagate exactly as they do through `clone()`. It also
+  fans out over several parameters at once — `self.requires_grid(ModelTrain, model=MODELS,
+  horizon=[1, 5, 20])` gives the cartesian product. Keys are the value itself for one parameter,
+  `name_value` pairs joined with `_` for several, and are what `inputLoad(task=...)` selects on.
+  Migration: `requires_grid(ModelTrain, 'model', MODELS)` becomes
+  `self.requires_grid(ModelTrain, model=MODELS)` inside `requires()`, and any parameter you were
+  passing through `base` can be deleted — it is carried automatically.
+
+### Fixed
+- Decorating a task with two dependency decorators no longer raises
+  `"<Task>: defines requires() AND is decorated with @requires"` when the task defines no
+  `requires()` at all. The check now distinguishes a hand-written `requires()` (still an error —
+  the decorator would silently replace it) from a decorator-generated one.
+- `inputLoadConcat()` now warns when it would row-stack a shared dependency in with a fan-out's
+  branches, which produces a union frame across unrelated schemas. Pass `task='<group>'` to
+  concatenate just the branches, or `flatten=False` for one frame per group.
+- BREAKING: declaring a Parameter named `path` or `flows` now raises `ValueError` at class
+  definition instead of failing silently. `path` is a keyword-only argument the engine uses for the
+  flow's data directory, so `MyTask(path='a.csv')` never reached a Parameter of that name — it kept
+  its **default**, meaning every value mapped to the same task, and that default was then used as
+  the output directory (`x.csv/MyTask/...`). Migration: rename the parameter (`file`, `filename`).
+- BREAKING: decorating a task that defines its own `requires()` with `@oryxflow.requires` /
+  `@oryxflow.requires_each` now raises `TypeError`. The decorator assigns `requires` after the class
+  body is evaluated, so the hand-written method was silently discarded and the task ran with
+  whatever the decorator declared. Migration: keep one — drop the decorator and write `requires()`
+  (with `self.requires_grid(...)` for a fan-out), or delete the method.
+- `inputLoadConcat()` / `concat_iter()` warn when a tag column would overwrite an existing column
+  whose values differ from the tag — previously real per-row data (a date column, a category) was
+  silently replaced by one scalar parameter value. Re-tagging with the value already present is
+  unchanged and silent, since that is how each level of a multi-level aggregation legitimately
+  rewrites the level below's tag columns. Silence it with `tagkeys=[...]` or `tag=False`.
+- `preview()` / `oryxflow.utils.print_tree()` now show parameters for **every** task in the tree, not
+  just the root. A positional-argument slip made the recursion pass `clip_params` as `show_params`,
+  so every child rendered as `[TaskName- (PENDING)]` — in a fan-out over a parameter grid the
+  branches were indistinguishable. `show_params=False` now also reaches the children.
+- The `RuntimeError` raised by `oryxflow.run()` / `Workflow.run()` on failure now names the failing
+  task **and its parameters** instead of only `Exception found running flow, check trace` — e.g.
+  `Exception found running flow: ModelTrain(model=forest, seed=7): ValueError: training diverged`.
+  Up to three root-cause failures are listed. The original exception is still chained via `from`.
 
 ## [26.7.26] - 2026-07-26
 ### Changed

@@ -410,6 +410,11 @@ subflow/RunResult-merge machinery needed.
   single-flow and all-flows branches so `reset_downstream` is actually usable on a `WorkflowMulti`.
 - **`utils.requires_grid` sugar added** (the optional Step 5 helper):
   `requires_grid(task_cls, param, values, **base)` → `{v: task_cls(**{param: v}, **base) for v in values}`.
+  **Superseded and removed later** (see `CHANGELOG.md`): as a free function it had no `self`, so it
+  could not carry the calling task's parameters down to the branches — the caller had to repeat every
+  shared parameter in `base`, and one forgotten was silently missing from the children. Replaced by
+  the `Task.requires_grid(cls, **grid)` method, which clones per branch (so shared parameters propagate
+  like they do through `clone()`) and fans out over the cartesian product of several parameters.
 - Test count: 73 baseline + 8 new = **81 passing**.
 
 ## Follow-up: family-aware `reset_downstream` (added after initial ship)

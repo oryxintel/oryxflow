@@ -228,7 +228,7 @@ nav:
           - Managing complex workflows: docs/managing-workflows.md
           - Experiment tracking (MLflow, W&B): docs/experiment-tracking.md
       - Advanced:
-          - Dynamic tasks: docs/advtasksdyn.md
+          - Dynamic workflow generation: docs/advtasksdyn.md
           - Parameters: docs/advparam.md
           - Functional API: docs/functional_tasks.md
       - Example (ML): docs/example-ml.md

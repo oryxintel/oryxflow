@@ -448,6 +448,401 @@ class TestMain:
             assert output.count('PENDING')==1
             assert output.count('COMPLETE')==2
 
+    def test_preview_params_children(self):
+        # params must show for every node, not just the root: in a fan-out the
+        # branches are otherwise indistinguishable in the tree.
+        # No cleanup fixture needed: nothing here is ever run, so nothing is written.
+        class PrevLeaf(oryxflow.tasks.TaskPqPandas):
+            model = oryxflow.Parameter(default='ridge')
+
+            def run(self):
+                self.save(pd.DataFrame({'a': [1]}))
+
+        class PrevFan(oryxflow.tasks.TaskPqPandas):
+            def requires(self):
+                return {m: PrevLeaf(model=m) for m in ['ridge', 'forest']}
+
+            def run(self):
+                self.save(self.inputLoadConcat())
+
+        with io.StringIO() as buf, redirect_stdout(buf):
+            oryxflow.preview(PrevFan())
+            output = buf.getvalue()
+            assert "'model': 'ridge'" in output
+            assert "'model': 'forest'" in output
+
+        with io.StringIO() as buf, redirect_stdout(buf):
+            oryxflow.preview(PrevFan(), show_params=False)
+            output = buf.getvalue()
+            assert 'model' not in output          # opt-out reaches the children too
+            assert output.count('PrevLeaf') == 2
+
+    def test_run_error_names_task_params(self, cleanup):
+        # the traceback shows which task broke; the message must show which run it was
+        class FailLeaf(oryxflow.tasks.TaskPqPandas):
+            model = oryxflow.Parameter(default='ridge')
+
+            def run(self):
+                if self.model == 'forest':
+                    raise ValueError('training diverged')
+                self.save(pd.DataFrame({'a': [1]}))
+
+        class FailFan(oryxflow.tasks.TaskPqPandas):
+            def requires(self):
+                return {m: FailLeaf(model=m) for m in ['ridge', 'forest']}
+
+            def run(self):
+                self.save(self.inputLoadConcat())
+
+        with pytest.raises(RuntimeError) as e:
+            oryxflow.run(FailFan())
+        assert 'FailLeaf(model=forest)' in str(e.value)
+        assert 'ValueError: training diverged' in str(e.value)
+        assert isinstance(e.value.__cause__, ValueError)   # chain still connected
+
+    def test_requires_grid(self):
+        class GridLeaf(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+            model = oryxflow.Parameter(default='ridge')
+            horizon = oryxflow.IntParameter(default=1)
+
+            def run(self):
+                self.save(pd.DataFrame({'a': [1]}))
+
+        class GridFan(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+            n_models = oryxflow.IntParameter(default=5)   # NOT declared on the leaf
+
+            def requires(self):
+                return self.requires_grid(GridLeaf, model=['ridge', 'forest'])
+
+            def run(self):
+                self.save(self.inputLoadConcat())
+
+        fan = GridFan(date_asof='2026-03-31', n_models=9)
+
+        # keyed by the value; shared params carried down, unknown ones dropped
+        deps = fan.requires()
+        assert list(deps) == ['ridge', 'forest']
+        assert [d.model for d in deps.values()] == ['ridge', 'forest']
+        assert all(d.date_asof == '2026-03-31' for d in deps.values())
+        assert all(not hasattr(d, 'n_models') for d in deps.values())
+
+        # several parameters -> cartesian product, keyed by the combination
+        grid = fan.requires_grid(GridLeaf, model=['ridge', 'forest'], horizon=[1, 5])
+        assert len(grid) == 4
+        assert 'horizon_5_model_ridge' in grid
+        assert grid['horizon_5_model_ridge'].horizon == 5
+        assert grid['horizon_5_model_ridge'].date_asof == '2026-03-31'
+
+        with pytest.raises(ValueError):
+            fan.requires_grid(GridLeaf, model='ridge')       # not a list
+        with pytest.raises(ValueError):
+            fan.requires_grid(GridLeaf)                      # nothing to fan out over
+
+    def test_requires_each(self):
+        class EachSource(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+
+            def run(self):
+                self.save(pd.DataFrame({'a': [1]}))
+
+        @oryxflow.requires(EachSource)
+        class EachTrain(oryxflow.tasks.TaskPqPandas):
+            model = oryxflow.Parameter(default='ridge')
+
+            def run(self):
+                self.save(self.inputLoad())
+
+        @oryxflow.requires_each(EachTrain, model=['ridge', 'forest'])
+        class EachCombine(oryxflow.tasks.TaskPqPandas):
+
+            def run(self):
+                self.save(self.inputLoadConcat())
+
+        # takes the dependency's params EXCEPT the fanned-out one -- including the one
+        # EachTrain itself only has because it requires EachSource
+        assert [n for n, _ in EachCombine.get_params()] == ['date_asof']
+
+        deps = EachCombine(date_asof='2026-03-31').requires()
+        assert list(deps) == ['ridge', 'forest']
+        assert all(d.date_asof == '2026-03-31' for d in deps.values())
+        # and it reaches the far side of the fan-out
+        assert oryxflow.utils.traverse(EachCombine(date_asof='2026-03-31'))[-1].date_asof == '2026-03-31'
+
+        with pytest.raises(TypeError):
+            oryxflow.requires_each(EachTrain)                   # nothing to fan out over
+        with pytest.raises(TypeError):
+            oryxflow.requires_each(EachTrain, model='ridge')    # not a list
+
+    # -- stacking a fan-out with other dependencies ------------------------------------------
+
+    @staticmethod
+    def _stack_tasks():
+        """(shared dep, fanned dep) -- the shape a combining task needs both halves of."""
+        class StackInput(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+
+            def run(self):
+                self.save(pd.DataFrame({'a': [1, 2]}))
+
+        class StackNarrative(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+            region = oryxflow.Parameter(default='north')
+
+            def run(self):
+                self.save(pd.DataFrame({'region': [self.region]}))
+
+        return StackInput, StackNarrative
+
+    def test_requires_each_stacks_with_requires(self):
+        StackInput, StackNarrative = self._stack_tasks()
+        regions = ['north', 'south', 'east']
+
+        @oryxflow.requires({'input': StackInput})
+        @oryxflow.requires_each(StackNarrative, region=regions)
+        class StackReport(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(pd.DataFrame({'a': [1]}))
+
+        # the combining task must NOT carry the fanned param, even though @requires ran after
+        assert [n for n, _ in StackReport.get_params()] == ['date_asof']
+
+        deps = StackReport().requires()
+        assert len(deps) == 1 + len(regions)
+        assert 'input' in deps and set(regions) <= set(deps)
+        assert isinstance(deps['input'], StackInput)
+        assert all(deps[r].region == r for r in regions)
+
+        # every branch shows up in the tree, so preview()/reset can see them
+        tree = oryxflow.utils.print_tree(StackReport())
+        assert tree.count('StackNarrative') == len(regions)
+        assert 'StackInput' in tree
+
+    def test_requires_each_stacks_either_order(self):
+        StackInput, StackNarrative = self._stack_tasks()
+
+        @oryxflow.requires({'input': StackInput})
+        @oryxflow.requires_each(StackNarrative, region=['north', 'south'])
+        class OrderA(oryxflow.tasks.TaskPqPandas):
+            pass
+
+        @oryxflow.requires_each(StackNarrative, region=['north', 'south'])
+        @oryxflow.requires({'input': StackInput})
+        class OrderB(oryxflow.tasks.TaskPqPandas):
+            pass
+
+        assert OrderA().requires() == OrderB().requires()
+        assert [n for n, _ in OrderA.get_params()] == [n for n, _ in OrderB.get_params()]
+        # same params -> same identity apart from the family
+        assert OrderA().task_id.split('_', 1)[1] == OrderB().task_id.split('_', 1)[1]
+
+    def test_requires_each_stacks_two_fanouts(self):
+        StackInput, StackNarrative = self._stack_tasks()
+
+        class StackModel(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+            model = oryxflow.Parameter(default='ridge')
+
+            def run(self):
+                self.save(pd.DataFrame({'m': [self.model]}))
+
+        @oryxflow.requires_each(StackModel, model=['ridge', 'forest'])
+        @oryxflow.requires_each(StackNarrative, region=['north', 'south'])
+        class TwoFans(oryxflow.tasks.TaskPqPandas):
+            pass
+
+        assert [n for n, _ in TwoFans.get_params()] == ['date_asof']
+        deps = TwoFans().requires()
+        assert set(deps) == {'north', 'south', 'ridge', 'forest'}
+
+    def test_requires_each_declared_fanned_param_raises(self):
+        StackInput, StackNarrative = self._stack_tasks()
+
+        # keeping it would put ONE branch's value in the combining task's id, giving N
+        # identical outputs cached under N ids
+        with pytest.raises(TypeError) as e:
+            @oryxflow.requires_each(StackNarrative, region=['north', 'south'])
+            class BadCombine(oryxflow.tasks.TaskPqPandas):
+                region = oryxflow.Parameter(default='zzz')
+        assert 'region' in str(e.value)
+
+    def test_requires_each_key_collision_raises(self):
+        StackInput, StackNarrative = self._stack_tasks()
+        regions = ['north', 'south']
+
+        class StackChart(oryxflow.tasks.TaskPqPandas):
+            date_asof = oryxflow.Parameter(default='2026-06-30')
+            region = oryxflow.Parameter(default='north')
+
+            def run(self):
+                self.save(pd.DataFrame({'region': [self.region]}))
+
+        @oryxflow.requires_each(StackChart, region=regions)
+        @oryxflow.requires_each(StackNarrative, region=regions)
+        class Collide(oryxflow.tasks.TaskPqPandas):
+            pass
+
+        with pytest.raises(ValueError) as e:
+            Collide().requires()
+        assert 'north' in str(e.value)
+
+        # naming one of them resolves it: its keys carry the name
+        @oryxflow.requires_each({'chart': StackChart}, region=regions)
+        @oryxflow.requires_each(StackNarrative, region=regions)
+        class Named(oryxflow.tasks.TaskPqPandas):
+            pass
+
+        assert set(Named().requires()) == {'north', 'south', 'chart_north', 'chart_south'}
+
+    def test_requires_each_callable_grid(self):
+        by_sector = {'a': ['north'], 'b': ['south', 'east']}
+
+        class SectorLeaf(oryxflow.tasks.TaskPqPandas):
+            sector = oryxflow.Parameter(default='a')
+            region = oryxflow.Parameter(default='north')
+
+            def run(self):
+                self.save(pd.DataFrame({'region': [self.region]}))
+
+        @oryxflow.requires_each(SectorLeaf, region=lambda self: by_sector[self.sector])
+        class SectorCombine(oryxflow.tasks.TaskPqPandas):
+            pass
+
+        assert list(SectorCombine(sector='a').requires()) == ['north']
+        assert sorted(SectorCombine(sector='b').requires()) == ['east', 'south']
+        assert SectorCombine(sector='b').requires()['east'].sector == 'b'
+
+    def test_input_load_flatten_false(self, cleanup):
+        StackInput, StackNarrative = self._stack_tasks()
+        regions = ['north', 'south']
+
+        @oryxflow.requires({'input': StackInput})
+        @oryxflow.requires_each(StackNarrative, region=regions)
+        class FlatReport(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(pd.DataFrame({'a': [1]}))
+
+        t = FlatReport()
+        oryxflow.Workflow(FlatReport).run()
+
+        # flat by default: branches and shared dep share one namespace
+        assert set(t.inputLoad()) == {'input', 'north', 'south'}
+
+        deps = t.inputLoad(flatten=False)
+        assert set(deps) == {'input', 'StackNarrative'}
+        assert set(deps['StackNarrative']) == set(regions)
+        assert deps['input'].equals(pd.DataFrame({'a': [1, 2]}))
+        assert deps['StackNarrative']['north']['region'].tolist() == ['north']
+
+        # the group is addressable on its own
+        assert set(t.inputLoad(task='StackNarrative')) == set(regions)
+
+    def test_input_load_concat_shared_dep_warns(self, cleanup):
+        StackInput, StackNarrative = self._stack_tasks()
+        regions = ['north', 'south']
+
+        @oryxflow.requires({'input': StackInput})
+        @oryxflow.requires_each(StackNarrative, region=regions)
+        class ConcatReport(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(pd.DataFrame({'a': [1]}))
+
+        t = ConcatReport()
+        oryxflow.Workflow(ConcatReport).run()
+
+        # the shared dep would be row-stacked in with the branches -- a union frame
+        with pytest.warns(UserWarning, match='fan-out'):
+            df = t.inputLoadConcat()
+        assert len(df) == 2 + len(regions)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            branches = t.inputLoadConcat(task='StackNarrative')
+        assert len(branches) == len(regions)
+        assert sorted(branches['region']) == sorted(regions)
+
+        frames = t.inputLoadConcat(flatten=False)
+        assert set(frames) == {'input', 'StackNarrative'}
+        assert len(frames['StackNarrative']) == len(regions)
+
+    def test_reserved_param_names(self):
+        # a Parameter named `path` never receives the value you pass (the engine takes that
+        # kwarg for the data dir) and its default becomes the output directory -- reject it
+        with pytest.raises(ValueError) as e:
+            class BadPath(oryxflow.tasks.TaskPqPandas):
+                path = oryxflow.Parameter()
+        assert 'path' in str(e.value) and 'reserved' in str(e.value)
+
+        with pytest.raises(ValueError):
+            class BadFlows(oryxflow.tasks.TaskPqPandas):
+                flows = oryxflow.Parameter()
+
+        class GoodFile(oryxflow.tasks.TaskPqPandas):    # the rename works
+            file = oryxflow.Parameter(default='a.csv')
+        assert GoodFile(file='b.csv').file == 'b.csv'
+
+    def test_requires_decorator_conflict(self):
+        class ConflictSrc(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(pd.DataFrame({'a': [1]}))
+
+        # the decorator would replace the hand-written requires() without saying so
+        with pytest.raises(TypeError) as e:
+            @oryxflow.requires(ConflictSrc)
+            class Clash(oryxflow.tasks.TaskPqPandas):
+                def requires(self):
+                    return ConflictSrc()
+        assert 'requires()' in str(e.value)
+
+        with pytest.raises(TypeError):
+            @oryxflow.requires_each(ConflictSrc, x=[1, 2])
+            class ClashEach(oryxflow.tasks.TaskPqPandas):
+                def requires(self):
+                    return ConflictSrc()
+
+        with pytest.raises(TypeError):
+            @oryxflow.requires({'src': ConflictSrc})
+            class ClashDict(oryxflow.tasks.TaskPqPandas):
+                def requires(self):
+                    return ConflictSrc()
+
+        # but a decorator-GENERATED requires() is not a clash -- that is how they stack
+        class ConflictLeaf(oryxflow.tasks.TaskPqPandas):
+            x = oryxflow.Parameter(default=1)
+
+        @oryxflow.requires(ConflictSrc)
+        @oryxflow.requires_each(ConflictLeaf, x=[1, 2])
+        class NoClash(oryxflow.tasks.TaskPqPandas):
+            pass
+        assert len(NoClash().requires()) == 3
+
+    def test_concat_tag_collision_warns(self):
+        # tagging would replace a real data column with one scalar -- silently, before this
+        items = [('q1', {'quarter': '2026Q1'},
+                  pd.DataFrame({'quarter': ['2025Q1', '2025Q2'], 'v': [1, 2]}))]
+        with pytest.warns(UserWarning, match='quarter'):
+            df = oryxflow.utils.concat_iter(iter(items))
+        assert (df['quarter'] == '2026Q1').all()        # behaviour unchanged, just announced
+
+        # opting out is silent
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            oryxflow.utils.concat_iter(iter(items), keys=[])
+        # and a non-colliding tag never warns
+        items2 = [('q1', {'quarter': '2026Q1'}, pd.DataFrame({'v': [1]}))]
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            oryxflow.utils.concat_iter(iter(items2))
+
+        # nor does re-tagging with the value already there -- that is how each level of a
+        # multi-level aggregation legitimately re-writes the level below's tag columns
+        items3 = [('q1', {'quarter': '2026Q1'},
+                   pd.DataFrame({'quarter': ['2026Q1', '2026Q1'], 'v': [1, 2]}))]
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            oryxflow.utils.concat_iter(iter(items3))
+
     def test_dynamic(self):
 
         class TaskDynamic(oryxflow.tasks.TaskCache):

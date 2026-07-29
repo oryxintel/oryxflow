@@ -92,7 +92,8 @@ class TestWorkflow:
             output = buf.getvalue()
             assert output.count('PENDING') == 3
             assert output.count('COMPLETE') == 0
-            assert output.count("'do_preprocess': 'False'") == 1
+            # on TaskTrain and TaskPreprocess -- both declare it, TaskGetData doesn't
+            assert output.count("'do_preprocess': 'False'") == 2
 
 
     def test_single_workflow_no_params_passes(self):
@@ -103,7 +104,7 @@ class TestWorkflow:
         with io.StringIO() as buf, redirect_stdout(buf):
             flow.preview(TaskTrain)
             output = buf.getvalue()
-            assert output.count("'do_preprocess': 'True'")==1
+            assert output.count("'do_preprocess': 'True'")==2
 
 
     def test_single_flow_parameters_passes_properly(self):
@@ -116,11 +117,11 @@ class TestWorkflow:
         with io.StringIO() as buf, redirect_stdout(buf):
             flow1.preview(TaskTrain)
             output = buf.getvalue()
-            assert output.count("'do_preprocess': 'False'")==1
+            assert output.count("'do_preprocess': 'False'")==2
 
             flow2.preview(TaskTrain)
             output2 = buf.getvalue()
-            assert output2.count("'do_preprocess': 'True'")==1
+            assert output2.count("'do_preprocess': 'True'")==2
 
 
     def test_task_runs_properly_and_gives_outputload(self):

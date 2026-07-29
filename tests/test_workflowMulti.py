@@ -64,7 +64,8 @@ class TestWorkflowMulti:
             output = buf.getvalue()
             assert output.count('PENDING') == 3
             assert output.count('COMPLETE') == 0
-            assert output.count("'do_preprocess': 'False'") == 1
+            # on TaskTrain and TaskPreprocess -- both declare it, TaskGetData doesn't
+            assert output.count("'do_preprocess': 'False'") == 2
 
 
     def test_preview_all_flow(self):
@@ -83,8 +84,8 @@ class TestWorkflowMulti:
             output = buf.getvalue()
             assert output.count('PENDING') == 6
             assert output.count('COMPLETE') == 0
-            assert output.count("'do_preprocess': 'False'") == 1
-            assert output.count("'do_preprocess': 'True'") == 1
+            assert output.count("'do_preprocess': 'False'") == 2   # one flow, two tasks
+            assert output.count("'do_preprocess': 'True'") == 2
 
 
     def test_no_default_expect_error(self):

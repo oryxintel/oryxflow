@@ -12,6 +12,7 @@ import json
 import time
 import hashlib
 import inspect
+import itertools
 import traceback
 
 from oryxflow.log import logger, TaskLogger
@@ -121,6 +122,23 @@ class Register(type):
     object (and ``__init__`` runs only on the first), preserving the instance identity that
     ``Workflow``'s path/flow propagation depends on.
     """
+
+    # Names the engine sets on task instances itself (see TaskData.__init__, which takes both
+    # as keyword-only args). A Parameter of the same name never receives the value you pass --
+    # it keeps its default, and that default then gets used as the data directory -- so reject
+    # it where it is written rather than let the output land somewhere surprising.
+    RESERVED_PARAM_NAMES = {
+        'path': "the flow's data directory",
+        'flows': 'flows attached with attach_flow()',
+    }
+
+    def __init__(cls, name, bases, namespace):
+        super().__init__(name, bases, namespace)
+        for attr, what in Register.RESERVED_PARAM_NAMES.items():
+            if isinstance(namespace.get(attr), Parameter):
+                raise ValueError(
+                    "{}: '{}' cannot be a Parameter -- the name is reserved for {}. "
+                    "Rename it (eg 'file' instead of 'path').".format(name, attr, what))
 
     @property
     def task_family(cls):
@@ -287,6 +305,56 @@ class Task(metaclass=Register):
 
         return cls(**new_k)
 
+    def requires_grid(self, cls=None, **grid):
+        """
+        Build the ``requires()`` dict for depending on ``cls`` once per value -- the runtime
+        form of the ``@requires_each`` decorator, for when the values are only known here
+        (computed from this task's own parameters).
+
+        Each keyword is a parameter name mapped to the **list** of values to fan out over;
+        the cartesian product of those lists is taken. Every task returned is a
+        :py:meth:`clone`, so the parameters this task and ``cls`` have in common -- everything
+        the flow passed down -- reach every branch without being listed here.
+
+        Dict keys are the value itself for a single parameter, or ``name_value`` pairs joined
+        with ``_`` for several; they are what ``inputLoad(task=key)`` selects on.
+
+        A value may also be a callable taking this task and returning the list, for a grid
+        computed from this task's own **parameters**. It may not read this task's inputs --
+        ``input()`` is defined as ``getpaths(self.requires())``, so that recurses forever.
+
+        ::
+
+            def requires(self):
+                return self.requires_grid(ProcessState, state=STATES[self.country])
+        """
+        if cls is None:
+            cls = self.__class__
+        names = sorted(grid)
+        if not names:
+            raise ValueError(
+                '{}: requires_grid needs at least one parameter to fan out over'.format(self.task_family))
+        resolved = {}
+        for name in names:
+            values = grid[name]
+            if callable(values):
+                values = values(self)
+            if not isinstance(values, (list, tuple)):
+                raise ValueError(
+                    '{}: requires_grid values must be a list of values to fan out over, got {} for {}'.format(
+                        self.task_family, repr(values), name))
+            resolved[name] = values
+
+        out = {}
+        for combo in itertools.product(*(resolved[n] for n in names)):
+            values = dict(zip(names, combo))
+            if len(names) == 1:
+                key = values[names[0]]
+            else:
+                key = '_'.join('{}_{}'.format(n, values[n]) for n in names)
+            out[key] = self.clone(cls, **values)
+        return out
+
     def __hash__(self):
         return self.__hash
 
@@ -395,6 +463,167 @@ class LocalTarget(Target):
 # inherits / requires decorators
 # ----------------------------------------------------------------------------------------------
 
+# Decorators do not own requires() outright: each one appends an entry to a per-class spec,
+# which is then resolved into a single generated requires(). That is what lets @requires,
+# @inherits and @requires_each stack in any order on the same class.
+#
+# An entry is one of:
+#   {'kind': 'inherit', 'tasks': (Cls, ...) or {name: Cls}}   params only, no dependency
+#   {'kind': 'fixed',   'tasks': (Cls, ...) or {name: Cls}}   params + dependency
+#   {'kind': 'each',    'cls': Cls, 'group': str or None, 'grid': {name: values-or-callable}}
+
+def _spec_entries(cls):
+    """This class's own spec list (never a base class's -- copy on first write)."""
+    if '_requires_spec' not in cls.__dict__:
+        cls._requires_spec = list(cls.__dict__.get('_requires_spec', []))
+    return cls._requires_spec
+
+
+def _entry_sources(entry):
+    """The task classes an entry copies parameters from."""
+    if entry['kind'] == 'each':
+        return [entry['cls']]
+    tasks = entry['tasks']
+    return list(tasks.values()) if isinstance(tasks, dict) else list(tasks)
+
+
+def _apply_spec(cls):
+    """Re-derive the copied parameters and the generated ``requires()`` from the whole spec.
+
+    Run from scratch after every decorator, so decorator ORDER cannot matter.
+    """
+    spec = cls.__dict__.get('_requires_spec', [])
+    fanned = set()
+    for entry in spec:
+        if entry['kind'] == 'each':
+            fanned.update(entry['grid'])
+
+    injected = set(cls.__dict__.get('_requires_injected', ()))
+
+    # (a) a fanned parameter declared in the class body is a mistake, not something to drop
+    for name in sorted(fanned):
+        if isinstance(cls.__dict__.get(name), Parameter) and name not in injected:
+            raise TypeError(
+                "{}: declares a '{}' parameter and also fans out over '{}'. The task the "
+                "branches converge into must not carry the fanned parameter -- it would put "
+                "one branch's value in the combining task's task_id. Remove the "
+                "declaration.".format(cls.__name__, name, name))
+
+    # (b) drop parameters a previous decorator injected that a later one fans out over
+    for name in sorted(injected & fanned):
+        delattr(cls, name)
+        injected.discard(name)
+
+    # (c) copy parameters from every entry, skipping every fanned name GLOBALLY (not
+    # per-decorator): @requires(X) copying an 'X.region' that @requires_each deliberately
+    # excluded is the exact bug @requires_each exists to prevent, and it would be silent.
+    for entry in spec:
+        for src in _entry_sources(entry):
+            for pname, pobj in src.get_params():
+                if pname in fanned or hasattr(cls, pname):
+                    continue
+                setattr(cls, pname, pobj)
+                injected.add(pname)
+
+    cls._requires_injected = injected
+
+    if any(entry['kind'] != 'inherit' for entry in spec):
+        cls.requires = _spec_requires
+
+
+def _add_spec(cls, entry):
+    _spec_entries(cls).append(entry)
+    _apply_spec(cls)
+    return cls
+
+
+def _resolve_requires(task):
+    """Return ``(deps, groups)``. ``deps`` is what ``requires()`` yields; ``groups`` maps a
+    fan-out group name to ``{dependency key: branch label}``.
+
+    An UNNAMED fan-out keys dependencies on the value itself, exactly as it always has. Naming
+    a group qualifies its keys with that name (``chart_north``) -- which is how naming resolves
+    a collision between two fan-outs over the same values. The label stays the bare value, so
+    ``inputLoad(flatten=False)`` yields ``{'chart': {'north': ...}}`` either way.
+    """
+    cls = type(task)
+    spec = cls.__dict__.get('_requires_spec') or getattr(cls, '_requires_spec', [])
+
+    # preserve today's shapes when a single @requires/@inherits is the whole spec
+    if len(spec) == 1 and spec[0]['kind'] == 'fixed':
+        tasks = spec[0]['tasks']
+        if isinstance(tasks, dict):
+            return {name: task.clone(c) for name, c in tasks.items()}, {}
+        if len(tasks) == 1:
+            return task.clone(tasks[0]), {}
+        return [task.clone(c) for c in tasks], {}
+
+    # anything else -> one flat dict; fixed deps keyed by their name or task_family
+    deps, groups, origin = {}, {}, {}
+
+    def _put(key, dep, owner):
+        if key in deps:
+            raise ValueError(
+                "{}: dependency key {!r} is produced by both {} and {}. Name one of them: "
+                "@requires_each({{'<name>': {}}}, ...) or @requires({{'<name>': {}}}).".format(
+                    cls.__name__, key, origin[key], owner, owner, owner))
+        deps[key] = dep
+        origin[key] = owner
+
+    for entry in spec:
+        if entry['kind'] == 'inherit':
+            continue
+        if entry['kind'] == 'fixed':
+            tasks = entry['tasks']
+            pairs = tasks.items() if isinstance(tasks, dict) \
+                else [(c.task_family, c) for c in tasks]
+            for name, c in pairs:
+                _put(name, task.clone(c), c.task_family)
+        else:
+            grid = task.requires_grid(entry['cls'], **entry['grid'])
+            name = entry['group'] or entry['cls'].task_family
+            labels = {}
+            for label, dep in grid.items():
+                key = '{}_{}'.format(entry['group'], label) if entry['group'] else label
+                _put(key, dep, entry['cls'].task_family)
+                labels[key] = label
+            groups[name] = labels
+    return deps, groups
+
+
+def _spec_requires(_self):
+    return _resolve_requires(_self)[0]
+
+
+# one shared function object, so the marker below is set once and every generated requires()
+# carries it (see _check_requires_not_overwritten)
+_spec_requires._oryxflow_generated = True
+
+
+def _requires_groups(task):
+    """Fan-out group name -> the dependency keys it produced. ``{}`` when ``requires()`` is
+    hand-written (there is no spec to read the grouping off)."""
+    cls = type(task)
+    spec = cls.__dict__.get('_requires_spec') or getattr(cls, '_requires_spec', None)
+    if not spec:
+        return {}
+    return _resolve_requires(task)[1]
+
+
+def _check_requires_not_overwritten(task_cls, decorator):
+    """A hand-written ``requires()`` would be silently replaced by the decorator's.
+
+    A decorator-GENERATED one is fine -- that is how decorators stack.
+    """
+    existing = task_cls.__dict__.get('requires')
+    if existing is not None and not getattr(existing, '_oryxflow_generated', False):
+        raise TypeError(
+            "{}: defines requires() AND is decorated with @{} -- the decorator would silently "
+            "replace it. Keep one: drop the decorator to write requires() yourself (use "
+            "self.requires_grid(...) for a fan-out), or delete requires() and let the "
+            "decorator declare the dependency.".format(task_cls.__name__, decorator))
+
+
 class inherits:
     """
     Copy parameters (and nothing else) from one or more task classes onto the decorated task,
@@ -414,12 +643,6 @@ class inherits:
         self.kw_tasks_to_inherit = kw_tasks_to_inherit
 
     def __call__(self, task_that_inherits):
-        task_iterator = self.tasks_to_inherit or self.kw_tasks_to_inherit.values()
-        for task_to_inherit in task_iterator:
-            for param_name, param_obj in task_to_inherit.get_params():
-                if not hasattr(task_that_inherits, param_name):
-                    setattr(task_that_inherits, param_name, param_obj)
-
         if self.tasks_to_inherit:
             def clone_parent(_self, **kwargs):
                 return _self.clone(cls=self.tasks_to_inherit[0], **kwargs)
@@ -439,7 +662,56 @@ class inherits:
                 }
             task_that_inherits.clone_parents = clone_parents
 
-        return task_that_inherits
+        return _add_spec(task_that_inherits, {
+            'kind': 'inherit',
+            'tasks': self.tasks_to_inherit or self.kw_tasks_to_inherit,
+        })
+
+
+class requires_each:
+    """Fan out over ONE task: copies its parameters **except** the ones being fanned out, and
+    defines ``requires()`` as a :py:meth:`Task.requires_grid` over them.
+
+    The decorated task is the point the branches converge into, so it must NOT carry the
+    fanned-out parameter itself -- that is why those names are skipped when the parameters are
+    copied across.
+
+    Stacks with ``@requires``/``@inherits``/other ``@requires_each`` decorators. Pass a
+    single-entry ``{name: Cls}`` dict to name the group; it defaults to the dependency's
+    task family. A grid value may be a callable taking the task, resolved at ``requires()``
+    time against its parameters.
+    """
+
+    def __init__(self, task_to_require, /, *extra, **grid):
+        super(requires_each, self).__init__()
+        if extra:
+            raise TypeError(
+                'requires_each takes exactly one task (or one {name: task} dict). For two '
+                'fan-outs, stack two @requires_each decorators.')
+        group = None
+        if isinstance(task_to_require, dict):
+            if len(task_to_require) != 1:
+                raise TypeError(
+                    'requires_each takes one named task, e.g. '
+                    "@requires_each({'narrative': RegionNarrative}, region=[...])")
+            group, task_to_require = list(task_to_require.items())[0]
+        if not grid:
+            raise TypeError(
+                'requires_each needs at least one parameter to fan out over, '
+                'e.g. @requires_each(ModelTrain, model=MODELS)')
+        for name, values in grid.items():
+            if not callable(values) and not isinstance(values, (list, tuple)):
+                raise TypeError(
+                    'requires_each values must be a list of values to fan out over (or a '
+                    'callable returning one), got {} for {}'.format(repr(values), name))
+        self.task_to_require = task_to_require
+        self.group = group
+        self.grid = grid
+
+    def __call__(self, task_that_requires):
+        _check_requires_not_overwritten(task_that_requires, 'requires_each')
+        return _add_spec(task_that_requires, {'kind': 'each', 'cls': self.task_to_require,
+                                              'group': self.group, 'grid': self.grid})
 
 
 class requires:
@@ -451,12 +723,13 @@ class requires:
         self.kw_tasks_to_require = kw_tasks_to_require
 
     def __call__(self, task_that_requires):
-        task_that_requires = inherits(*self.tasks_to_require, **self.kw_tasks_to_require)(task_that_requires)
-
-        def requires(_self):
-            return _self.clone_parent() if len(self.tasks_to_require) == 1 else _self.clone_parents()
-        task_that_requires.requires = requires
-
+        _check_requires_not_overwritten(task_that_requires, 'requires')
+        inherits(*self.tasks_to_require, **self.kw_tasks_to_require)(task_that_requires)
+        # the inherits call above appended an 'inherit' entry -- upgrade it in place, so the
+        # dependency comes from the spec rather than from whichever decorator's
+        # clone_parent()/clone_parents() happened to survive
+        _spec_entries(task_that_requires)[-1]['kind'] = 'fixed'
+        _apply_spec(task_that_requires)
         return task_that_requires
 
 

@@ -50,7 +50,7 @@ results = flow.outputLoad()               # every alpha's score, one frame
 best_alpha = results.iloc[0]['alpha']
 ```
 
-The `requires()` dict is what fans the DAG out into one `TrainModel` per `alpha`, and `self.inputLoadConcat()` stacks their outputs, tagging each row with that task's parameters so your `alpha` column survives the concat. (The mechanics of dict-`requires()` and `inputLoadConcat` are covered as reference in [Advanced: Dynamic Tasks](advtasksdyn.md).)
+The `requires()` dict is what fans the DAG out into one `TrainModel` per `alpha`, and `self.inputLoadConcat()` stacks their outputs, tagging each row with that task's parameters so your `alpha` column survives the concat. (The mechanics of dict-`requires()` and `inputLoadConcat` are covered as reference in [Advanced: Dynamic Workflow Generation](advtasksdyn.md).)
 
 ## Extend the grid — nothing wasted
 
@@ -310,7 +310,7 @@ dfall = flow.outputLoadConcat(Sector)                # all sectors, one tagged f
 flow.reset_upstream(Sector, only=CountryFeatures)    # reset one family across every flow
 ```
 
-A complete, runnable version of this multi-level dev loop — iterate on one `(sector, country)` first, then roll the change out to every flow *without re-fetching the expensive per-state source* — is in `docs/example-flow-multi.py`. The full reference for dict-`requires()`, `inputLoadConcat`, `outputLoadConcat`, and the `only=` reset filter is [Advanced: Dynamic Tasks](advtasksdyn.md).
+A complete, runnable version of this multi-level dev loop — iterate on one `(sector, country)` first, then roll the change out to every flow *without re-fetching the expensive per-state source* — is in `docs/example-flow-multi.py`. The full reference for dict-`requires()`, `inputLoadConcat`, `outputLoadConcat`, and the `only=` reset filter is [Advanced: Dynamic Workflow Generation](advtasksdyn.md).
 
 !!! tip
 

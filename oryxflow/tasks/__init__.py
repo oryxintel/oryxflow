@@ -13,6 +13,25 @@ from oryxflow.cache import data as cache
 import oryxflow.cache
 
 
+def _regroup(data, groups):
+    """Nest a fan-out's branch keys under their group name; every other key stays where it is.
+
+    Only the RETURN value is grouped -- requires()/input() stay flat, because a nested
+    input() ({'narrative': {'north': target}}) is indistinguishable from a multi-persists
+    dependency, which is already {persist: target}.
+    """
+    belongs = {key: (name, label) for name, labels in groups.items()
+               for key, label in labels.items()}
+    out = {}
+    for k, v in data.items():
+        if k in belongs:
+            name, label = belongs[k]
+            out.setdefault(name, {})[label] = v
+        else:
+            out[k] = v
+    return out
+
+
 class TaskData(core.Task):
     """
     Task which has data as input and output
@@ -221,17 +240,26 @@ class TaskData(core.Task):
             output = output['data']
         return output
 
-    def inputLoad(self, keys=None, task=None, cached=False, as_dict=False):
+    def inputLoad(self, keys=None, task=None, cached=False, as_dict=False, flatten=True):
         """
         Load all or several outputs from task
 
         Args:
             keys (list): list of data to load
-            task (str): if requires multiple tasks load that task 'input1' for eg `def requires: {'input1':Task1(), 'input2':Task2()}`
+            task (str): if requires multiple tasks load that task 'input1' for eg `def requires: {'input1':Task1(), 'input2':Task2()}`.
+                For a fan-out, name the group (the dependency's own name by default) to get
+                just its branches.
             cached (bool): cache data in memory
-            as_dict (bool): if the inputs were saved as a dictionary. use this to return them as dictionary. 
+            as_dict (bool): if the inputs were saved as a dictionary. use this to return them as dictionary.
+            flatten (bool): False groups a fan-out's branches under one key, so a task that
+                mixes a fan-out with shared inputs can tell them apart
         Returns: list or dict of all task output
         """
+        groups = core._requires_groups(self)
+        if task is not None and task in groups:
+            # a whole fan-out group, keyed by branch
+            return {label: self.inputLoad(keys=keys, task=key, cached=cached, as_dict=as_dict)
+                    for key, label in groups[task].items()}
 
         if task is not None:
             input = self.input()[task]
@@ -276,13 +304,19 @@ class TaskData(core.Task):
 
         logger.debug("loaded input for {} keys={}", self.task_id,
                      list(keys) if keys is not None else None)
+        if not flatten and isinstance(data, dict) and groups:
+            data = _regroup(data, groups)
         return data
 
     def inputLoadConcat(self, keys=None, tag=True, tagkeys=None, as_dict=False,
-                        concat_fn=None, cached=False):
+                        concat_fn=None, cached=False, task=None, flatten=True):
         """Load every dependency and concatenate into one DataFrame. Works for the dict form of
         requires() ({key: Task(...)}) and the list/positional form. By default each dependency's
-        significant params are added as columns. concat_fn(identifier, params, df)->df overrides."""
+        significant params are added as columns. concat_fn(identifier, params, df)->df overrides.
+
+        task: concatenate only one fan-out group, or only one dependency.
+        flatten: False returns {name: DataFrame} -- each fan-out group concatenated within
+        itself, every other dependency its own entry."""
         requires = self.requires()
         if isinstance(requires, dict):
             items = list(requires.items())        # (key, task)
@@ -290,13 +324,44 @@ class TaskData(core.Task):
             items = list(enumerate(requires))     # (index, task)
         else:
             items = [(None, requires)]            # single dep
-        def _gen():
+        groups = core._requires_groups(self)
+
+        def _concat(subitems):
+            def _gen():
+                for ident, dep in subitems:
+                    data = self.inputLoad(keys=keys, task=ident, as_dict=as_dict, cached=cached)
+                    params = {n: getattr(dep, n) for n in dep.get_param_names()} if tag else {}
+                    yield ident, params, data
+            import oryxflow.utils
+            return oryxflow.utils.concat_iter(_gen(), concat_fn=concat_fn, keys=tagkeys)
+
+        if task is not None:
+            if task in groups:
+                return _concat([(k, requires[k]) for k in groups[task]])
+            return _concat([(task, requires[task])])
+
+        if not flatten and groups:
+            grouped = {key: name for name, labels in groups.items() for key in labels}
+            out = {}
             for ident, dep in items:
-                data = self.inputLoad(keys=keys, task=ident, as_dict=as_dict, cached=cached)
-                params = {n: getattr(dep, n) for n in dep.get_param_names()} if tag else {}
-                yield ident, params, data
-        import oryxflow.utils
-        return oryxflow.utils.concat_iter(_gen(), concat_fn=concat_fn, keys=tagkeys)
+                name = grouped.get(ident, ident)
+                out.setdefault(name, []).append((ident, dep))
+            return {name: _concat(sub) for name, sub in out.items()}
+
+        # a shared dependency alongside a fan-out would be row-stacked in with the branches,
+        # which is a union frame nobody asked for -- an exact check off the spec, not a guess
+        if groups:
+            branches = {key for labels in groups.values() for key in labels}
+            shared = [ident for ident, _ in items if ident not in branches]
+            if shared:
+                import warnings
+                warnings.warn(
+                    "inputLoadConcat() is stacking the fan-out branches together with {} shared "
+                    "dependency/dependencies ({}). Pass task='{}' to concatenate just the "
+                    "fan-out, or flatten=False to get one frame per group.".format(
+                        len(shared), ', '.join(map(repr, shared)), list(groups)[0]),
+                    UserWarning, stacklevel=2)
+        return _concat(items)
 
     def outputLoad(self, keys=None, as_dict=False, cached=False):
         """

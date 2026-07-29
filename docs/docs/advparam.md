@@ -132,6 +132,58 @@ For more details, see the [API reference](reference.md).
 
 A project scaffolded with [`/oryxflow:init-project`](claude-plugin/commands.md) wires parameter inheritance in for you.
 
+## Avoid building a flow inside a task
+
+When you need one expensive task per country and then a report that combines them, it is tempting to loop over the countries inside the combining task and run a flow for each one:
+
+```python
+# avoid this
+class Report(oryxflow.tasks.TaskJson):
+
+    def run(self):
+        summaries = {}
+        for country in cfg.COUNTRIES:
+            flow = oryxflow.Workflow(CountrySummary, params={'country': country})
+            flow.run()
+            summaries[country] = flow.outputLoad(CountrySummary)
+        self.save(summaries)
+```
+
+This runs, and the answer is right, which is why it survives. What you give up is everything oryxflow does *around* running:
+
+- **`preview()` doesn't show the per-country tasks**, so you can't see how many are pending before you start — the count that matters when each one is a slow API call.
+- **They don't appear in the run summary either.** Nothing tells you how many actually ran versus came from cache.
+- **Targeted resets silently do nothing.** `flow.reset_upstream(Report, only=CountrySummary)` and `flow.reset_downstream(CountrySummary, Report)` both report no error and invalidate nothing — the per-country tasks aren't in the report's dependencies, so there is nothing for them to find. You change how a summary is written, reset "just that step", re-run, and get the old text back with no indication anything was skipped.
+
+A full `flow.reset_upstream(Report)` may still catch them, but only by accident — it works when the per-country task happens to share an upstream task that *was* invalidated. Not something to rely on.
+
+Declare them as dependencies instead and all three come back:
+
+```python
+# better
+@oryxflow.requires_each(CountrySummary, country=cfg.COUNTRIES)
+class Report(oryxflow.tasks.TaskJson):
+
+    def run(self):
+        self.save(self.inputLoad())
+```
+
+Now `preview()` lists every country, the run summary counts them, and every reset — targeted or not — reaches them.
+
+The report usually needs something shared as well — the table the summaries were written from, a benchmark to compare them against. Stack a second decorator for it, and `flatten=False` keeps the two apart in `run()`:
+
+```python
+@oryxflow.requires({'input': ReportInput})
+@oryxflow.requires_each(CountrySummary, country=cfg.COUNTRIES)
+class Report(oryxflow.tasks.TaskJson):
+
+    def run(self):
+        deps = self.inputLoad(flatten=False)
+        self.save({'drivers': deps['input'], 'by_country': deps['CountrySummary']})
+```
+
+When the country list is computed from the report's own parameters rather than fixed, pass a function instead of a list; all of these forms are covered in [Dynamic Workflow Generation](advtasksdyn.md).
+
 ## Avoid repeating parameters when referring to tasks
 
 To run tasks and load their output for different parameters, you have to pass them to the task. Instead of hardcoding them each time, it is best to keep them in a dictionary and pass that to the task.

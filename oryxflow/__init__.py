@@ -159,8 +159,15 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
     result = core.build(tasks, **opts)
     success = result.scheduling_succeeded
     if abort and not success:
+        # name the failing task(s) AND their params in the message: with a fan-out over a
+        # param grid the traceback alone shows which task broke but not which run it was.
+        causes = [f for f in result.failed if f.exception is not None] or result.failed
+        detail = '; '.join(str(f) for f in causes[:3])
+        if len(causes) > 3:
+            detail += '; ... and {} more'.format(len(causes) - 3)
+        detail = ': {}'.format(detail) if detail else ', check trace'
         raise RuntimeError(
-            'Exception found running flow, check trace. For more details see https://docs.oryxflow.dev/docs/run/#debugging-failures') from result.first_exception
+            'Exception found running flow{}. For more details see https://docs.oryxflow.dev/docs/run/#debugging-failures'.format(detail)) from result.first_exception
     return result
 
 
@@ -334,13 +341,6 @@ class dict_inherits:
         self.tasks_to_inherit = tasks_to_inherit[0]
 
     def __call__(self, task_that_inherits):
-        for task_to_inherit in self.tasks_to_inherit:
-            for param_name, param_obj in self.tasks_to_inherit[task_to_inherit].get_params():
-                # Check if the parameter exists in the inheriting task
-                if not hasattr(task_that_inherits, param_name):
-                    # If not, add it to the inheriting task
-                    setattr(task_that_inherits, param_name, param_obj)
-
         # adding dictionary functionality
         def clone_parents_dict(_self, **kwargs):
             return {
@@ -349,7 +349,8 @@ class dict_inherits:
             }
 
         task_that_inherits.clone_parents_dict = clone_parents_dict
-        return task_that_inherits
+        return core._add_spec(task_that_inherits,
+                              {'kind': 'inherit', 'tasks': self.tasks_to_inherit})
 
 
 # Like core.requires but for handling dictionaries
@@ -367,13 +368,11 @@ class dict_requires:
         self.tasks_to_require = tasks_to_require[0]  # Assign the dictionary
 
     def __call__(self, task_that_requires):
-        task_that_requires = dict_inherits(self.tasks_to_require)(task_that_requires)
-
-        def requires(_self):
-            return _self.clone_parents_dict()
-
-        task_that_requires.requires = requires
-
+        core._check_requires_not_overwritten(task_that_requires, 'requires')
+        dict_inherits(self.tasks_to_require)(task_that_requires)
+        # upgrade the entry dict_inherits just appended: params + dependency
+        core._spec_entries(task_that_requires)[-1]['kind'] = 'fixed'
+        core._apply_spec(task_that_requires)
         return task_that_requires
 
 
@@ -433,6 +432,61 @@ def requires(*tasks_to_require):
     if is_dict:
         return dict_requires(*tasks_to_require)
     return core.requires(*tasks_to_require)
+
+
+def requires_each(task_to_require, /, *extra, **grid):
+    """
+    Class decorator. Declare one dependency **per value** instead of one dependency: the
+    decorated task depends on `task_to_require` run once for every value you list, and its
+    `run()` sees them all at once (`self.inputLoadConcat()` stacks them into one DataFrame).
+
+    Use it for the task that combines a fan-out — comparing model variants, aggregating
+    regions. Like :py:func:`requires` it copies the dependency's parameters onto the
+    decorated task, **except** the ones being fanned out: those differ per branch, so the
+    combining task must not carry them. Everything else — the parameters your flow sets —
+    is passed down to every branch for you.
+
+    Naming several parameters fans out over every combination of them.
+
+    Args:
+        task_to_require: the task class to run once per value, or a single `{name: task}`
+            dict to name the group (it defaults to the task's own name)
+        **grid: parameter name -> list of values to run it for, or a function taking the
+            task and returning that list
+
+    Example:
+        ```python
+        MODELS = ['ridge', 'forest']
+
+        @oryxflow.requires_each(ModelTrain, model=MODELS)
+        class ModelCombine(oryxflow.tasks.TaskPqPandas):
+            def run(self):
+                self.save(self.inputLoadConcat())     # every model, in one frame
+        ```
+
+    Stack it with :py:func:`requires` when the combining task also needs a shared input that
+    isn't fanned out — the source table, a baseline to compare against, labels to render with:
+
+        ```python
+        @oryxflow.requires({'input': ReportInput})
+        @oryxflow.requires_each(RegionNarrative, region=REGIONS)
+        class Report(oryxflow.tasks.TaskMarkdown):
+            def run(self):
+                deps = self.inputLoad(flatten=False)
+                drivers = deps['input']                       # the shared input
+                for region, text in deps['RegionNarrative'].items():
+                    ...                                       # every branch, grouped
+        ```
+
+    Decorators stack in any order. If two of them would produce the same key, name one:
+    `@oryxflow.requires_each({'chart': RegionChart}, region=REGIONS)`.
+
+    When the values depend on one of the task's own parameters, pass a function instead of a
+    list — `region=lambda self: REGIONS[self.sector]`. For anything the decorators still
+    don't cover, write `requires()` yourself and call
+    :py:meth:`~oryxflow.core.Task.requires_grid`, which is what this decorator uses.
+    """
+    return core.requires_each(task_to_require, *extra, **grid)
 
 
 class Workflow(object):

@@ -156,7 +156,7 @@ For more advanced options see [Sharing Workflows and Outputs](collaborate.md)
 
 ### Dynamic Inputs
 
-See [Dynamic Tasks](advtasksdyn.md)
+See [Dynamic Workflow Generation](advtasksdyn.md)
 
 ## Save Output Data
 

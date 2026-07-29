@@ -7,7 +7,7 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='oryxflow',
-    version='26.7.26',
+    version='26.7.28',
     packages=['oryxflow','oryxflow.targets','oryxflow.tasks'],
     url='https://github.com/oryxintel/oryxflow',
     project_urls={
@@ -30,13 +30,18 @@ setup(
         's3': ['s3fs','universal_pathlib'],
         'export': ['jinja2']},
 include_package_data=True,
-    python_requires='>=3.5',
+    python_requires='>=3.9',
     keywords=['oryxflow', 'data workflow', 'data pipelines'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
         'Topic :: Scientific/Engineering',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ]
