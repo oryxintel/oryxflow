@@ -3,12 +3,12 @@ date: 2026-07-23
 slug: oryxflow-vs-prefect
 categories:
   - Comparisons
-description: oryxflow vs Prefect for data science — Prefect is a Python-native orchestrator with configurable result caching; oryxflow is a zero-config, code-change-aware research-loop cache. When you need each, and why they're complementary.
+description: oryxflow vs Prefect for data science — Prefect is a Python-native orchestrator with configurable result caching; oryxflow makes the research loop trustworthy and reproducible with zero configuration. When you need each, and why they're complementary.
 faq:
-  - q: "Do I need Prefect for a research pipeline, or something lighter?"
-    a: "For running, scheduling, and observing pipelines across infrastructure, use Prefect. For a research pipeline you edit all day on your laptop, something lighter fits better. oryxflow is a local-first alternative: a pip install with no server or database that caches every task by code and params and reruns exactly what your code changes affect — no cache key to configure."
   - q: "Is there a lightweight Prefect alternative for local data science?"
-    a: "Yes. oryxflow is a lightweight, local-first alternative to Prefect for data science, built for the research loop rather than production orchestration. Prefect can cache results but you configure the cache key and result storage; oryxflow caches automatically by code and params, is code-change-aware out of the box, and passes DataFrames between steps with type-driven save and inputLoad — no server, account, or telemetry."
+    a: "Yes. oryxflow is a lightweight, local-first alternative to Prefect for data science, built to make the research loop trustworthy and reproducible rather than to orchestrate production. A code, data, or parameter change reruns exactly what it affects out of the box, so a result can't quietly sit on stale inputs, and every run is traceable to what produced it. Prefect can reuse results too, but you configure the cache key and result storage; in oryxflow there is nothing to configure, and no server, account, or telemetry."
+  - q: "Do I need Prefect for a research pipeline, or something lighter?"
+    a: "For running, scheduling, and observing pipelines across infrastructure, use Prefect. For a research pipeline you edit all day on your laptop, something lighter fits better. oryxflow is a local-first alternative: a pip install with no server or database that reruns exactly what your code, data, or parameter changes affect, so you can believe the number and regenerate it later — with no cache key to configure and nothing recomputed twice."
 ---
 
 # oryxflow vs Prefect: research-loop caching vs Python-native orchestration
@@ -17,9 +17,9 @@ faq:
 
 <!-- more -->
 
-If you searched "Prefect for data science," here's the honest short answer: for running, scheduling, and observing pipelines across infrastructure, use Prefect. For the iterative research loop *before* production — EDA, feature engineering, model comparison, edited dozens of times a day — a code-aware caching library like [oryxflow](https://github.com/oryxintel/oryxflow) fits better. They aren't rivals; they're different layers of the same project.
+If you searched "Prefect for data science," here's the honest short answer: for running, scheduling, and observing pipelines across infrastructure, use Prefect. For the iterative research loop *before* production — EDA, feature engineering, model comparison, edited dozens of times a day — a library built to keep that loop trustworthy, like [oryxflow](https://github.com/oryxintel/oryxflow), fits better. They aren't rivals; they're different layers of the same project.
 
-**oryxflow** is a local-first Python library that turns your analysis scripts into a cached, dependency-aware task DAG, so every result is reproducible and traceable to the exact code and parameters that produced it. No server, no database, no account — just `pip install`.
+**oryxflow** is a local-first Python library that makes the analysis you're editing something you can believe: a change to your code, data, or parameters reruns exactly what it affects, so no result sits quietly on stale inputs, and every result is traceable to the exact code and parameters that produced it. No server, no database, no account — just `pip install`. It reuses everything unaffected rather than recomputing it, which is why none of that rigor slows the loop down.
 
 ## What is Prefect, and what is it for?
 
@@ -36,7 +36,7 @@ The difference is where the effort lives. In Prefect, caching is something you *
 - Edit a task's logic — or a helper function it imports, transitively — and that task reruns on the next run, along with everything downstream.
 - Edit a comment, reformat, rename a local variable cosmetically — oryxflow compares what your code *does*, not how it's written, so nothing recomputes.
 
-You never hand-author a cache key that says "invalidate when the code changes," because the code *is* the key. That's the property you want in a research loop, where the code changes constantly and getting the invalidation boundary wrong means either stale results or a full rerun.
+You never hand-author a cache key that says "invalidate when the code changes," because the code *is* the key. That's the property you want in a research loop, where the code changes constantly and getting the invalidation boundary wrong means either a wrong number you never notice or a full rerun. Reuse is the mechanism here; the point of it is that you can trust what comes back.
 
 ## What does that look like in code?
 
@@ -85,10 +85,11 @@ Now edit `add_features` and rerun: `AddFeatures` and `TrainModel` recompute, `Lo
 
 | | oryxflow | Prefect |
 | --- | --- | --- |
-| **Built for** | iterative research loop, pre-production | running/observing pipelines in production |
-| **Setup** | `pip install`, no server or DB | Python-native; server/UI (self-host or Cloud) for orchestration |
-| **Caching** | automatic, on by default, by `(code, params)` | supported, but you configure the cache key + result storage |
+| **Built for** | a research loop you can trust, pre-production | running/observing pipelines in production |
 | **Code-change-aware invalidation** | ✅ automatic, per-symbol, downstream too | you author the cache key yourself |
+| **Lineage: what produced this result** | every run, in a plain local log | run history in the server/UI |
+| **Setup** | `pip install`, no server or DB | Python-native; server/UI (self-host or Cloud) for orchestration |
+| **Caching (how the above stays cheap)** | automatic, on by default, by `(code, params)` | supported, but you configure the cache key + result storage |
 | **Passing DataFrames between steps** | native `save`/`inputLoad`, type-driven paths | you pass/return values; result storage is configured |
 | **Scheduling / retries / concurrency** | ❌ (not its job) | ✅ core strength |
 | **Distributed / infra-wide execution** | ❌ | ✅ |
@@ -101,14 +102,14 @@ Read the ❌ rows the right way: they're Prefect doing the job it exists for. If
 
 The mature pattern uses both, in sequence:
 
-- **Prototype and iterate in oryxflow.** The research loop — where you change code all day and want instant, correctly-scoped reruns — is where zero-config, code-aware caching pays off and orchestration is overhead.
+- **Prototype and iterate in oryxflow.** The research loop — where you change code all day and need every rerun correctly scoped — is where zero-config, code-aware invalidation pays off and orchestration is overhead.
 - **Orchestrate the stable pipeline in Prefect.** Once the pipeline is settled and needs to run on a schedule, across infrastructure, with retries and observability, that's Prefect's job.
 
 Because your oryxflow logic is already decomposed into tasks with explicit dependencies, wrapping the finished pipeline in a Prefect `@flow` later is mechanical, not a rewrite.
 
 ## Which do you need?
 
-- **Iterating on analysis or a model, locally, editing all day, tired of rerunning the slow steps** → oryxflow.
+- **Iterating on analysis or a model, locally, editing all day, and needing to be sure each result came from the code in front of you** → oryxflow. (You stop rerunning the slow steps as well.)
 - **A pipeline that must run on a schedule, across infrastructure, with retries and a live UI** → Prefect.
 - **Both, at different stages** → the common case. Iterate in oryxflow; orchestrate the finished thing in Prefect.
 
@@ -116,7 +117,7 @@ One more distinction worth naming: oryxflow ships as a **Claude Code plugin** (a
 
 ## Takeaway
 
-Prefect and oryxflow both build DAGs from plain Python, and both can cache results — but the caching philosophy is opposite. Prefect gives you *control*: you configure the cache key and result storage, which is what a production orchestrator should do. oryxflow gives you *defaults*: automatic, code-change-aware caching with no key to write, which is what a fast, trustworthy research loop needs. Iterate in oryxflow, then orchestrate the stable pipeline in Prefect.
+Prefect and oryxflow both build DAGs from plain Python, and both can reuse results — but they're solving different problems with it. Prefect gives you *control*: you configure the cache key and result storage, which is what a production orchestrator should do. oryxflow gives you *guarantees*: a code, data, or parameter change reruns exactly what it affects with no key to write, so the number you're reading always came from the code you're looking at and you can regenerate it later. Reuse is just what keeps that free. Iterate in oryxflow, then orchestrate the stable pipeline in Prefect.
 
 ```bash
 pip install oryxflow
@@ -124,13 +125,13 @@ pip install oryxflow
 
 ## Frequently asked questions
 
-### Do I need Prefect for a research pipeline, or something lighter?
-
-For running, scheduling, and observing pipelines across infrastructure, use Prefect. For a research pipeline you edit all day on your laptop, something lighter fits better. oryxflow is a local-first alternative: a pip install with no server or database that caches every task by code and params and reruns exactly what your code changes affect — no cache key to configure.
-
 ### Is there a lightweight Prefect alternative for local data science?
 
-Yes. oryxflow is a lightweight, local-first alternative to Prefect for data science, built for the research loop rather than production orchestration. Prefect can cache results but you configure the cache key and result storage; oryxflow caches automatically by code and params, is code-change-aware out of the box, and passes DataFrames between steps with type-driven save and inputLoad — no server, account, or telemetry.
+Yes. oryxflow is a lightweight, local-first alternative to Prefect for data science, built to make the research loop trustworthy and reproducible rather than to orchestrate production. A code, data, or parameter change reruns exactly what it affects out of the box, so a result can't quietly sit on stale inputs, and every run is traceable to what produced it. Prefect can reuse results too, but you configure the cache key and result storage; in oryxflow there is nothing to configure, and no server, account, or telemetry.
+
+### Do I need Prefect for a research pipeline, or something lighter?
+
+For running, scheduling, and observing pipelines across infrastructure, use Prefect. For a research pipeline you edit all day on your laptop, something lighter fits better. oryxflow is a local-first alternative: a pip install with no server or database that reruns exactly what your code, data, or parameter changes affect, so you can believe the number and regenerate it later — with no cache key to configure and nothing recomputed twice.
 
 - **[Why oryxflow](../../docs/why-oryxflow.md)** — reproducibility, lineage, and trustworthy AI data analysis.
 - **[oryxflow vs Airflow](oryxflow-vs-airflow.md)** — research workflows vs production orchestration.

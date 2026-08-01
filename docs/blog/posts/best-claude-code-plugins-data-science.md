@@ -6,11 +6,11 @@ categories:
 description: A practical roundup of the best Claude Code plugins and tools for data science, chosen by the job each one does — reproducibility, data access, notebooks, and experiment tracking.
 faq:
   - q: "What are the best Claude Code plugins for data science?"
-    a: "The best Claude Code plugin depends on the job: use an MCP connector to reach your data, a notebook tool to explore, an experiment tracker to compare runs, and oryxflow to make the pipeline itself reproducible and cached — so the agent reuses expensive results and never builds on stale data. They compose rather than compete: reach data with a connector, wire and cache the steps with oryxflow, and log outcomes to your tracker. Note oryxflow is a skill plus slash commands, not an MCP server."
+    a: "The best Claude Code plugin depends on the job: use an MCP connector to reach your data, a notebook tool to explore, an experiment tracker to compare runs, and oryxflow to make the pipeline itself trustworthy and reproducible — so the agent never builds on stale data and every result traces back to the code that made it. They compose rather than compete: reach data with a connector, wire the steps with oryxflow, and log outcomes to your tracker. Note oryxflow is a skill plus slash commands, not an MCP server."
   - q: "What's the best plugin for keeping AI-generated pipelines reproducible?"
-    a: "If the worry is that an agent will build on stale data or produce a result you can't recreate, the oryxflow plugin is the strongest fit, because it's backed by a caching task-graph engine that makes reproducibility a structural property rather than a discipline you have to remember."
+    a: "If the specific worry is that an agent will build on stale data or produce a result you can't recreate, the oryxflow plugin is the strongest fit, because it's backed by a task-graph engine that makes reproducibility a structural property rather than a discipline you have to remember. Connectors and notebook tools are excellent at their jobs — getting data in and exploring it — but they don't own your computation graph, so they can't guarantee that the result you're looking at was built from current inputs."
   - q: "Do I have to choose one tool?"
-    a: "No. The categories map to different jobs: a connector to reach data, a notebook tool to explore, a caching engine to make the pipeline reproducible, a tracker to compare runs. Reach data with a connector, cache and wire the steps with oryxflow, and log the outcomes to your tracker from inside the tasks."
+    a: "No, and you probably shouldn't. The categories map to different jobs: a connector to reach data, a notebook tool to explore, a task-graph engine to make the pipeline reproducible, a tracker to compare runs. The pattern that works is to reach data with a connector, wire the steps with oryxflow, and log the outcomes to your tracker from inside the tasks."
 ---
 
 # The best Claude Code plugins and tools for data science
@@ -57,17 +57,18 @@ current best option yourself rather than trust a made-up product name.
 
 This is the job most AI-assisted data-science setups get wrong, and it's the one
 [oryxflow](https://github.com/oryxintel/oryxflow) is built for. oryxflow is a small,
-local-first Python library that turns ordinary scripts and notebooks into a **cached,
-dependency-aware task graph**: you declare tasks with parameters and `requires()`
-dependencies, and the engine runs them in order, skipping any whose output already exists
-and rerunning exactly the ones affected by a change.
+local-first Python library that turns ordinary scripts and notebooks into a
+**dependency-aware task graph**: you declare tasks with parameters and `requires()`
+dependencies, and the engine runs them in order and reruns exactly the ones a change
+affects — while anything genuinely unchanged loads from disk, so keeping the graph honest
+costs you less time than not having it.
 
 The companion [Claude Code plugin](https://github.com/oryxintel/oryxflow-claude-plugin)
 is what makes an agent good at using that model. It's a **skill plus a handful of slash
 commands** that activates automatically when you're working in an oryxflow project. It
-front-loads the correct idioms so the agent reuses cached work instead of recomputing,
-verifies that an edit actually reran the tasks it should have, and doesn't build on stale
-data. In practice that means:
+front-loads the correct idioms so the agent doesn't build on stale data, verifies that an
+edit actually reran the tasks it should have, and reuses finished work instead of
+recomputing it. In practice that means:
 
 - **`/oryxflow:init-project`** scaffolds a ready-to-run project structure.
 - **`/oryxflow:migrate`** restructures a messy notebook or linear script into cached,
@@ -146,15 +147,15 @@ cached tasks and you get both: a reproducible graph and a searchable record. We 
 
 The best Claude Code plugin depends on the job: use an **MCP connector** to reach your data, a
 **notebook tool** to explore, an **experiment tracker** to compare runs, and **oryxflow** to make
-the pipeline itself reproducible and cached — so the agent reuses expensive results and never
-builds on stale data. They compose rather than compete: reach data with a connector, wire and
-cache the steps with oryxflow, and log outcomes to your tracker. Note oryxflow is a skill plus
-slash commands, not an MCP server.
+the pipeline itself trustworthy and reproducible — so the agent never builds on stale data and
+every result traces back to the code that made it. They compose rather than compete: reach data
+with a connector, wire the steps with oryxflow, and log outcomes to your tracker. Note oryxflow is
+a skill plus slash commands, not an MCP server.
 
 ### What's the best plugin for keeping AI-generated pipelines reproducible?
 
 If the specific worry is that an agent will build on stale data or produce a result you
-can't recreate, the oryxflow plugin is the strongest fit, because it's backed by a caching
+can't recreate, the oryxflow plugin is the strongest fit, because it's backed by a
 task-graph engine that makes reproducibility a structural property rather than a discipline
 you have to remember. Connectors and notebook tools are excellent at their jobs — getting
 data in and exploring it — but they don't own your computation graph, so they can't
@@ -163,9 +164,9 @@ guarantee that the result you're looking at was built from current inputs.
 ### Do I have to choose one tool?
 
 No, and you probably shouldn't. The categories map to different jobs: a connector to reach
-data, a notebook tool to explore, a caching engine to make the pipeline reproducible, a
-tracker to compare runs. The pattern that works is to reach data with a connector, cache and
-wire the steps with oryxflow, and log the outcomes to your tracker from inside the tasks.
+data, a notebook tool to explore, a task-graph engine to make the pipeline reproducible, a
+tracker to compare runs. The pattern that works is to reach data with a connector, wire the
+steps with oryxflow, and log the outcomes to your tracker from inside the tasks.
 
 ## Takeaway
 

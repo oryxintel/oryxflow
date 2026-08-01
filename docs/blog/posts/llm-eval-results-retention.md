@@ -53,7 +53,7 @@ That's a parameter sweep. Data science has had good tooling for parameter sweeps
 You don't have to pick a side. Split the job by what each layer is actually good at:
 
 - **[pydantic-evals](https://pydantic.dev/docs/ai/evals/)** — scoring. Cases, evaluators, reports.
-- **[oryxflow](https://github.com/oryxintel/oryxflow)** — the matrix and persistence. One cached output per parameter set.
+- **[oryxflow](https://github.com/oryxintel/oryxflow)** — the matrix, the persistence, and the provenance. One cached output per parameter set, tied to the code and parameters that produced it.
 - **Logfire** (or your platform of choice) — traces and the debugging UI.
 
 Nothing overlaps. That's the whole idea. pydantic-evals doesn't want to be a cache; oryxflow doesn't want to be a scorer; neither wants to render a waterfall of spans.

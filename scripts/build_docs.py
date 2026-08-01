@@ -18,6 +18,14 @@ Usage:
                                                 #   files are stale (use in CI)
     python scripts/build_docs.py --skip-tests   # just build (fast local preview)
     python scripts/build_docs.py --strict       # mkdocs build --strict
+    python scripts/build_docs.py --regen        # front matter + regenerate tests only,
+                                                #   no pytest, no mkdocs (pre-commit hook)
+
+Why --regen exists: phmdoctest names each generated test after its code block's SOURCE
+LINE (test_code_66), so editing prose ABOVE a block renames the test and makes the
+committed file stale — with no behavior change at all. That is pure churn, and easy to
+forget before committing, which then fails CI's --check. The pre-commit hook runs this
+mode so the regeneration happens automatically. See .pre-commit-config.yaml.
 """
 import argparse
 import filecmp
@@ -104,10 +112,18 @@ def main():
     ap.add_argument("--check", action="store_true", help="fail if generated test files are stale (CI)")
     ap.add_argument("--skip-tests", action="store_true", help="skip regenerating/running doc tests")
     ap.add_argument("--strict", action="store_true", help="pass --strict to mkdocs build")
+    ap.add_argument("--regen", action="store_true",
+                    help="only validate front matter and regenerate doc tests (pre-commit hook)")
     args = ap.parse_args()
 
     # Always: a page whose front matter doesn't parse renders it as visible text.
     check_front_matter()
+
+    # Pre-commit path: regenerate and stop. No pytest, no mkdocs — the hook has to be
+    # fast enough that nobody is tempted to --no-verify past it.
+    if args.regen:
+        generate(check=False)
+        return
 
     if not args.skip_tests:
         generate(check=args.check)

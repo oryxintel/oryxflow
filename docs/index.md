@@ -1,5 +1,5 @@
 ---
-description: oryxflow makes AI data analysis faster, cheaper, and more trustworthy — a Python library and Claude Code plugin that builds your analysis as a reproducible, cached pipeline that reruns only what changed.
+description: oryxflow makes AI data analysis trustworthy and reproducible — a Python library and Claude Code plugin that never lets a result sit on stale data, records the code and inputs behind every number, and reruns only what changed so the rigor costs you nothing.
 faq:
   - q: "How do I stop rerunning my whole pipeline every time I change one step?"
     a: "oryxflow caches each step's output and reruns only what a code, data, or parameter change affects, plus everything downstream of it. Change one feature and the untouched upstream steps load instantly from cache instead of recomputing. It's a local-first Python library: pip install oryxflow, declare each step as a task, and re-running only pays for what actually changed."
@@ -10,28 +10,29 @@ faq:
   - q: "How do I run a parameter sweep without rerunning the upstream steps every time?"
     a: "Parameters flow through the task graph, so oryxflow reruns only the tasks a given parameter actually changes and reuses the shared upstream cache across every combination in the sweep. Compare ten model configs and the data-loading and feature steps run once, not ten times. Each run is tagged by its parameters, so results stay reproducible and you can load any combination's output by name."
   - q: "Is there a Claude Code plugin to make AI-generated data analysis reproducible and trustworthy?"
-    a: "Yes — the oryxflow Claude Code plugin. It teaches your coding agent to build the analysis as a cached, reproducible pipeline: reusing expensive results, verifying its own reruns, and never training on stale intermediates. oryxflow guarantees a result was produced by the code and inputs it recorded — reproducible, not automatically correct — so you can check AI-written analysis instead of trusting it blindly. It ships as a skill plus slash commands, not an MCP server."
+    a: "Yes — the oryxflow Claude Code plugin. It teaches your coding agent to build the analysis as a reproducible pipeline: verifying its own reruns, never training on stale intermediates, and recording what produced every result. oryxflow guarantees a result was produced by the code and inputs it recorded — reproducible, not automatically correct — so you can check AI-written analysis instead of trusting it blindly. Because finished work is reused rather than recomputed, none of that costs you extra time or tokens. It ships as a skill plus slash commands, not an MCP server."
   - q: "When should I not use oryxflow?"
     a: "You don't need a task graph for a first look at a dataset — a quick CSV load, a group-by, one plot is fine as a plain script. You don't have to choose upfront, though: start there and run /oryxflow:migrate when the work gains depth, cost, or parameter combinations, and what you already wrote becomes cached tasks. oryxflow earns its keep the moment a stale early step can silently corrupt everything below it, an expensive step makes the edit-run loop painful, or you're sweeping an experiment matrix — which is also where hand-managed scripts and AI coding agents go wrong. It isn't a production orchestrator (use Airflow or Prefect) or an experiment dashboard (use MLflow or Weights & Biases); it composes beside both."
 ---
 
-# oryxflow
+# oryxflow: trustworthy, reproducible AI data analysis
 
-**Faster, cheaper, and more trustworthy data analysis — for humans and AI coding agents.**
-oryxflow turns a data-science script into a pipeline that reruns exactly what a change affects,
-records how each result was made, and caches every step so you never pay twice for the same work.
-It's a Python library with no server, no database, and no account: `pip install oryxflow` and
-you're done.
+**Data analysis you can believe, and reproduce later — for humans and AI coding agents.**
+oryxflow turns a data-science script into a pipeline where no result can quietly sit on stale
+data, and every result records the code and inputs that made it. Rigor like that normally costs
+you rerun time; here it doesn't, because nothing is ever computed twice. It's a Python library
+with no server, no database, and no account: `pip install oryxflow` and you're done.
 
 Working with an AI agent? The **[Claude Code plugin](docs/claude-code-for-data-science.md)**
-teaches Claude Code to build your data analysis this way — so the agent reuses expensive results
-instead of burning your time and tokens redoing them, and never trains a model on stale data. You
-get analysis you can **trust**, not just analysis that runs. Using a different agent? The docs are
-[machine-readable too](docs/ai-ready.md) — point it at
+teaches Claude Code to build your data analysis this way — so the agent checks its own reruns,
+can't train a model on stale data, and leaves a record of what produced every number. You get
+analysis you can **trust**, not just analysis that runs — and because the agent stops redoing work
+it has already done, you spend less time and fewer tokens getting there. Using a different agent?
+The docs are [machine-readable too](docs/ai-ready.md) — point it at
 [`llms-full.txt`](https://docs.oryxflow.dev/llms-full.txt) and it has read all of oryxflow in one
 request.
 
-## Why oryxflow
+## Why oryxflow: trustworthy, reproducible data science
 
 Four things you get on day one — the full argument is in
 **[Why oryxflow](docs/why-oryxflow.md)**:
@@ -39,13 +40,14 @@ Four things you get on day one — the full argument is in
 - **No result is ever built on stale data.** Change a parameter, the data, or a task's code and
   oryxflow reruns exactly what that change affects. You can't accidentally evaluate a new model on
   stale features.
+- **An answer to "how was this made?"** oryxflow records what ran, when, with which code and inputs,
+  and why it recomputed — so provenance and staleness are queries rather than guesses, and any
+  result can be regenerated later.
 - **No file mess, no parameter bookkeeping.** You never name, path, or version an intermediate file
   again — no `features_v3_final.pkl`, no `to_pickle`/`read_pickle` plumbing, no spreadsheet of which
   run used which settings. Ask for a result by the task and parameters that made it.
-- **Seconds instead of minutes.** Finished steps load from cache, so the 10-minute data pull runs
-  once, not once per edit.
-- **An answer to "is this stale?"** oryxflow records what ran, when, with which code and inputs, and
-  why it recomputed — so staleness and provenance are queries, not guesses.
+- **And it's faster, not slower.** Being this careful usually means waiting. Here finished steps
+  load from cache, so the 10-minute data pull runs once, not once per edit.
 
 **Start small; it scales with you.** A first pass can be a plain script or a quick exploratory
 probe — you don't need a task graph on day one. As the work gains steps, cost, and parameter
@@ -80,9 +82,10 @@ flow.run()                                         # runs GetData, then ProcessD
 df = flow.outputLoad()                             # load the result by name
 ```
 
-Run `flow.run()` again and nothing happens — both outputs already exist, so the engine skips
-them. That is the core payoff: re-running a pipeline only pays for what actually changed. Caching is
-how it works; **trust is what you get**. Next step:
+Edit `ProcessData` and only it reruns, so the result you print always matches the code you have
+now. Change nothing and run `flow.run()` again and nothing happens at all — both outputs already
+exist, so the engine skips them. That is why the rigor is free: **trust and reproducibility are the
+product, and caching is just how you get them without paying for them twice.** Next step:
 **[Quickstart](docs/quickstart.md)** — a real pipeline in a few minutes.
 
 ## How oryxflow compares to Airflow, MLflow, DVC, and notebooks
@@ -185,10 +188,12 @@ by name.
 
 **Is there a Claude Code plugin to make AI-generated data analysis reproducible and trustworthy?**
 Yes — the oryxflow Claude Code plugin. It teaches your coding agent to build the analysis as a
-cached, reproducible pipeline: reusing expensive results, verifying its own reruns, and never
-training on stale intermediates. oryxflow guarantees a result was produced by the code and inputs
-it recorded — reproducible, not automatically *correct* — so you can check AI-written analysis
-instead of trusting it blindly. It ships as a skill plus slash commands, not an MCP server.
+reproducible pipeline: verifying its own reruns, never training on stale intermediates, and
+recording what produced every result. oryxflow guarantees a result was produced by the code and
+inputs it recorded — reproducible, not automatically *correct* — so you can check AI-written
+analysis instead of trusting it blindly. Because finished work is reused rather than recomputed,
+none of that costs you extra time or tokens. It ships as a skill plus slash commands, not an MCP
+server.
 
 **When should I not use oryxflow?**
 You don't need a task graph for a first look at a dataset — a quick CSV load, a group-by, one plot

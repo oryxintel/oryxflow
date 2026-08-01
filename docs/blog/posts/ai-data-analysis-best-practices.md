@@ -66,13 +66,15 @@ Note there is no file-path plumbing and no `to_parquet`/`read_parquet`. The base
 (`TaskPqPandas`, `TaskPickle`, `TaskCachePandas`, …) drives type-based, zero-config I/O — the
 single most common place hand-written analysis code rots.
 
-## 2. Cache expensive steps so iteration is cheap
+## 2. Cache expensive steps, so the careful path is also the fast one
 
-The agent iterates. Every turn it might touch feature code, model params, or a plot. If each turn
-re-pays for the big join and the slow fit, iteration is expensive and the agent starts taking
-shortcuts to avoid the wait. oryxflow skips any task whose output already exists, so the costly
-upstream steps run once and every later turn is fast. Cheap iteration is not just ergonomics — it
-removes the incentive to cut corners.
+This one is plumbing rather than a promise, but it's what keeps the rest of the list from being a
+tax. The agent iterates: every turn it might touch feature code, model params, or a plot. If each
+turn re-pays for the big join and the slow fit, iteration is expensive and the agent starts taking
+shortcuts — reusing an output it should have rebuilt, skipping the rerun that would have caught
+the staleness. oryxflow skips any task whose output already exists, so the costly upstream steps
+run once and every later turn is fast. Cheap iteration is not just ergonomics; it removes the
+incentive to cut exactly the corners the other seven practices are about.
 
 ## 3. Keep a durable link between code and output
 

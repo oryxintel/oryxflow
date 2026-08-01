@@ -5,27 +5,28 @@ description: Articles on reproducible pipelines, data lineage, tool comparisons 
 
 # Blog
 
-Notes on making data analysis **faster, cheaper, and more trustworthy** — for humans and AI
-coding agents. Reproducible pipelines, data lineage, honest tool comparisons, and why a
-lightweight caching DAG changes how you build data-science workflows.
+Notes on making data analysis **trustworthy and reproducible** — for humans and AI coding
+agents. Results you can believe, lineage that says which code and inputs made every number,
+honest tool comparisons — and, because nothing recomputes twice, a trustworthy path that also
+happens to be the fast, cheap one.
 
 ## Start here
 
-- **[Why oryxflow](../docs/why-oryxflow.md)** — the positioning in one page: reproducibility,
-  lineage, and trustworthy AI data analysis, plus when *not* to reach for it.
+- **[Why oryxflow](../docs/why-oryxflow.md)** — the positioning in one page: trustworthy results,
+  reproducibility, lineage, and trustworthy AI data analysis, plus when *not* to reach for it.
 - **[Reproducible data science workflows in Python](posts/reproducible-data-science-workflows-python.md)**
   — what makes a workflow reproducible, and the missing middle between notebooks and orchestrators.
 
-**Reproducibility & caching**
+**Trust, reproducibility & caching**
 
-- [Stop rerunning your whole pipeline](posts/stop-rerunning-your-pipeline.md) — why a one-line
-  edit costs you a fifteen-minute recompute, and what to do about it.
-- [Cache intermediate DataFrames in Python](posts/cache-intermediate-dataframes-python.md) — why
-  hand-rolled pickle caches go stale, and caching by task identity instead.
 - [From notebook to a reproducible, cached pipeline](posts/notebook-to-pipeline.md) — migrate an
-  analysis into tasks, one step at a time.
+  analysis into tasks, one step at a time, so every result is tied to the code that made it.
 - [4 reasons your machine learning code is bad](posts/4-reasons-your-ml-code-is-bad.md) — the
-  failure modes a task DAG fixes.
+  failure modes a task DAG fixes, starting with the silent one.
+- [Stop rerunning your whole pipeline](posts/stop-rerunning-your-pipeline.md) — how a change
+  reruns exactly what it affects, so nothing sits on stale data and nothing recomputes twice.
+- [Cache intermediate DataFrames in Python](posts/cache-intermediate-dataframes-python.md) — why
+  hand-rolled pickle caches go stale, and caching by task identity you can actually trust.
 
 **Tool comparisons**
 

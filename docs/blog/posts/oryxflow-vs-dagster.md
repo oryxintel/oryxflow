@@ -3,12 +3,12 @@ date: 2026-07-23
 slug: oryxflow-vs-dagster
 categories:
   - Comparisons
-description: Dagster is an asset-oriented data orchestrator with a server, UI, and IO managers; oryxflow is a local, zero-config research-loop cache. An honest comparison of when to use Dagster for machine learning experimentation and when to reach for oryxflow.
+description: Dagster is an asset-oriented data orchestrator with a server, UI, and IO managers; oryxflow is a local, zero-config way to make the research loop trustworthy and reproducible. An honest comparison of when to use Dagster for machine learning experimentation and when to reach for oryxflow.
 faq:
   - q: "Is there a lighter-weight alternative to Dagster for local analysis?"
-    a: "Yes. oryxflow is a lightweight alternative to Dagster for local analysis: a pip install with no server, database, or UI. Where Dagster is an asset platform a team runs in production, oryxflow caches the research loop you edit all day — type-driven zero-config I/O, automatic code-change invalidation, and lineage in a plain local log. Promote the stable pipeline to Dagster later."
+    a: "Yes. oryxflow is a lightweight alternative to Dagster for local analysis: a pip install with no server, database, or UI. Where Dagster is an asset platform a team runs in production, oryxflow makes the research loop you edit all day trustworthy and reproducible — a code, data, or parameter change reruns exactly what it affects, and every run lands in a plain local lineage log. Because unchanged work is reused rather than recomputed, none of that costs you rerun time. Promote the stable pipeline to Dagster later."
   - q: "Do I need a Dagster instance and UI just to cache pipeline steps locally?"
-    a: "No. Dagster's IO managers persist outputs, but the full experience assumes a running Dagster instance and its UI. oryxflow persists every task output locally with zero configuration — the task's base class picks the format and keys it on task and params — so you get cached, dependency-aware steps from a pip install alone, no server or catalog to maintain."
+    a: "No. Dagster's IO managers persist outputs, but the full experience assumes a running Dagster instance and its UI. oryxflow persists every task output locally with zero configuration — the task's base class picks the format and keys it on task and params — so you get dependency-aware steps that rerun when your code changes, from a pip install alone, with no server or catalog to maintain."
 ---
 
 # oryxflow vs Dagster: a lightweight research loop vs an asset platform
@@ -24,9 +24,11 @@ If you searched "Dagster for machine learning experimentation," here's the short
 Dagster is an excellent, mature *orchestrator* for a team running production data assets — and
 [oryxflow](https://github.com/oryxintel/oryxflow) is a small, local-first library for the fast,
 messy iteration that happens *before* anything is a production asset. **oryxflow is a
-zero-infrastructure Python library that turns the data-science scripts you edit all day into a
-cached, dependency-aware DAG you can trust** — reproducible outputs, recorded lineage, and reruns
-that follow your code changes. Below is the honest breakdown, including where Dagster clearly wins.
+zero-infrastructure Python library that makes the data-science scripts you edit all day
+trustworthy and reproducible**: a change to your code, data, or parameters reruns exactly what it
+affects, so no result quietly sits on stale inputs, and every run is tied to the code and inputs
+that made it. It stays cheap because nothing recomputes twice. Below is the honest breakdown,
+including where Dagster clearly wins.
 
 ## What each tool is actually for
 
@@ -36,10 +38,12 @@ Dagster gives you a rich web UI, scheduling, sensors, partitions and backfills, 
 and observing data assets in production: you can see every asset's freshness, backfill a partition,
 and trigger runs off sensors. The full experience assumes a running Dagster instance and its UI.
 
-**oryxflow** is a research-loop tool. Its job is to make an analysis you're *actively editing* fast
-and trustworthy: every task's output is cached, reruns follow what your code and parameters actually
-changed, and every run is logged for lineage. It's a `pip install` with no server, no database, no
-account, and no telemetry — the state lives in a local `data/` folder and a plain lineage log.
+**oryxflow** is a research-loop tool. Its job is to make an analysis you're *actively editing*
+trustworthy and reproducible: reruns follow what your code and parameters actually changed, so you
+can't evaluate new logic against an old output, and every run is logged so you can say later which
+code and inputs produced any result. It's a `pip install` with no server, no database, no account,
+and no telemetry — the state lives in a local `data/` folder and a plain lineage log. Every task's
+output is cached, which is what keeps all of that free rather than a tax on your rerun time.
 
 Neither is a worse version of the other. They sit at different layers of the same project's life.
 
@@ -66,11 +70,12 @@ parameters — not a YAML asset definition or a catalog entry.
 
 ## What about reruns when I change my code?
 
-This is the move oryxflow is built around. It tracks each task's code — and every helper file it
-imports — comparing what your code *does*, not how it's written, so comments and reformatting
-don't count. Edit one task, or a helper it imports, and on the next `run()` oryxflow reruns exactly
-that task and everything downstream, while the expensive upstream stays cached. Change nothing and it recomputes
-nothing.
+This is the move oryxflow is built around, and it's a trust feature before it's a speed one. It
+tracks each task's code — and every helper file it imports — comparing what your code *does*, not
+how it's written, so comments and reformatting don't count. Edit one task, or a helper it imports,
+and on the next `run()` oryxflow reruns exactly that task and everything downstream, so you can
+never read a number that was produced by logic you've since changed. The expensive upstream stays
+cached, and if you changed nothing, nothing recomputes.
 
 ```python
 import oryxflow
@@ -110,12 +115,12 @@ same outputs; it does not check that your analysis is right. That's still your j
 
 | | oryxflow | Dagster |
 | --- | --- | --- |
-| **Built for** | solo/small-team research loop | production data assets for a team |
+| **Built for** | a solo/small-team research loop you can trust | production data assets for a team |
+| **Rerun on a code edit** | automatic, per-symbol, downstream too | code versions + staleness in the platform |
+| **Task identity** | native Python class + params | software-defined assets |
 | **Setup** | `pip install`, no server | a running Dagster instance + UI for the full experience |
 | **Auto-persist outputs** | ✅ type-driven, zero config | ✅ via IO managers you configure |
 | **Configuring I/O** | none — base class picks the format | declare assets, choose/configure an IO manager |
-| **Task identity** | native Python class + params | software-defined assets |
-| **Rerun on a code edit** | automatic, per-symbol, downstream too | code versions + staleness in the platform |
 | **Scheduling / sensors / backfills** | ❌ (not its job) | ✅ its core strength |
 | **Web UI / observability** | queryable lineage log (no UI) | rich web UI |
 | **Partitions at scale** | ❌ | ✅ |
@@ -128,8 +133,8 @@ has no business pretending to replace them.
 
 The mature pattern uses both, in sequence:
 
-- **Iterate with oryxflow.** During research — where you change code constantly and want instant,
-  correct reruns — a local cache pays off and a server is overhead.
+- **Iterate with oryxflow.** During research — where you change code constantly and need every
+  rerun to be correctly scoped — a local trust layer pays off and a server is overhead.
 - **Promote to Dagster** when the pipeline stabilizes and needs to become an observed, scheduled,
   partitioned production asset for the team.
 
@@ -138,8 +143,8 @@ stable pipeline as Dagster assets later is mechanical, not a rewrite.
 
 ## Which do you need?
 
-- **You're iterating on a model or analysis, locally, editing all day, and tired of rerunning slow
-  upstream steps** → oryxflow.
+- **You're iterating on a model or analysis, locally, editing all day, and you need each result to
+  be one you can believe and regenerate** → oryxflow. (Slow upstream steps stop rerunning too.)
 - **A team needs to run, schedule, observe, and backfill production data assets with a UI** →
   Dagster.
 - **Both, at different stages** → the common case. Iterate in oryxflow; promote to Dagster when it's
@@ -148,9 +153,11 @@ stable pipeline as Dagster assets later is mechanical, not a rewrite.
 ## Takeaway
 
 Dagster and oryxflow both auto-persist outputs, so don't choose on that. Choose on the layer:
-oryxflow is a zero-infrastructure, type-driven, code-aware cache for the research loop; Dagster is a
-server-backed asset platform for production. For fast, reproducible experimentation, `pip install`
-and iterate — then hand the stable pipeline to Dagster when it's ready.
+oryxflow is a zero-infrastructure, type-driven way to keep the research loop trustworthy and
+reproducible — nothing runs on stale inputs, and every result names the code that made it; Dagster
+is a server-backed asset platform for production. For experimentation you can defend, `pip install`
+and iterate — it costs you nothing in rerun time, because nothing recomputes twice — then hand the
+stable pipeline to Dagster when it's ready.
 
 ```bash
 pip install oryxflow
@@ -161,16 +168,18 @@ pip install oryxflow
 ### Is there a lighter-weight alternative to Dagster for local analysis?
 
 Yes. oryxflow is a lightweight alternative to Dagster for local analysis: a pip install with no
-server, database, or UI. Where Dagster is an asset platform a team runs in production, oryxflow caches
-the research loop you edit all day — type-driven zero-config I/O, automatic code-change invalidation,
-and lineage in a plain local log. Promote the stable pipeline to Dagster later.
+server, database, or UI. Where Dagster is an asset platform a team runs in production, oryxflow makes
+the research loop you edit all day trustworthy and reproducible — a code, data, or parameter change
+reruns exactly what it affects, and every run lands in a plain local lineage log. Because unchanged
+work is reused rather than recomputed, none of that costs you rerun time. Promote the stable pipeline
+to Dagster later.
 
 ### Do I need a Dagster instance and UI just to cache pipeline steps locally?
 
 No. Dagster's IO managers persist outputs, but the full experience assumes a running Dagster instance
 and its UI. oryxflow persists every task output locally with zero configuration — the task's base class
-picks the format and keys it on task and params — so you get cached, dependency-aware steps from a pip
-install alone, no server or catalog to maintain.
+picks the format and keys it on task and params — so you get dependency-aware steps that rerun when
+your code changes, from a pip install alone, with no server or catalog to maintain.
 
 - **[Why oryxflow](../../docs/why-oryxflow.md)** — reproducibility, lineage, and trustworthy AI data
   analysis.

@@ -87,6 +87,21 @@ python scripts/build_docs.py         # regenerate tests/test_docs_*.py, run them
 Commit the regenerated `tests/test_docs_*.py`. CI runs `python scripts/build_docs.py --check`,
 which fails if the committed generated files are stale relative to the Markdown.
 
+**A pre-commit hook does this for you — install it once per clone:**
+
+```bash
+pip install pre-commit && pre-commit install
+```
+
+Why it exists: phmdoctest names each generated test after its code block's **source line**
+(`test_code_66`), so editing **prose above a code block** renames the test and leaves the
+committed file stale — no behavior change, pure churn, and it fails CI's `--check` on a docs-only
+PR. The `docs-regen` hook (`.pre-commit-config.yaml`) runs `build_docs.py --regen` — front-matter
+validation plus regeneration only, no pytest and no `mkdocs build`, so it stays ~1s. When it
+rewrites a file, pre-commit reports *"files were modified by this hook"* and aborts; `git add` the
+regenerated tests and commit again. Without `pre-commit install` the config does nothing and
+you're back to remembering — CI still catches it, just later.
+
 Isolation gotcha: doc examples use the default output directory, the relative path `data/` —
 don't add `oryxflow.set_dir('data/')` to an example, it's a no-op that contradicts the "nothing to
 configure" pitch (only show `set_dir` where the point *is* a non-default directory). The

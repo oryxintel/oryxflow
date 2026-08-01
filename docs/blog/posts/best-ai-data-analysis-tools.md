@@ -6,11 +6,11 @@ categories:
 description: A practical roundup of the best AI data analysis tools by layer — coding agents, notebooks, pandas/Polars, MLflow/W&B, and the reproducibility layer most of them miss.
 faq:
   - q: "What makes AI-generated data analysis trustworthy?"
-    a: "Trustworthy analysis has three properties the AI doesn't give you for free: reproducibility (rerun it and get the same numbers), lineage (trace any figure back to the exact code and data that made it), and freshness guarantees (the output reflects the current inputs, not a stale cached file). Reproducibility is not correctness — it proves the result is regenerable and current, not that the logic is right."
+    a: "Trustworthy analysis has three properties the AI doesn't give you for free: reproducibility (rerun it and get the same numbers), lineage (trace any figure back to the exact code and data that made it), and freshness guarantees (the output reflects the current inputs, not a stale cached file). An AI agent produces the analysis; a reproducibility layer like oryxflow is what supplies those three properties underneath it. Note the honest boundary: reproducibility is not correctness — it proves the result is regenerable and current, not that the logic is right. That last mile is still your review."
   - q: "Do I still need a workflow library if I use an AI coding agent?"
-    a: "Yes, and arguably more. An agent makes it trivial to generate lots of analysis code fast, which means more intermediate outputs and more chances for stale files. A workflow layer caches expensive steps so iteration stays cheap, reruns only what changed when the agent edits code, and records lineage so you can audit what the agent did."
+    a: "Yes, and arguably more. An agent makes it trivial to generate lots of analysis code fast, which means more intermediate outputs, more chances for stale files, and more numbers you didn't personally compute. A workflow layer is what keeps that speed from turning into a pile of results you can't reproduce: it reruns only what actually changed when the agent edits code, records lineage so you can audit what the agent did, and reuses expensive steps so none of that costs you iteration time. The agent and the workflow library aren't competitors — the agent writes the tasks, the library makes them trustworthy."
   - q: "Where do MLflow or W&B fit alongside this?"
-    a: "Trackers are the record; a workflow library is the research loop. Use MLflow or W&B to log and compare run results; use a caching engine to guarantee the computation behind those runs is reproducible and to avoid recomputing unchanged steps. They sit at different layers and work well together."
+    a: "Trackers are the record; a workflow library is the research loop. Use MLflow or W&B to log and compare run results; use a workflow engine to guarantee the computation behind those runs is reproducible, and to keep unchanged steps from recomputing. They sit at different layers and are happy together — orchestrators (Airflow, Prefect, Dagster) are a third, production-scheduling layer, distinct from the local research loop oryxflow targets."
 ---
 
 # The best AI tools for data analysis (and the trust layer most of them miss)
@@ -101,17 +101,21 @@ They don't govern *whether the computation itself is trustworthy*.
 
 This is the layer most AI data tools skip, and it's where
 [oryxflow](https://github.com/oryxintel/oryxflow) lives. oryxflow is a small, local-first
-Python library that turns your analysis scripts into cached, dependency-aware tasks. You
-declare typed task classes, wire dependencies with `@oryxflow.requires`, and each task
-`save()`s its output. The engine runs the DAG in dependency order and **skips any task whose
-output already exists** — so expensive steps are computed once and reused.
+Python library that turns your analysis scripts into dependency-aware tasks. You declare typed
+task classes, wire dependencies with `@oryxflow.requires`, and each task `save()`s its output.
 
 The part that matters for trusting AI-generated work: oryxflow does **automatic code-change
 invalidation**. When you (or an agent) edit a task's code, it detects the change at the
 source level and reruns *exactly* that task and everything downstream of it — nothing more,
-nothing less. It writes a lineage trail to `.oryxflow/events.jsonl`, so you can trace any
-output back to the code and inputs that produced it. And it's genuinely local-first: no
-server, no database, no account, no telemetry. Your data stays on your machine.
+nothing less. So the output in front of you cannot predate the code that's on disk. It writes
+a lineage trail to `.oryxflow/events.jsonl`, so you can trace any output back to the code and
+inputs that produced it. And it's genuinely local-first: no server, no database, no account,
+no telemetry. Your data stays on your machine.
+
+The caching is what makes that affordable rather than a rewrite tax: the engine **skips any
+task whose output already exists**, so expensive steps compute once and every later turn is
+fast. It's the mechanism, not the pitch — you'd want the guarantee even if it were slow, and
+the point is that it isn't.
 
 Be clear about what it is and isn't. oryxflow makes analysis **reproducible, not
 automatically right** — it does not check your logic for correctness. What it guarantees is
@@ -158,18 +162,18 @@ regenerable and current, not that the logic is right. That last mile is still yo
 Yes, and arguably *more*. An agent makes it trivial to generate lots of analysis code fast,
 which means more intermediate outputs, more chances for stale files, and more numbers you
 didn't personally compute. A workflow layer is what keeps that speed from turning into a
-pile of results you can't reproduce: it caches expensive steps so iteration stays cheap,
-reruns only what actually changed when the agent edits code, and records lineage so you can
-audit what the agent did. The agent and the workflow library aren't competitors — the agent
-writes the tasks, the library makes them trustworthy.
+pile of results you can't reproduce: it reruns only what actually changed when the agent
+edits code, records lineage so you can audit what the agent did, and reuses expensive steps
+so none of that costs you iteration time. The agent and the workflow library aren't
+competitors — the agent writes the tasks, the library makes them trustworthy.
 
 ### Where do MLflow or W&B fit alongside this?
 
 Trackers are the **record**; a workflow library is the **research loop**. Use MLflow or W&B
-to log and compare run results; use a caching engine to guarantee the computation behind
-those runs is reproducible and to avoid recomputing unchanged steps. They sit at different
-layers and are happy together — orchestrators (Airflow, Prefect, Dagster) are a third,
-production-scheduling layer, distinct from the local research loop oryxflow targets.
+to log and compare run results; use a workflow engine to guarantee the computation behind
+those runs is reproducible, and to keep unchanged steps from recomputing. They sit at
+different layers and are happy together — orchestrators (Airflow, Prefect, Dagster) are a
+third, production-scheduling layer, distinct from the local research loop oryxflow targets.
 
 ## Takeaway
 

@@ -1,9 +1,9 @@
 ---
 title: Why oryxflow
-description: oryxflow makes AI-driven data analysis faster, cheaper, and more trustworthy — reproducible, lineage-tracked Python pipelines that rerun only what changed, for humans and AI coding agents alike.
+description: oryxflow makes AI data analysis trustworthy and reproducible — lineage-tracked Python pipelines that never build a result on stale data and record the code and inputs behind every number, with caching so the rigor costs you nothing.
 faq:
   - q: "Is there a lightweight alternative to Airflow for a data science project?"
-    a: "Yes — oryxflow is a local-first Python library built for the research loop rather than production ops: pip install oryxflow, no server, scheduler, database, or account. Airflow's job is running scheduled pipelines on real infrastructure with retries and alerting; oryxflow's job is making one analyst's pipeline fast and trustworthy to iterate on, caching each step and rerunning exactly what a code, data, or parameter change affects. If you're reaching for Airflow only to get dependency order and caching on your laptop, oryxflow is the smaller tool that does that part."
+    a: "Yes — oryxflow is a local-first Python library built for the research loop rather than production ops: pip install oryxflow, no server, scheduler, database, or account. Airflow's job is running scheduled pipelines on real infrastructure with retries and alerting; oryxflow's job is making one analyst's pipeline trustworthy to iterate on — rerunning exactly what a code, data, or parameter change affects, and caching the rest so that rigor costs nothing. If you're reaching for Airflow only to get dependency order and caching on your laptop, oryxflow is the smaller tool that does that part."
   - q: "Is oryxflow an MLflow alternative?"
     a: "Not a replacement — a complement, and they answer different questions. MLflow tracks and charts experiment runs, so it tells you which run scored 0.91; oryxflow decides what actually has to rerun to reproduce that run and whether its inputs are stale. Keep logging metrics to MLflow or Weights & Biases from inside your oryxflow tasks. If what you wanted from a tracker was really caching and reproducible reruns rather than a dashboard, oryxflow covers that on its own with no server or account."
   - q: "How do I make my data science workflow reproducible?"
@@ -16,12 +16,13 @@ faq:
     a: "Yes, and that's the recommended way in: start with plain exploratory scripts, then let the work grow into a pipeline. The Claude Code plugin gives exploration a home — read-only probes under eda/, with findings written up as you go — and when a probe turns out to be load-bearing, /oryxflow:migrate lifts what you already wrote into cached tasks. You get a first look at a dataset without ceremony and a reproducible pipeline once the analysis earns one, with no rewrite in between."
 ---
 
-# Why oryxflow
+# Why oryxflow: trustworthy, reproducible data science
 
-**oryxflow makes data-science work faster, cheaper, and more trustworthy** — it turns an
-analysis script into a reproducible pipeline that records how every result was made and reruns
-only what actually changed. It's a pip-installable Python library with no server, no database,
-and no account: your code, your cache, your repo.
+**oryxflow makes data-science work trustworthy and reproducible** — it turns an analysis script
+into a pipeline where no result can quietly sit on stale data, and every result records the code
+and inputs that made it, so you can regenerate it later. Being that careful normally costs you
+rerun time; here it doesn't, because nothing is ever computed twice. It's a pip-installable Python
+library with no server, no database, and no account: your code, your cache, your repo.
 
 If you only remember one thing: oryxflow is the layer that makes an iterative analysis
 **trustworthy** — for you, your teammates, and the AI coding agent writing half the code.
@@ -47,28 +48,29 @@ erode trust in the result long before anyone questions the math:
 None of these are math errors. They're **trust** errors — in the mechanics of the pipeline. And
 they get worse, not better, as an AI agent writes more of the code.
 
-## What oryxflow gives you
+## What oryxflow gives you: trustworthy, reproducible data science
 
-- **No storage or parameter boilerplate.** You never name a file, build a path, or track which
-  settings produced which output. `self.save(df)` puts it away, `flow.outputLoad()` gets it back,
-  and oryxflow works out where it lives from the task and its parameters.
+- **Reruns exactly what changed.** Change a parameter, a data input, or a task's code and exactly
+  the affected outputs rebuild — you can't accidentally evaluate a new model on old features, so a
+  number can't quietly sit on stale inputs.
 - **Reproducibility by default.** Every output is tied to the exact task, parameters, and code
   version that produced it. "Can I reproduce last week's result?" becomes yes, mechanically.
 - **Lineage you can query.** oryxflow records what ran, when, with which parameters and code,
   and *why* it recomputed. "Is this stale? Was it built with current code?" are queries, not
   guesses.
-- **Reruns exactly what changed.** Change a parameter, a data input, or a task's code and exactly
-  the affected outputs rebuild — you can't accidentally evaluate a new model on old features.
-- **Speed and cost savings.** Completed steps load from cache instead of recomputing, so the
-  edit–run loop drops from minutes to seconds. An AI agent stops paying — in time and tokens — to
-  redo expensive work it already did.
-- **AI-agent reliability.** The same cache and lineage log become an agent's memory across
+- **No storage or parameter boilerplate.** You never name a file, build a path, or track which
+  settings produced which output. `self.save(df)` puts it away, `flow.outputLoad()` gets it back,
+  and oryxflow works out where it lives from the task and its parameters.
+- **And it costs you less, not more.** Reproducibility is normally a tax you pay in rerun time.
+  Here it isn't: completed steps load from cache instead of recomputing, so the edit–run loop drops
+  from minutes to seconds, and an AI agent stops paying — in time and tokens — to redo expensive
+  work it already did.
+- **AI-agent reliability.** The same lineage log and cache become an agent's memory across
   sessions. The companion [Claude Code plugin](claude-plugin/index.md) ships these disciplines
-  as an auto-activating skill, so the agent uses the cache correctly instead of trusting stale
+  as an auto-activating skill, so the agent checks that record instead of trusting stale
   state.
 
-Caching is the *engine*. Trust — reproducible, lineage-tracked reruns that update exactly what
-changed — is the *product*.
+**Trust and reproducibility are the product. Caching is just how you get them for free.**
 
 ## No file paths, no parameter bookkeeping
 
@@ -156,8 +158,8 @@ simplicity, automatic *code-aware* invalidation, and always-on lineage.
 
 A few honest specifics:
 
-- **vs notebooks + pickle files** — oryxflow gives you the caching, dependency order, and
-  reproducibility you were hand-rolling, without the stale-`.pkl` graveyard.
+- **vs notebooks + pickle files** — oryxflow gives you the reproducibility, dependency order, and
+  caching you were hand-rolling, without the stale-`.pkl` graveyard.
 - **vs MLflow / W&B** — complementary, not competing. Trackers answer "which run scored 0.91?";
   oryxflow answers "which steps do I actually need to rerun to reproduce it, and are they
   stale?" Keep logging to your tracker *inside* oryxflow tasks. See
@@ -206,9 +208,10 @@ flow.run()                                          # runs GetData, then Process
 df = flow.outputLoad()                              # load the result by name
 ```
 
-Run `flow.run()` again and nothing recomputes — both outputs already exist. Edit
-`ProcessData`'s code and only it (and anything downstream) reruns, automatically. The record of
-what ran and why is written to a lineage log you can query later.
+Edit `ProcessData`'s code and only it (and anything downstream) reruns, automatically — you can't
+test new code against a result the old code produced. The record of what ran and why is written to
+a lineage log you can query later. And run `flow.run()` again with nothing changed and nothing
+recomputes at all: both outputs already exist.
 
 ## Frequently asked questions
 
@@ -216,9 +219,10 @@ what ran and why is written to a lineage log you can query later.
 Yes — oryxflow is a local-first Python library built for the research loop rather than production
 ops: `pip install oryxflow`, no server, scheduler, database, or account. Airflow's job is running
 scheduled pipelines on real infrastructure with retries and alerting; oryxflow's job is making one
-analyst's pipeline fast and trustworthy to iterate on, caching each step and rerunning exactly what a
-code, data, or parameter change affects. If you're reaching for Airflow only to get dependency order
-and caching on your laptop, oryxflow is the smaller tool that does that part.
+analyst's pipeline trustworthy to iterate on — rerunning exactly what a code, data, or parameter
+change affects, and caching the rest so that rigor costs nothing. If you're reaching for Airflow
+only to get dependency order and caching on your laptop, oryxflow is the smaller tool that does
+that part.
 
 **Is oryxflow an MLflow alternative?**
 Not a replacement — a complement, and they answer different questions. MLflow tracks and charts
@@ -258,6 +262,10 @@ without ceremony and a reproducible pipeline once the analysis earns one, with n
 
 - oryxflow makes iterative data analysis **trustworthy**: the right steps rebuild automatically, so
   you always get the result your current code and parameters imply — for humans and AI agents.
+- It makes that analysis **reproducible**: every result is tied to the code and inputs that made
+  it, in a lineage record you can query and regenerate from months later.
+- **The rigor is free.** Finished steps load from cache rather than recomputing, so keeping a
+  pipeline trustworthy makes the edit–run loop faster, not slower.
 - **No storage or parameter boilerplate.** No filenames to invent, no paths to thread through, no
   record of which settings produced which output.
 - It's **local-first and zero-infrastructure**: `pip install oryxflow`, no server or account.

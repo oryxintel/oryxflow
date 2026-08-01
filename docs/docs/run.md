@@ -63,7 +63,7 @@ oryxflow.runIt(TaskTrain)
 
 ## How is a task marked complete?
 
-This is the mechanism behind "don't recompute what's already done" — the thing that lets you re-run a pipeline freely and only pay for what changed. Tasks are complete when task output exists. This is typically the existance of a file, database table or cache. See [Task I/O Formats](targets.md) how task output is stored to understand what needs to exist for a task to be complete.
+This is the check behind every skip: it decides whether an existing result can still be believed or has to be rebuilt — and, because it lets you re-run a pipeline freely and only pay for what changed, it is also why verifying costs so little. Tasks are complete when task output exists. This is typically the existance of a file, database table or cache. See [Task I/O Formats](targets.md) how task output is stored to understand what needs to exist for a task to be complete.
 
 ```python
 flow.get_task().complete() # status
@@ -264,7 +264,7 @@ See [logging](logging.md) for the full guide, including `self.logger`, log level
 
 ## Cloud Storage
 
-Point your pipeline at cloud storage and the whole team reads and writes the same outputs — no one re-runs a task someone else already ran, and results are backed up off your laptop. By default task output is written under the local data directory (`oryxflow.set_dir()`). You can instead store output in cloud storage (S3, GCS, etc.) - oryxflow uses [fsspec](https://github.com/fsspec) / [universal-pathlib](https://pypi.org/project/universal-pathlib/) under the hood, so task code does not change.
+Point your pipeline at cloud storage and the whole team reads and writes the same outputs — everyone builds on the same results instead of a private copy, those results survive off your laptop, and no one re-runs a task someone else already ran. By default task output is written under the local data directory (`oryxflow.set_dir()`). You can instead store output in cloud storage (S3, GCS, etc.) - oryxflow uses [fsspec](https://github.com/fsspec) / [universal-pathlib](https://pypi.org/project/universal-pathlib/) under the hood, so task code does not change.
 
 Install the relevant extra first, e.g. `pip install oryxflow[gcs]` or `pip install oryxflow[s3]` (`cloud-base` for other fsspec protocols), then enable it once before running:
 

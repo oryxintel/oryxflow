@@ -8,7 +8,7 @@ faq:
   - q: "What are Claude Code skills?"
     a: "Claude Code skills are bundles of instructions and conventions the agent loads automatically when they become relevant, so you never invoke them. A skill differs from a slash command, which is an explicit action, and from an MCP server, which is an external data connector. Skills change how the agent works with what is already on your machine. oryxflow ships one for reproducible data science."
   - q: "Is there a Claude Code skill for data science?"
-    a: "Yes. oryxflow ships a Claude Code plugin whose skill auto-activates when you work in an oryxflow project, front-loading the idioms that keep AI-written analysis reproducible: reuse cached work, verify that edits actually reran, and never build on stale data. It is a skill plus slash commands, not an MCP server. Install the plugin once and the skill stays on."
+    a: "Yes. oryxflow ships a Claude Code plugin whose skill auto-activates when you work in an oryxflow project, front-loading the idioms that keep AI-written analysis trustworthy and reproducible: never build on stale data, verify that edits actually reran, and reuse finished work instead of recomputing it. It is a skill plus slash commands, not an MCP server. Install the plugin once and the skill stays on."
   - q: "What does a data-science skill for Claude Code do?"
     a: "A data-science skill teaches the agent how to work, not what data to fetch. It has the agent read cache state at session start, verify after each edit that the right steps reran, answer staleness or expensive-recompute prompts deliberately, and record lineage as memory across sessions. The oryxflow skill encodes exactly this reproducibility discipline."
 ---
@@ -93,19 +93,21 @@ Concretely, it has the agent:
 ## A worked example: the oryxflow skill
 
 [oryxflow](https://github.com/oryxintel/oryxflow) is a local-first Python library that turns
-scripts and notebooks into a cached, dependency-aware task graph: you declare tasks with
-parameters and `requires()` dependencies, and the engine runs them in order, skips whatever's
-already computed, and reruns exactly what a parameter, data, or **code** change affects.
+scripts and notebooks into a dependency-aware task graph: you declare tasks with parameters and
+`requires()` dependencies, and the engine runs them in order and reruns exactly what a parameter,
+data, or **code** change affects — while recording what ran, with which code, to a local lineage
+log. Anything genuinely unchanged loads from disk rather than recomputing, which is what keeps
+that guarantee cheap.
 
 The oryxflow plugin ships a **skill plus slash commands** — not an MCP server. The `oryxflow`
 skill auto-activates when you work in an oryxflow project and front-loads the correct idioms so
-the agent reuses cached work, verifies its own edits, and never builds on stale data. The slash
-commands cover the explicit actions: `/oryxflow:init-project` to scaffold, `/oryxflow:migrate`
-to restructure a loose notebook into a pipeline, `/oryxflow:check-standards` to keep names and
-docstrings consistent.
+the agent never builds on stale data, verifies its own edits actually reran, and reuses finished
+work instead of recomputing it. The slash commands cover the explicit actions:
+`/oryxflow:init-project` to scaffold, `/oryxflow:migrate` to restructure a loose notebook into a
+pipeline, `/oryxflow:check-standards` to keep names and docstrings consistent.
 
-The result is the brand promise, delivered mechanically: **faster, cheaper, and more trustworthy
-AI data analysis** — reproducible and lineage-tracked by default.
+The result is the brand promise, delivered mechanically: **trustworthy, reproducible AI data
+analysis** — lineage-tracked by default, and cheaper to run than the loose scripts it replaces.
 
 ## How to use skills for data science
 
@@ -155,9 +157,10 @@ reproducible data science.
 ### Is there a Claude Code skill for data science?
 
 Yes. oryxflow ships a Claude Code plugin whose skill auto-activates when you work in an oryxflow
-project, front-loading the idioms that keep AI-written analysis reproducible: reuse cached work,
-verify that edits actually reran, and never build on stale data. It is a skill plus slash
-commands, not an MCP server. Install the plugin once and the skill stays on.
+project, front-loading the idioms that keep AI-written analysis trustworthy and reproducible:
+never build on stale data, verify that edits actually reran, and reuse finished work instead of
+recomputing it. It is a skill plus slash commands, not an MCP server. Install the plugin once and
+the skill stays on.
 
 ### What does a data-science skill for Claude Code do?
 

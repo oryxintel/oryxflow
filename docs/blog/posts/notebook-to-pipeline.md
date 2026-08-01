@@ -5,12 +5,12 @@ categories:
   - Reproducibility
 description: A step-by-step guide to converting a linear Python notebook into a reproducible, cached pipeline with oryxflow — incrementally, without a rewrite.
 faq:
+  - q: "Why do I get different numbers when I rerun a notebook a week later?"
+    a: "Usually it's hidden state, out-of-order cell execution, or stale intermediate results that never refreshed after an upstream change — none of which surface as errors, they just quietly make your output wrong. oryxflow removes all three by declaring each step as a task with explicit dependencies: the engine runs them in the right order, stores each output under an id derived from its code and parameters, and reruns a step whenever its code or inputs actually change."
   - q: "How do I convert a Jupyter notebook into a reproducible pipeline?"
-    a: "Migrate incrementally rather than rewriting. Wrap your slowest step — usually the data load — in an oryxflow task that ends with self.save(), run it once so the result caches, then feed the rest of your notebook from that cached output. Add one step at a time with @oryxflow.requires to wire dependencies. You keep a working pipeline at every stage, and each output is tied to the exact code and parameters that produced it."
+    a: "Migrate incrementally rather than rewriting. Wrap your slowest step — usually the data load — in an oryxflow task that ends with self.save(), run it once so the result is stored, then feed the rest of your notebook from that output. Add one step at a time with @oryxflow.requires to wire dependencies. You keep a working pipeline at every stage, and each output is tied to the exact code and parameters that produced it."
   - q: "Do I have to rewrite my whole notebook at once to use oryxflow?"
     a: "No — that's the point of migrating incrementally. Start by converting the single step that hurts most, usually the slow load, and leave the rest of your cells untouched, now fed by flow.outputLoad(). You have a working pipeline after every step, and you only pull the next step into a task when it earns it. oryxflow is designed for this one-step-at-a-time conversion, not a big-bang rewrite."
-  - q: "Why do I get different numbers when I rerun a notebook a week later?"
-    a: "Usually it's hidden state, out-of-order cell execution, or stale intermediate results that never refreshed after an upstream change — none of which surface as errors, they just quietly make your output wrong. oryxflow removes all three by declaring each step as a task with explicit dependencies: the engine runs them in the right order, caches each output under an id derived from its code and parameters, and reruns a step only when its code or inputs actually change."
 ---
 
 # From notebook to a reproducible, cached pipeline in Python
@@ -25,7 +25,7 @@ While you are exploring, cells run out of order, variables linger in memory long
 
 The usual culprits are hidden state (a variable that only exists because you ran a cell you have since deleted), out-of-order execution, and stale intermediates that never got refreshed after an upstream change. None of these show up as errors. They just quietly make your output wrong.
 
-**oryxflow is a small Python library that lets you declare each step of your analysis as a task — with its parameters and its dependencies — so the library runs them in the right order, caches each output, and reruns a step only when its code or inputs actually change.** The payoff is that every result is tied to the exact code and parameters that produced it. That is reproducibility you get for free, not reproducibility you have to remember to maintain.
+**oryxflow is a small Python library that ties every result to the exact code and parameters that produced it.** You declare each step of your analysis as a task — with its parameters and its dependencies — and the library runs them in the right order and reruns a step whenever its code or inputs actually change, so nothing you look at is quietly built on something you edited an hour ago. That is reproducibility you get for free, not reproducibility you have to remember to maintain. And because the steps that *didn't* change are never recomputed, you get it without paying for it in rerun time.
 
 The good news: you do not rewrite your notebook to get there. You migrate it one step at a time, and you have a working pipeline after every single step.
 
@@ -148,16 +148,16 @@ If you use Claude Code, the oryxflow plugin's `/oryxflow:migrate` command walks 
 
 ## Frequently asked questions
 
+### Why do I get different numbers when I rerun a notebook a week later?
+
+Usually it's hidden state, out-of-order cell execution, or stale intermediate results that never refreshed after an upstream change — none of which surface as errors, they just quietly make your output wrong. oryxflow removes all three by declaring each step as a task with explicit dependencies: the engine runs them in the right order, stores each output under an id derived from its code and parameters, and reruns a step whenever its code or inputs actually change.
+
 ### How do I convert a Jupyter notebook into a reproducible pipeline?
 
-Migrate incrementally rather than rewriting. Wrap your slowest step — usually the data load — in an oryxflow task that ends with `self.save()`, run it once so the result caches, then feed the rest of your notebook from that cached output. Add one step at a time with `@oryxflow.requires` to wire dependencies. You keep a working pipeline at every stage, and each output is tied to the exact code and parameters that produced it.
+Migrate incrementally rather than rewriting. Wrap your slowest step — usually the data load — in an oryxflow task that ends with `self.save()`, run it once so the result is stored, then feed the rest of your notebook from that output. Add one step at a time with `@oryxflow.requires` to wire dependencies. You keep a working pipeline at every stage, and each output is tied to the exact code and parameters that produced it.
 
 ### Do I have to rewrite my whole notebook at once to use oryxflow?
 
 No — that's the point of migrating incrementally. Start by converting the single step that hurts most, usually the slow load, and leave the rest of your cells untouched, now fed by `flow.outputLoad()`. You have a working pipeline after every step, and you only pull the next step into a task when it earns it. oryxflow is designed for this one-step-at-a-time conversion, not a big-bang rewrite.
-
-### Why do I get different numbers when I rerun a notebook a week later?
-
-Usually it's hidden state, out-of-order cell execution, or stale intermediate results that never refreshed after an upstream change — none of which surface as errors, they just quietly make your output wrong. oryxflow removes all three by declaring each step as a task with explicit dependencies: the engine runs them in the right order, caches each output under an id derived from its code and parameters, and reruns a step only when its code or inputs actually change.
 
 Next steps: [Why oryxflow](../../docs/why-oryxflow.md) · [Transition guide](../../docs/transition.md) · [Quickstart](../../docs/quickstart.md) · [Claude Code plugin](../../docs/claude-plugin/index.md) · [GitHub](https://github.com/oryxintel/oryxflow)

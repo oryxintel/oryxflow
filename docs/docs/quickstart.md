@@ -1,6 +1,6 @@
 # Quickstart
 
-oryxflow turns a data-science script into a pipeline of **tasks**. You declare each step as a task: what it *depends on* and what it *produces*. The engine runs them in the right order, skips anything already computed, and lets you load any result by name. No manual file paths, no re-running the slow steps to test a fast one.
+oryxflow turns a data-science script into a pipeline of **tasks**, so you can believe the numbers it produces and regenerate them later. You declare each step as a task: what it *depends on* and what it *produces*. The engine runs them in the right order, so no result quietly sits on stale inputs, and every output stays tied to the code and parameters that made it — you can load any result by name and see what produced it. Because nothing is computed twice, that rigor costs you nothing: no manual file paths, no re-running the slow steps to test a fast one.
 
 This page gets you from nothing to a running pipeline. For installation, follow the [GitHub instructions](https://github.com/oryxintel/oryxflow#installation) (`pip install oryxflow`).
 
@@ -50,7 +50,7 @@ df = flow.outputLoad()  # load ProcessData's result by referencing the flow
 print(df.head())
 ```
 
-Run `flow.run()` **again** and nothing happens — both outputs already exist, so the engine skips them. That is the core payoff: re-running a pipeline only pays for what actually changed.
+Run `flow.run()` **again** and nothing happens — both outputs already exist, so the engine skips them. This is what keeps checking your work cheap: you can re-run the whole pipeline whenever you want to confirm a result still holds, and only pay for what actually changed.
 
 Nothing to configure first: outputs go to `data/`, one file per task and parameter set, named for you. To keep them somewhere else, call `oryxflow.set_dir('other/')` before you run.
 
@@ -136,7 +136,7 @@ print(flow.outputLoadMeta())          # scores from the metadata sidecars
 models = flow.outputLoad(ModelTrain)  # {'ols': <fitted model>, 'gbm': <fitted model>}
 ```
 
-Notice that `GetDiabetes` runs only once even though two models are trained — the engine sees its output is already complete and shares it across both flows. That is the whole point: expensive, shared steps are computed once and reused.
+Notice that `GetDiabetes` runs only once even though two models are trained — the engine sees its output is already complete and shares it across both flows. So the comparison is honest, both models are scored on data from the same run, and it stays cheap, because expensive shared steps are computed once and reused.
 
 !!! tip
 

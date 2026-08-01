@@ -15,10 +15,10 @@
 site_name: oryxflow
 site_url: https://docs.oryxflow.dev/
 site_description: >-
-  oryxflow is an open-source Python library and Claude Code plugin for more trustworthy, faster,
-  cheaper AI data analysis: it reruns exactly what a parameter, data, or code change affects and
-  records how each result was made, so nothing is ever built on stale data — a reproducible,
-  lineage-tracked, cached pipeline, local-first, no server or account.
+  oryxflow is an open-source Python library and Claude Code plugin for trustworthy, reproducible
+  AI data analysis: no result is ever built on stale data, every result records the code and
+  inputs that made it, and because finished steps are never recomputed the trustworthy path is
+  also the fast, cheap one — lineage-tracked pipelines, local-first, no server or account.
 site_author: Oryx Intelligence LLC
 copyright: Copyright &copy; 2026 Oryx Intelligence LLC
 
@@ -172,8 +172,8 @@ plugins:
           - docs/claude-code-for-data-science.md
           - docs/ai-ready.md
           - docs/claude-plugin/index.md
-          - docs/claude-plugin/commands.md
           - docs/claude-plugin/trust.md
+          - docs/claude-plugin/commands.md
           - docs/claude-plugin/project-structure.md
           - docs/claude-plugin/coding-standards.md
           - docs/claude-plugin/why.md
@@ -240,8 +240,8 @@ nav:
       - Claude Code for data science: docs/claude-code-for-data-science.md
       - Built for AI coding agents: docs/ai-ready.md
       - docs/claude-plugin/index.md
-      - Commands: docs/claude-plugin/commands.md
       - Trustworthy AI data analysis: docs/claude-plugin/trust.md
+      - Commands: docs/claude-plugin/commands.md
       - Data-science project structure: docs/claude-plugin/project-structure.md
       - Stop AI data analysis turning into a mess: docs/claude-plugin/coding-standards.md
       - Why library + plugin: docs/claude-plugin/why.md

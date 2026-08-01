@@ -5,15 +5,18 @@ description: Plain-language definitions of the oryxflow concepts — reproducibl
 
 # oryxflow glossary
 
-Short, plain-language definitions of the terms used across these docs and in oryxflow itself.
-Each entry links to where the concept is covered in full.
+Short, plain-language definitions of the terms used across these docs and in oryxflow itself — the
+vocabulary of reproducible data science, from task DAGs and lineage through to Claude Code plugins
+and skills. Each entry links to where the concept is covered in full.
 
 ## What is a reproducible pipeline?
 
 A reproducible pipeline is an analysis where every output can be traced to the exact code,
 parameters, and inputs that produced it — so you can recreate any result on demand. oryxflow makes
-your data-science work reproducible by default: each step is a cached task tied to its inputs and
-code. See [Why oryxflow](why-oryxflow.md).
+your data-science work reproducible by default: each step is a task whose identity comes from its
+code and its inputs, so a result is never attributed to code that didn't produce it. Its output is
+saved under that identity, which is also what makes regenerating it cheap. See
+[Why oryxflow](why-oryxflow.md).
 
 ## What is data lineage (provenance)?
 
@@ -32,9 +35,9 @@ everything downstream. See [Managing workflows](managing-workflows.md#automatic-
 ## What is a task DAG?
 
 A task DAG (directed acyclic graph) is your analysis expressed as steps — tasks — connected by
-their dependencies, with no cycles. oryxflow runs the tasks in dependency order, skips any whose
-output already exists, and reruns only what a change affects. You declare each task; the engine
-works out the order. See [Writing tasks](tasks.md).
+their dependencies, with no cycles. You declare each task; the engine works out the order, so a
+step can never run before the step it depends on. A change reruns exactly what it affects, and
+everything it doesn't affect is served from its saved output. See [Writing tasks](tasks.md).
 
 ## What is the difference between a Claude Code plugin, a skill, and a slash command?
 
@@ -55,15 +58,18 @@ See [Build with Claude Code](claude-plugin/index.md) and
 ## What is a cached intermediate?
 
 A cached intermediate is the saved output of a pipeline step, reused instead of recomputed on the
-next run. oryxflow caches every task's output by its identity, so re-running a pipeline only pays
-for what actually changed — no hand-rolled pickle files to manage or accidentally leave stale. See
-[Task I/O formats](targets.md).
+next run. oryxflow saves every task's output under the identity of the code and parameters that
+made it, so an intermediate can't be handed to you as current once either has changed — the thing
+that goes wrong with hand-rolled pickle files. Reuse is the payoff: re-running a pipeline only pays
+for what actually changed. See [Task I/O formats](targets.md).
 
 ## What is a parameter sweep?
 
 A parameter sweep runs the same analysis across many configurations — model × features × window —
-to compare results. oryxflow computes each shared upstream step once and reruns only what each
-configuration changes, so a sweep costs far less than re-running everything per combination. See
+to compare results. In oryxflow each configuration's output is kept separately under the parameters
+that produced it, so the comparison is between results you can each trace back, not files that
+overwrote one another. Only what a configuration actually changes is recomputed — the shared
+upstream steps run once — so a sweep costs far less than re-running everything per combination. See
 [Parameter sweeps without rerunning](../blog/posts/parameter-sweeps-without-rerunning.md).
 
 ## What is a task id and task family?

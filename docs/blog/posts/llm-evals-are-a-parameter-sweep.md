@@ -6,11 +6,11 @@ categories:
 description: Every LLM eval question reduces to one shape — a labeled dataset, run under N configurations, compared. That's a parameter sweep, and it already has good tooling. Use pydantic-evals for scoring and a caching DAG for the matrix.
 faq:
   - q: "Are LLM evals just a parameter sweep?"
-    a: "Structurally, yes. Is my classifier right, did my prompt change help, and is the cheap model good enough are all the same shape underneath: a labeled dataset, run under N configurations, compared. Cases, scorers, models, prompt variants and repetitions are the axes of a grid, which makes an eval matrix a Cartesian product over parameters — exactly what parameter-sweep tooling has handled well for a decade. What is genuinely new is the scoring, and pydantic-evals covers that."
-  - q: "Do I need an LLM eval platform, or can I use a normal workflow tool?"
-    a: "You need both, for different jobs. A platform earns its cost for live traces and a UI to click through failures, which is a real problem well solved. The matrix and the persistence are not LLM-specific — one cached output per parameter set is ordinary data-science plumbing, and doing it with a caching workflow engine means adding a model to your grid runs only that model instead of re-metering cells whose results already exist on your disk."
+    a: "Structurally, yes. \"Is my classifier right\", \"did my prompt change help\", and \"is the cheap model good enough\" are all the same shape underneath: a labeled dataset, run under N configurations, compared. Cases, scorers, models, prompt variants and repetitions are the axes of a grid, which makes an eval matrix a Cartesian product over parameters — exactly what parameter-sweep tooling has handled well for a decade. What is genuinely new is the scoring, and pydantic-evals covers that."
   - q: "How do I make sure my model comparison is apples-to-apples?"
     a: "Share the upstream. If the dataset build is its own cached task that every configuration depends on, all models are scored against byte-for-byte identical cases — not because you were careful, but because there is only one dataset output to read. That removes the quiet failure where you regenerated the case set halfway through a sweep and half your comparison is against a different denominator."
+  - q: "Do I need an LLM eval platform, or can I use a normal workflow tool?"
+    a: "You need both, for different jobs. A platform earns its cost for live traces and a UI to click through failures, which is a real problem well solved. The matrix and the persistence are not LLM-specific — one cached output per parameter set is ordinary data-science plumbing, and doing it with a caching workflow engine means adding a model to your grid runs only that model instead of re-metering cells whose results already exist on your disk."
   - q: "Should the repetition index be a task parameter in an LLM eval?"
     a: "Make it a parameter when repetitions are expensive. Each rep then caches separately, so extending a three-rep study to five runs exactly two new evaluations instead of all five. The trade-off is a larger DAG. If repetitions are cheap, use pydantic-evals' repeat argument instead — one cached unit covers every rep, giving a smaller graph but a coarser cache, so changing the count re-runs the whole thing."
 ---
@@ -38,7 +38,7 @@ Some of what those platforms sell is genuinely new and genuinely worth paying fo
 ## The division of labor
 
 - **[pydantic-evals](https://pydantic.dev/docs/ai/evals/)** — scoring. Cases, evaluators, reports. This is the new part.
-- **[oryxflow](https://github.com/oryxintel/oryxflow)** — the matrix and persistence. One cached output per parameter set.
+- **[oryxflow](https://github.com/oryxintel/oryxflow)** — the matrix, the persistence, and the provenance. One cached output per parameter set, tied to the code and parameters that produced it.
 - **Logfire** (or your platform of choice) — traces and the debugging UI.
 
 Nothing overlaps, which is the whole point. Each layer does one job and none of them needs to know about the others.
@@ -149,11 +149,9 @@ df[df.expected == 'needs_web'].groupby('model')['correct'].mean()  # what matter
 
 Here's why this framing pays, beyond tidiness.
 
+**Trustworthy comparison.** This is the one people underrate. If the dataset build is itself a cached upstream task, every configuration reads the *same* output — not because you were careful, but because there is only one output to read. That kills the quiet failure mode where you regenerated the case set midway through a sweep and half your comparison is against a different denominator. The comparison is apples-to-apples by construction — the same reason [parameter sweeps over shared features](parameter-sweeps-without-rerunning.md) are trustworthy in ordinary ML work: the shared upstream is computed once, so there's nothing to accidentally desynchronize.
+
 **Marginal cost.** Add a fourth model and only the fourth model runs. The six existing cells load from disk in milliseconds. For ordinary data work that's convenience — you saved some CPU. For LLM evals it's money, and it compounds with every axis: a 300-case set across three models and two prompts is 1,800 calls, and adding a model without caching means re-running all 2,400 instead of the 600 that are new. Under per-score metered billing you re-meter the cached cells too, so you pay twice for the privilege of not learning anything new.
-
-**Trustworthy comparison.** If the dataset build is itself a cached upstream task, every configuration reads the *same* output — not because you were careful, but because there is only one output to read. That kills the quiet failure mode where you regenerated the case set midway through a sweep and half your comparison is against a different denominator. The comparison is apples-to-apples by construction.
-
-That second property is the one people underrate. It's the same reason [parameter sweeps over shared features](parameter-sweeps-without-rerunning.md) are trustworthy in ordinary ML work: the shared upstream is computed once, so there's nothing to accidentally desynchronize.
 
 ## What ran, and why
 
@@ -225,13 +223,13 @@ pip install oryxflow pydantic-evals
 
 Structurally, yes. "Is my classifier right", "did my prompt change help", and "is the cheap model good enough" are all the same shape underneath: a labeled dataset, run under N configurations, compared. Cases, scorers, models, prompt variants and repetitions are the axes of a grid, which makes an eval matrix a Cartesian product over parameters — exactly what parameter-sweep tooling has handled well for a decade. What is genuinely new is the scoring, and pydantic-evals covers that.
 
-### Do I need an LLM eval platform, or can I use a normal workflow tool?
-
-You need both, for different jobs. A platform earns its cost for live traces and a UI to click through failures, which is a real problem well solved. The matrix and the persistence are not LLM-specific — one cached output per parameter set is ordinary data-science plumbing, and doing it with a caching workflow engine means adding a model to your grid runs only that model instead of re-metering cells whose results already exist on your disk.
-
 ### How do I make sure my model comparison is apples-to-apples?
 
 Share the upstream. If the dataset build is its own cached task that every configuration depends on, all models are scored against byte-for-byte identical cases — not because you were careful, but because there is only one dataset output to read. That removes the quiet failure where you regenerated the case set halfway through a sweep and half your comparison is against a different denominator.
+
+### Do I need an LLM eval platform, or can I use a normal workflow tool?
+
+You need both, for different jobs. A platform earns its cost for live traces and a UI to click through failures, which is a real problem well solved. The matrix and the persistence are not LLM-specific — one cached output per parameter set is ordinary data-science plumbing, and doing it with a caching workflow engine means adding a model to your grid runs only that model instead of re-metering cells whose results already exist on your disk.
 
 ### Should the repetition index be a task parameter in an LLM eval?
 

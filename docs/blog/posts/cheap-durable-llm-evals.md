@@ -76,7 +76,7 @@ Change one prompt variant under that model and 36,000 score-equivalents recomput
 The rest of this post wires that up in about sixty lines. The division of labor:
 
 - **[pydantic-evals](https://pydantic.dev/docs/ai/evals/)** — scoring. Cases, evaluators, reports. Open source, free.
-- **[oryxflow](https://github.com/oryxintel/oryxflow)** — the matrix and persistence. One cached output per parameter set.
+- **[oryxflow](https://github.com/oryxintel/oryxflow)** — the matrix, the persistence, and the provenance. One cached output per parameter set, tied to the code and parameters that produced it.
 - **Logfire** (or your platform of choice) — traces and the debugging UI, which is where observability spend is genuinely well placed.
 
 Nothing overlaps.

@@ -83,8 +83,13 @@ a right one, from a mistake that raised no error. The realistic response isn't t
 is careful; it's to keep the work on a footing where results are reproducible, reruns are
 checkable, and silent errors are caught by habit. The library provides that footing; the plugin
 supplies the habits. Together they don't make the agent trustworthy — they make its work **cheap
-to verify**. That's the more useful thing, and the whole point of *faster, cheaper, and more
-trustworthy* AI data analysis.
+to verify**. That's the more useful thing.
+
+And note what it *doesn't* cost you. Verification is usually a tax: to check a result you rerun
+the analysis, which takes the afternoon you didn't have. Here it doesn't, because only what
+actually changed recomputes — the caching underneath is an implementation detail, but the effect
+is that the trustworthy path is also the quickest one. You never have to choose between checking
+the work and getting on with it.
 
 **Read next**
 

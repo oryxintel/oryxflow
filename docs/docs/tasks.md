@@ -2,7 +2,7 @@
 
 ## What are tasks?
 
-A task is one step of your analysis — load the data, clean it, train the model — packaged so oryxflow can manage it for you. Instead of a loose function plus a hand-written line to read its input file and another to write its output, you declare what a task **depends on** and what it **produces**, and the engine handles the rest: it runs upstream steps first, skips anything already computed, and hands each task its inputs already loaded. Tasks are the main object you will be interacting with. They let you:
+A task is one step of your analysis — load the data, clean it, train the model — packaged so oryxflow can manage it for you. Instead of a loose function plus a hand-written line to read its input file and another to write its output, you declare what a task **depends on** and what it **produces**, and the engine handles the rest: it runs upstream steps first so nothing is computed from stale input, hands each task its inputs already loaded, and reuses anything already computed rather than redoing it. Tasks are the main object you will be interacting with. They let you:
 
 - define input dependency tasks — so you declare the pipeline order once instead of re-wiring it every run
 

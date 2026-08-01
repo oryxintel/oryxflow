@@ -5,12 +5,12 @@ categories:
   - AI agents
 description: AI agents like Claude Code now write real data science pipelines — feature engineering, model training, experiment sweeps. Here's the honest account of where they fail at it, and why a lightweight workflow library removes exactly those failures.
 faq:
-  - q: "How do I stop an AI coding agent from rerunning expensive steps?"
-    a: "Wrap the work in a caching workflow engine so each step is cached by identity. When the agent iterates, completed tasks load from cache instead of recomputing, so the big join or model fit runs once, not every turn. oryxflow does this: declare steps as tasks with dependencies, and it skips any task whose output already exists, so the agent's run-edit loop stops being a recompute tax."
-  - q: "How do I keep an AI agent from building on stale data?"
-    a: "The failure is silent: the agent edits feature code, forgets to regenerate the saved output, and trains on stale data with no error raised. A caching engine that tracks task code fixes it, because editing a step makes the next run recompute that step and everything downstream automatically. oryxflow does this via source-level code-change invalidation, so you never evaluate new code on old output."
   - q: "How do I trust analysis an AI agent wrote — is it reproducible?"
-    a: "Trust comes from structure, not from the agent's confidence. Put the analysis in a caching DAG that reruns exactly what a code or data change affects and records what ran to a greppable lineage log. oryxflow gives you that: automatic code-change invalidation with downstream propagation, plus a .oryxflow/events.jsonl trail. Reproducible is not the same as correct — the DAG makes a wrong pipeline faithfully reproducible too, so judgment stays yours."
+    a: "Trust comes from structure, not from the agent's confidence. Put the analysis in a DAG that reruns exactly what a code or data change affects and records what ran to a greppable lineage log. oryxflow gives you that: automatic code-change invalidation with downstream propagation, plus a .oryxflow/events.jsonl trail. Reproducible is not the same as correct — the DAG makes a wrong pipeline faithfully reproducible too, so judgment stays yours."
+  - q: "How do I keep an AI agent from building on stale data?"
+    a: "The failure is silent: the agent edits feature code, forgets to regenerate the saved output, and trains on stale data with no error raised. An engine that tracks task code fixes it, because editing a step makes the next run recompute that step and everything downstream automatically. oryxflow does this via source-level code-change invalidation, so you never evaluate new code on old output."
+  - q: "How do I stop an AI coding agent from rerunning expensive steps?"
+    a: "The same task identity that keeps results honest also makes reuse safe: because each step is keyed on its code, inputs and parameters, anything genuinely unchanged can load from disk instead of recomputing, so the big join or model fit runs once rather than every turn. In oryxflow that is automatic — the agent's run-edit loop stops being a recompute tax, which is what stops reproducibility from costing you time."
 ---
 
 # Why a caching DAG makes your AI coding agent a better data scientist
@@ -291,29 +291,29 @@ data-engineering *trustworthy* enough that the judgment is worth having.
 
 ## Frequently asked questions
 
-### How do I stop an AI coding agent from rerunning expensive steps?
-
-Wrap the work in a caching workflow engine so each step is cached by identity. When the agent
-iterates, completed tasks load from cache instead of recomputing, so the big join or model fit
-runs once, not every turn. oryxflow does this: declare steps as tasks with dependencies, and it
-skips any task whose output already exists, so the agent's run-edit loop stops being a recompute
-tax.
-
-### How do I keep an AI agent from building on stale data?
-
-The failure is silent: the agent edits feature code, forgets to regenerate the saved output, and
-trains on stale data with no error raised. A caching engine that tracks task code fixes it,
-because editing a step makes the next run recompute that step and everything downstream
-automatically. oryxflow does this via source-level code-change invalidation, so you never
-evaluate new code on old output.
-
 ### How do I trust analysis an AI agent wrote — is it reproducible?
 
-Trust comes from structure, not from the agent's confidence. Put the analysis in a caching DAG
+Trust comes from structure, not from the agent's confidence. Put the analysis in a DAG
 that reruns exactly what a code or data change affects and records what ran to a greppable
 lineage log. oryxflow gives you that: automatic code-change invalidation with downstream
 propagation, plus a .oryxflow/events.jsonl trail. Reproducible is not the same as correct — the
 DAG makes a wrong pipeline faithfully reproducible too, so judgment stays yours.
+
+### How do I keep an AI agent from building on stale data?
+
+The failure is silent: the agent edits feature code, forgets to regenerate the saved output, and
+trains on stale data with no error raised. An engine that tracks task code fixes it,
+because editing a step makes the next run recompute that step and everything downstream
+automatically. oryxflow does this via source-level code-change invalidation, so you never
+evaluate new code on old output.
+
+### How do I stop an AI coding agent from rerunning expensive steps?
+
+The same task identity that keeps results honest also makes reuse safe: because each step is
+keyed on its code, inputs and parameters, anything genuinely unchanged can load from disk instead
+of recomputing, so the big join or model fit runs once rather than every turn. In oryxflow that is
+automatic — the agent's run-edit loop stops being a recompute tax, which is what stops
+reproducibility from costing you time.
 
 ```bash
 pip install oryxflow

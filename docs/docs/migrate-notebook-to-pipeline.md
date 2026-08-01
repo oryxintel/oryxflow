@@ -121,9 +121,10 @@ parameters — are covered in the [transition guide](transition.md); the
 narrative if you'd rather read it start to finish.
 
 Start with the step that hurts most, which is almost always the slow load. Wrap it in a task, run
-it once, and feed the rest of your existing cells from `flow.outputLoad()`. You've gained caching
-and lineage for the expensive part while rewriting almost nothing — and you can stop there for a
-week if you want.
+it once, and feed the rest of your existing cells from `flow.outputLoad()`. That one step already
+buys you the lineage — the result is now tied to the code and parameters that made it — and, since
+it's saved under that identity, you stop paying for the load every time. You rewrote almost
+nothing, and you can stop there for a week if you want.
 
 ## How to cut a notebook into tasks
 
@@ -295,10 +296,10 @@ A migration that runs is not a migration that's right. Four checks, in order:
 3. **Compare a headline number.** Run the flow, then `flow.outputLoad()` the result and check one
    real figure against the same figure in the original. This is the step people skip, and it's the
    only one that catches silently changed behavior.
-4. **Run it twice.** The second `flow.run()` should do nothing at all — every task a cache hit.
-   That's the proof your caching is wired correctly; `print(result.summary())` on the returned
-   result spells out how many tasks ran versus were skipped, and `result.ran` lists exactly which
-   recomputed.
+4. **Run it twice.** The second `flow.run()` should do nothing at all — every task already current.
+   That's the proof the graph is wired correctly and the engine can tell what's fresh;
+   `print(result.summary())` on the returned result spells out how many tasks ran versus were
+   skipped, and `result.ran` lists exactly which recomputed.
 
 <!--phmdoctest-skip-->
 ```python
@@ -319,7 +320,7 @@ Migrating everything is its own kind of mess. Leave two things alone:
   second time you wait for it to recompute something that didn't change.
 - **Production scheduling.** oryxflow is built for the research loop, not for cron, retries,
   alerting, and SLAs across a fleet. If you need those, an orchestrator does that job and oryxflow
-  sits beside it, handling the pipeline's caching and lineage.
+  sits beside it, keeping the pipeline itself reproducible and its lineage on record.
 
 Also not this page: if your project is *already* pipeline-shaped but imports the old `d6tflow`
 package, that's a package rename rather than a restructuring — see

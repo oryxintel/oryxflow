@@ -3,17 +3,19 @@ date: 2026-07-11
 slug: stop-rerunning-your-pipeline
 categories:
   - Caching
-description: How data scientists waste hours recomputing steps that never changed — and a lightweight way to fix it.
+description: Why you rerun everything — you can't tell what's stale — and how declaring your steps as tasks reruns exactly what a change affects, so results stay trustworthy and reruns stay cheap.
 faq:
+  - q: "Can I trust a pipeline that skips steps it has already run?"
+    a: "Only if the decision to skip is made from the identity of the work rather than from a filename you chose. oryxflow derives each task's identity from its code, its inputs, and its parameters, so a step is reused only when all three are unchanged, and it reruns automatically the moment any of them move. A result therefore can't quietly sit on data or logic you have since changed — you get the answer a from-scratch run would give, without paying for the from-scratch run."
   - q: "How do I stop rerunning my whole pipeline when I change one step?"
-    a: "When you edit one step, you want only that step and its downstream to recompute, not the whole script. Model each step as a task with declared dependencies so an engine can run them in dependency order and skip anything already computed. oryxflow does this: it caches each task's output and reruns only the steps a code, data, or parameter change actually affects, so a one-line edit stops triggering a fifteen-minute recompute."
+    a: "When you edit one step, you want only that step and its downstream to recompute, not the whole script. Model each step as a task with declared dependencies so an engine can run them in dependency order and reuse anything whose code, inputs, and parameters are unchanged. oryxflow does this: it reruns exactly the steps a code, data, or parameter change actually affects — so nothing downstream is left sitting on a stale input, and a one-line edit stops triggering a fifteen-minute recompute."
   - q: "How do I make Python reruns only recompute what changed?"
-    a: "Turn your script into tasks that declare what they depend on and what they produce, then let an engine track each task's identity from its code and parameters. When something changes, only the affected tasks are stale. oryxflow, a small local-first Python library, caches every task output and reruns only what changed on the next run, so unchanged upstream steps load from disk instead of recomputing."
+    a: "Turn your script into tasks that declare what they depend on and what they produce, then let an engine track each task's identity from its code and parameters. When something changes, only the affected tasks are stale, and they rerun without you remembering to clear anything. oryxflow, a small local-first Python library, does exactly this: what changed is rebuilt, and unchanged upstream steps load from disk instead of recomputing."
 ---
 
 # Stop rerunning your whole pipeline when one step changes
 
-*How data scientists waste hours recomputing steps that never changed — and a lightweight way to fix it.*
+*You rerun everything because you can't tell what's stale. Fix that, and the rerun gets cheap on its own.*
 
 <!-- more -->
 
@@ -49,15 +51,23 @@ which `.pkl` is stale. You're manually tracking filenames, manually invalidating
 and quietly training models on yesterday's data. This is the single most common way
 machine learning code rots.
 
-## The fix: make each step a task, let the engine cache
+And notice what the fifteen-minute rerun actually is: **the price you pay for not knowing
+what's stale.** You don't rerun `load_data` and `clean` because you think they changed —
+you rerun them because you can't prove they didn't, and a number built on a stale input is
+worse than no number at all. Fix the *knowing*, and the waiting takes care of itself.
+
+## The fix: make each step a task, and let the engine decide what's stale
 
 The clean solution is to stop thinking in *lines of a script* and start thinking in
 *tasks with dependencies* — a DAG. Each task declares what it needs, what it produces,
 and where its output is stored. The engine then:
 
-- runs steps in dependency order,
-- **skips any step whose output already exists**,
-- and reruns **only** the steps affected by a code, data, or parameter change.
+- reruns **every** step affected by a code, data, or parameter change — so a result can't
+  quietly sit on inputs or logic you've since edited,
+- runs steps in dependency order, so nothing is computed from something that hasn't been
+  rebuilt yet,
+- and **reuses any step whose code, inputs, and parameters are unchanged** — which is why
+  correctness here doesn't cost you time.
 
 [`oryxflow`](https://github.com/oryxintel/oryxflow) is a small, dependency-free Python
 library that does exactly this. Here's the pipeline above, rewritten:
@@ -97,14 +107,17 @@ Scheduled 3 tasks
 * 0 failed
 ```
 
-Change `train()` and only `TrainModel` reruns — `GetData` and `BuildFeatures` are served
-from cache. **The fifteen-minute edit-rerun loop becomes eight minutes, then eight
-seconds.** You never wrote a single `if os.path.exists(...)`.
+Change `train()` and only `TrainModel` reruns — `GetData` and `BuildFeatures` are unchanged,
+so their existing outputs are still the right answer. **That's the part that matters: the
+rerun is exact, so you can't evaluate new code against an output the old code produced.**
+The speed is what falls out of it — the fifteen-minute edit-rerun loop becomes eight
+minutes, then eight seconds — and you never wrote a single `if os.path.exists(...)`.
 
-## The part that actually saves you: parameter-aware invalidation
+## Parameter-aware invalidation: every configuration keeps its own answer
 
 The real payoff shows up when you compare models. Add a parameter and oryxflow tracks a
-separate cached output per parameter value automatically:
+separate output per parameter value automatically, so two configurations can never
+overwrite each other's results:
 
 ```python
 @oryxflow.requires(GetData)
@@ -127,22 +140,31 @@ print(flow.outputLoadMeta())
 # {'ols': {'score': 0.74}, 'gbm': {'score': 0.97}}
 ```
 
-Training the second model **does not** rerun `GetData` or `BuildFeatures` — they're shared
-and already cached. oryxflow figures out the minimal set of work for each configuration.
-That's the difference between "sweep five hyperparameters over coffee" and "sweep five
-hyperparameters over lunch."
+Both models are scored against the *same* features — not because you remembered to keep
+them in sync, but because there's only one `BuildFeatures` output for both to read. That's
+what makes the comparison defensible. Training the second model **does not** rerun
+`GetData` or `BuildFeatures`; oryxflow figures out the minimal set of work for each
+configuration, which is also the difference between "sweep five hyperparameters over
+coffee" and "sweep five hyperparameters over lunch."
 
 ## Where this fits (and where it doesn't)
 
 oryxflow is a **research-iteration** tool. Reach for it when your day is EDA → feature
-engineering → train → evaluate and you're tired of babysitting intermediate files. It
-works with any ML library — sklearn, PyTorch, XGBoost — because it only cares about task
-inputs and outputs, not what happens inside `run()`.
+engineering → train → evaluate and you need the numbers at the end of it to be defensible
+— something you'll hand to a colleague or revisit in a month. It works with any ML library
+— sklearn, PyTorch, XGBoost — because it only cares about task inputs and outputs, not
+what happens inside `run()`.
+
+One honest boundary: this makes your result *reproducible*, not *correct*. A bug in your
+feature logic is reproduced just as faithfully as good logic — what you get is a number
+you can always trace back to the exact code and inputs that made it, which is what makes
+the bug findable in the first place.
 
 It is **not** a production orchestrator. If you need cron-style scheduling, retries across
-a cluster, and SLAs, use Airflow, Prefect, or Dagster. And it's **complementary** to
-experiment trackers: keep logging metrics to MLflow or Weights & Biases inside your
-tasks — oryxflow handles the caching and rerun logic those tools don't.
+a cluster, and SLAs, use Airflow, Prefect, or Dagster — they're a complementary layer, not
+a competitor. Same for experiment trackers: keep logging metrics to MLflow or Weights &
+Biases inside your tasks — oryxflow handles the rerun logic and the code-to-result link
+those tools don't.
 
 ## Try it
 
@@ -154,14 +176,19 @@ pip install oryxflow
 - Source & examples: https://github.com/oryxintel/oryxflow
 
 The next time you change one line and reach for the run button, you shouldn't have to
-recompute everything upstream of it. Let the DAG remember what's already done.
+recompute everything upstream of it just to be sure of the answer. Let the DAG track what
+changed — the trustworthy path turns out to be the fast one.
 
 ## Frequently asked questions
 
+### Can I trust a pipeline that skips steps it has already run?
+
+Only if the decision to skip is made from the identity of the work rather than from a filename you chose. oryxflow derives each task's identity from its code, its inputs, and its parameters, so a step is reused only when all three are unchanged, and it reruns automatically the moment any of them move. A result therefore can't quietly sit on data or logic you have since changed — you get the answer a from-scratch run would give, without paying for the from-scratch run.
+
 ### How do I stop rerunning my whole pipeline when I change one step?
 
-When you edit one step, you want only that step and its downstream to recompute, not the whole script. Model each step as a task with declared dependencies so an engine can run them in dependency order and skip anything already computed. oryxflow does this: it caches each task's output and reruns only the steps a code, data, or parameter change actually affects, so a one-line edit stops triggering a fifteen-minute recompute.
+When you edit one step, you want only that step and its downstream to recompute, not the whole script. Model each step as a task with declared dependencies so an engine can run them in dependency order and reuse anything whose code, inputs, and parameters are unchanged. oryxflow does this: it reruns exactly the steps a code, data, or parameter change actually affects — so nothing downstream is left sitting on a stale input, and a one-line edit stops triggering a fifteen-minute recompute.
 
 ### How do I make Python reruns only recompute what changed?
 
-Turn your script into tasks that declare what they depend on and what they produce, then let an engine track each task's identity from its code and parameters. When something changes, only the affected tasks are stale. oryxflow, a small local-first Python library, caches every task output and reruns only what changed on the next run, so unchanged upstream steps load from disk instead of recomputing.
+Turn your script into tasks that declare what they depend on and what they produce, then let an engine track each task's identity from its code and parameters. When something changes, only the affected tasks are stale, and they rerun without you remembering to clear anything. oryxflow, a small local-first Python library, does exactly this: what changed is rebuilt, and unchanged upstream steps load from disk instead of recomputing.

@@ -1,0 +1,27 @@
+# Pre-commit hooks for the oryxflow repo.
+#
+# One-time setup after cloning:
+#     pip install pre-commit && pre-commit install
+#
+# Without `pre-commit install` the hooks never run — the config file alone does nothing.
+
+repos:
+  - repo: local
+    hooks:
+      # Keep tests/test_docs_*.py in step with the Markdown they are generated from.
+      #
+      # phmdoctest names each generated test after its code block's SOURCE LINE
+      # (test_code_66), so editing PROSE above a code block renames the test and leaves
+      # the committed file stale — no behavior change, pure churn, and it fails CI's
+      # `build_docs.py --check`. This hook regenerates them instead of making you
+      # remember. If it rewrites a file, pre-commit reports "files were modified by this
+      # hook" and aborts the commit: `git add` the regenerated tests and commit again.
+      - id: docs-regen
+        name: regenerate doc tests (phmdoctest) + validate front matter
+        entry: python scripts/build_docs.py --regen
+        language: system
+        pass_filenames: false
+        # Any docs page can shift a tested page's line numbers via a snippet include,
+        # and front-matter validation covers every page, so trigger on all docs Markdown
+        # plus the generator itself.
+        files: ^(docs/.*\.md|scripts/build_docs\.py)$

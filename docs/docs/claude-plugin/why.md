@@ -30,12 +30,15 @@ The library and the plugin split the problem cleanly:
 
 **The library carries the state the agent is structurally bad at holding.**
 
+- A change to the code, data, or a parameter reruns exactly the affected steps and everything
+  downstream, automatically — so a result can't be left sitting on inputs that moved.
+- Every run appends a queryable lineage record of what ran, with which code and params, and why,
+  so any result can be explained and regenerated later.
+- There are no filenames to get wrong — results are addressed by task identity.
 - The dependency graph is *data* (your `requires()` edges), not something the agent must
   remember.
-- Re-running is cheap and correct by default — completed tasks load from cache; a code change
-  reruns exactly the affected tasks and everything downstream, automatically.
-- There are no filenames to get wrong — results are addressed by task identity.
-- Every run appends a queryable lineage record of what ran, with which code and params, and why.
+- And it's cheap: completed steps load from cache instead of recomputing, so keeping all of the
+  above true costs you less time than not having it.
 
 **The plugin carries the disciplines the library can't enforce from inside.**
 

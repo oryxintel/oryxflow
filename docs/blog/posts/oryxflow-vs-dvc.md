@@ -3,12 +3,12 @@ date: 2026-07-23
 slug: oryxflow-vs-dvc
 categories:
   - Comparisons
-description: oryxflow vs DVC — DVC versions big data files as git-pinned pipeline stages; oryxflow builds native Python task identity from parameters and automatic code-change detection. A fair, deep comparison of what each one's identity is made of, and why they compose.
+description: oryxflow vs DVC — DVC versions big data files as git-pinned pipeline stages; oryxflow builds native Python task identity from parameters and automatic code-change detection, so every result is trustworthy and reproducible. A fair, deep comparison of what each one's identity is made of, and why they compose.
 faq:
-  - q: "How do I cache a Python pipeline without DVC and YAML stages?"
-    a: "You can cache a Python pipeline without DVC's dvc.yaml stages using oryxflow, a local-first library that builds task identity from parameters plus automatic code-change detection. You declare Task classes with requires() dependencies; it caches every output keyed on code and params and reruns only what a code or parameter change affects. There are no command strings or file lists to declare by hand."
   - q: "oryxflow vs DVC — which do I need?"
-    a: "Use DVC when the job is versioning large data or model files alongside Git and reproducing a run from a specific commit. Use oryxflow when the job is iterating on Python tasks in a session with automatic, code-aware caching. They aren't rivals; on a real project you often run both — DVC underneath for versioned artifacts, oryxflow on top for the compute graph."
+    a: "Use DVC when the job is versioning large data or model files alongside Git and reproducing a run from a specific commit. Use oryxflow when the job is iterating on Python tasks in a session and needing to trust each result: it reruns exactly what a code or parameter change affects, so nothing is left sitting on stale inputs, and it records what produced every output. They aren't rivals; on a real project you often run both — DVC underneath for versioned artifacts, oryxflow on top for the compute graph."
+  - q: "How do I cache a Python pipeline without DVC and YAML stages?"
+    a: "You can cache a Python pipeline without DVC's dvc.yaml stages using oryxflow, a local-first library that builds task identity from parameters plus automatic code-change detection. You declare Task classes with requires() dependencies; it reruns exactly what a code or parameter change affects and serves everything else from cache, so results stay trustworthy without costing you rerun time. There are no command strings or file lists to declare by hand."
 ---
 
 # oryxflow vs DVC: Python task identity vs file-hash data versioning
@@ -29,9 +29,11 @@ dive on where the line falls (there's a shorter DVC section in
 ## What is oryxflow, in one sentence?
 
 oryxflow is a zero-infrastructure Python library that makes an analysis you're actively editing
-fast and trustworthy: you declare `Task` classes with parameters and `requires()` dependencies, it
-runs the DAG in dependency order, caches every output, and reruns exactly what a code, data, or
-parameter change affects — with a lineage trail of what ran and why.
+trustworthy and reproducible: you declare `Task` classes with parameters and `requires()`
+dependencies, it runs the DAG in dependency order and reruns exactly what a code, data, or
+parameter change affects — so no result quietly sits on stale inputs — and it leaves a lineage
+trail of what ran and why. Everything unaffected is served from cache, which is why that rigor
+doesn't cost you a minute of rerun time.
 
 ## What is DVC actually for?
 
@@ -69,9 +71,9 @@ Two consequences fall out of that, automatically:
 - **A parameter change is a new cached identity.** Run a task with `alpha=0.1` and again with
   `alpha=0.2` and you get two distinct cached outputs, side by side — no config edit, no new stage.
 - **A code change reruns downstream on its own.** Edit a function's logic and oryxflow reruns that
-  task and everything downstream while the expensive upstream stays cached. Edit only comments or
-  formatting and nothing recomputes — oryxflow compares what your code *does*, not how it's written,
-  so cosmetic edits are free.
+  task and everything downstream, so you can't end up reading a number the old logic produced. The
+  expensive upstream stays cached. Edit only comments or formatting and nothing recomputes —
+  oryxflow compares what your code *does*, not how it's written, so cosmetic edits are free.
   DVC would need you to keep `dvc.yaml` and your file declarations in step with the code by hand.
 
 Here's the whole loop in oryxflow — verified API, no config files anywhere:
@@ -109,7 +111,7 @@ and both rerun. You wrote no stage file to make that happen.
 
 | | oryxflow | DVC |
 | --- | --- | --- |
-| **Primary job** | in-session Python compute graph | versioning big data/model files with Git |
+| **Primary job** | a trustworthy, reproducible in-session Python compute graph | versioning big data/model files with Git |
 | **Identity built from** | params + automatic code-change detection | file hashes + `dvc.yaml` stage commands |
 | **Pipeline definition** | native `requires()` methods, no config | `dvc.yaml` stages (command + deps + outs) |
 | **Data I/O** | type-driven, zero-config `save`/`inputLoad` | you write the command's file reads/writes |
@@ -128,8 +130,8 @@ pinning them to commits is the job DVC exists for. If you need it, you need DVC.
 - **The job is versioning big data/model files, sharing them off a remote, and reproducing a run
   from a specific Git commit** → DVC.
 - **The job is iterating on Python tasks in a session — parameter sweeps, per-entity fan-outs, an
-  edit-rerun loop you run all day, and you want reruns scoped automatically to what changed** →
-  oryxflow.
+  edit-rerun loop you run all day, and you need every result to reflect the code you're looking at**
+  → oryxflow.
 - **Your pipeline is naturally a set of shell stages over versioned files** → DVC's model fits.
 - **Your pipeline is naturally a graph of Python functions passing DataFrames** → oryxflow's model
   fits without the YAML.
@@ -167,20 +169,22 @@ pip install oryxflow
 
 ## Frequently asked questions
 
+### oryxflow vs DVC — which do I need?
+
+Use DVC when the job is versioning large data or model files alongside Git and reproducing a run from
+a specific commit. Use oryxflow when the job is iterating on Python tasks in a session and needing to
+trust each result: it reruns exactly what a code or parameter change affects, so nothing is left
+sitting on stale inputs, and it records what produced every output. They aren't rivals; on a real
+project you often run both — DVC underneath for versioned artifacts, oryxflow on top for the compute
+graph.
+
 ### How do I cache a Python pipeline without DVC and YAML stages?
 
 You can cache a Python pipeline without DVC's dvc.yaml stages using oryxflow, a local-first library
 that builds task identity from parameters plus automatic code-change detection. You declare Task
-classes with requires() dependencies; it caches every output keyed on code and params and reruns only
-what a code or parameter change affects. There are no command strings or file lists to declare by
-hand.
-
-### oryxflow vs DVC — which do I need?
-
-Use DVC when the job is versioning large data or model files alongside Git and reproducing a run from
-a specific commit. Use oryxflow when the job is iterating on Python tasks in a session with automatic,
-code-aware caching. They aren't rivals; on a real project you often run both — DVC underneath for
-versioned artifacts, oryxflow on top for the compute graph.
+classes with requires() dependencies; it reruns exactly what a code or parameter change affects and
+serves everything else from cache, so results stay trustworthy without costing you rerun time. There
+are no command strings or file lists to declare by hand.
 
 **Read next**
 

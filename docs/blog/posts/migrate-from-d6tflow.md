@@ -56,6 +56,10 @@ For the vast majority of projects, only the name. The differences worth knowing:
   classes, parameter types, `settings`, `set_dir`, `Workflow`).
 - **Self-contained engine** — the old external workflow-engine dependency was removed; the task
   model, parameters, and executor now live entirely in oryxflow.
+- **Automatic code invalidation** — edit a task's logic and oryxflow reruns that task and
+  everything downstream of it, so a result can't quietly sit on code you've since changed.
+  This is the main thing the maintained line added on top of the rename; see
+  [managing complex workflows](../../docs/managing-workflows.md).
 - **A focused parameter set** — oryxflow ships the parameter types data science actually uses:
   `Parameter`, `IntParameter`, `FloatParameter`, `BoolParameter`, `DateParameter`,
   `DictParameter`, `ListParameter`, `ChoiceParameter`, `EnumParameter`. If your project leaned
@@ -198,5 +202,6 @@ Then keep going:
 - [Why oryxflow](../../docs/why-oryxflow.md) — the positioning in full.
 - [Quickstart](../../docs/quickstart.md) — see the engine in action.
 - [Managing complex workflows](../../docs/managing-workflows.md) — what the maintained line added:
-  code invalidation, selective resets, multi-experiment flows.
+  automatic code invalidation so a result can't sit on stale code, selective resets, and
+  multi-experiment flows.
 - [oryxflow on GitHub](https://github.com/oryxintel/oryxflow)

@@ -27,9 +27,9 @@ The usual workaround is worse than the problem. You start hand-managing output f
 
 ## What oryxflow is
 
-oryxflow is a small Python library for building data-science workflows as `Task` classes that declare their dependencies and cache their outputs, so a step reruns only when its inputs or parameters actually change.
+oryxflow is a small Python library for building data-science workflows as `Task` classes that declare their dependencies, so a step reruns exactly when its inputs, parameters, or code actually change — and every output stays tied to the parameters that produced it. That is what makes a sweep *comparable*: each cell is addressed by its parameter set rather than by a filename you typed, so you can't quietly compare two configs that trained on different data, and you can regenerate any cell months later by asking for its parameters.
 
-That caching model is exactly what a parameter sweep needs. Below are the two mechanisms it gives you, then the fan-out pattern that ties them into a grid.
+The reuse falls out of the same identity: a step whose parameters and code haven't changed doesn't recompute. Below are the two mechanisms it gives you, then the fan-out pattern that ties them into a grid.
 
 ## Mechanism 1: a parameter caches a separate output automatically
 

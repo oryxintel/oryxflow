@@ -1,17 +1,17 @@
 ---
 title: Experiment tracking with oryxflow
-description: An experiment tracker (MLflow, W&B) and oryxflow do different halves of the same project — how to use both, with tracker logging inside cached oryxflow tasks.
+description: An experiment tracker (MLflow, W&B) and oryxflow do different halves of the same project — how to use both, with tracker logging inside oryxflow tasks so every logged run is a reproducible one.
 faq:
   - q: "Can I use oryxflow and MLflow together?"
-    a: "Yes, and that's the recommended setup — not a compromise. Put your tracker's logging calls inside an oryxflow task's run(), so oryxflow decides what has to recompute and caches the rest, while MLflow (or Weights & Biases, Neptune, Comet) keeps the searchable record of what each run scored. Every row in your tracker then corresponds to a cached, reproducible computation instead of a run you can't rebuild."
+    a: "Yes, and that's the recommended setup — not a compromise. Put your tracker's logging calls inside an oryxflow task's run(), so every row in your tracker corresponds to a reproducible computation you can rebuild rather than a run you can't, while MLflow (or Weights & Biases, Neptune, Comet) keeps the searchable record of what each run scored. oryxflow works out what a change has invalidated and reuses the rest, so the record stays honest without costing you rerun time."
   - q: "Is oryxflow an MLflow alternative?"
-    a: "Not a replacement — a complement. MLflow records and charts the runs you already did; oryxflow is the machinery that produces them, deciding which steps must execute, reusing the ones that don't, and guaranteeing your model scored on features built by current code. Use both. The one case where oryxflow alone is enough is when what you actually wanted from a tracker was caching and reproducible reruns rather than a dashboard."
+    a: "Not a replacement — a complement. MLflow records and charts the runs you already did; oryxflow is the machinery that produces them, guaranteeing your model scored on features built by current code, deciding which steps must execute, and reusing the ones that don't. Use both. The one case where oryxflow alone is enough is when what you actually wanted from a tracker was reproducible reruns rather than a dashboard."
   - q: "Do I still need an experiment tracker if I use oryxflow?"
     a: "If you want a hosted dashboard, side-by-side run comparison, or a leaderboard your team can browse, yes — oryxflow does not provide any of those and is not trying to. oryxflow gives you reproducible, minimally-recomputed pipelines underneath whichever tracker you pick. If you iterate locally, read your results from a DataFrame, and never wanted the UI, oryxflow on its own covers what you need."
   - q: "How do I log metrics from an oryxflow task?"
     a: "Call your tracker inside the task's run(), next to self.save(). Nothing about oryxflow has to change: compute the metric, log it with mlflow.log_metric(...) or wandb.log(...), and save the artifact with self.save(...). self.to_str_params() hands you the task's parameters as a dict to log in one call, and self.task_id identifies the exact cached output the logged run came from."
   - q: "What's the difference between pipeline caching and experiment tracking?"
-    a: "Experiment tracking answers which run got which metric with which parameters, and gives you a UI to sort and chart it. Pipeline caching — what oryxflow does — answers which steps must actually rerun and which are already computed, so an unchanged feature build isn't recomputed and a model is never scored on stale inputs. A tracker records what happened; oryxflow makes the computation behind it reproducible and cheap to repeat."
+    a: "Experiment tracking answers which run got which metric with which parameters, and gives you a UI to sort and chart it. Pipeline caching — what oryxflow does — answers whether a result is still valid: which steps a change has invalidated and must rerun, and which are already current. So a model is never scored on stale inputs, and an unchanged feature build isn't recomputed. A tracker records what happened; oryxflow makes the computation behind it reproducible, and cheap to repeat."
 ---
 
 # Experiment tracking with oryxflow
@@ -24,9 +24,10 @@ This is the comparison people most often read as either/or, so to be explicit ab
 - A **tracker** (MLflow, Weights & Biases, Neptune, Comet) is a *record of results*. It collects
   metrics, parameters, and artifacts from runs you already did, and gives you a UI to sort and
   chart them.
-- **oryxflow** is the *machinery that produces those runs*. It decides which steps have to
-  execute, reuses the ones that don't, and guarantees the features your model just scored on were
-  built by current code.
+- **oryxflow** is the *machinery that produces those runs*. It guarantees the features your model
+  just scored on were built by current code, keeps every result traceable to the code and
+  parameters behind it — and, as a consequence of how it does that, reuses the steps that didn't
+  change instead of recomputing them.
 
 A tracker can't tell you a logged run was trained on a stale intermediate. oryxflow can't draw
 you a leaderboard. Neither is trying to.
@@ -38,10 +39,10 @@ you a leaderboard. Neither is trying to.
 | Which run scored 0.91, and with which parameters? | **Tracker** |
 | Show me every run's metrics side by side, sorted | **Tracker** |
 | Which chart do I paste into the review deck? | **Tracker** |
-| Which steps must rerun to reproduce that 0.91 — and are its inputs stale? | **oryxflow** |
 | Was this model trained on features built by the current code? | **oryxflow** |
-| Can I skip the ten-minute data pull and just retrain? | **oryxflow** |
+| Which steps must rerun to reproduce that 0.91 — and are its inputs stale? | **oryxflow** |
 | Where is the output for `window=60` — did I already compute it? | **oryxflow** |
+| Can I skip the ten-minute data pull and just retrain? | **oryxflow** |
 
 Read the table one way and it's a feature comparison. Read it the other way and it's a
 division of labor: the left column is your *record*, the right column is your *computation*.
@@ -106,9 +107,10 @@ tracker integration to configure, because none is needed: it's your code, in you
 
 ## Sweeping parameters: one comparable row per configuration
 
-This is where the pairing pays off most visibly. Sweep a model parameter and oryxflow reruns only
-the affected tasks — the shared feature build happens **once** — while the tracker fills up with
-one comparable row per configuration.
+This is where the pairing pays off most visibly. Sweep a model parameter and every configuration is
+scored against features built by the same current code, so the rows filling up your tracker are
+genuinely comparable — and only the affected tasks rerun, the shared feature build happening
+**once**.
 
 Drive the sweep with `WorkflowMulti`, one flow per configuration:
 
@@ -174,8 +176,8 @@ them twice:
   computation that produced them. Expect to run both.
 - **The integration is one line of placement**: put the tracker call inside a task's `run()`, and
   every logged run is also cached and reproducible.
-- **Sweeps are where it shows.** Vary a parameter and only the affected tasks rerun, while the
-  tracker gains one comparable row per configuration.
+- **Sweeps are where it shows.** Vary a parameter and every configuration is scored on features
+  built by current code, so the tracker's rows are comparable — and only the affected tasks rerun.
 - **Neither tool covers the other.** oryxflow won't chart your runs; a tracker won't tell you a
   run was trained on something stale. And oryxflow makes analysis reproducible, not correct.
 
@@ -183,7 +185,7 @@ them twice:
 pip install oryxflow
 ```
 
-- **[Quickstart](quickstart.md)** — a running, self-caching pipeline in minutes.
+- **[Quickstart](quickstart.md)** — a running, reproducible pipeline in minutes.
 - **[Managing complex workflows](managing-workflows.md)** — parameter sweeps, aggregation, and
   scoping a rerun to just what changed.
 - **[Running workflows](run.md)** — `Workflow`, `WorkflowMulti`, and what
@@ -196,17 +198,17 @@ pip install oryxflow
 
 **Can I use oryxflow and MLflow together?**
 Yes, and that's the recommended setup — not a compromise. Put your tracker's logging calls inside
-an oryxflow task's `run()`, so oryxflow decides what has to recompute and caches the rest, while
-MLflow (or Weights & Biases, Neptune, Comet) keeps the searchable record of what each run scored.
-Every row in your tracker then corresponds to a cached, reproducible computation instead of a run
-you can't rebuild.
+an oryxflow task's `run()`, so every row in your tracker corresponds to a reproducible computation
+you can rebuild rather than a run you can't, while MLflow (or Weights & Biases, Neptune, Comet)
+keeps the searchable record of what each run scored. oryxflow works out what a change has
+invalidated and reuses the rest, so the record stays honest without costing you rerun time.
 
 **Is oryxflow an MLflow alternative?**
 Not a replacement — a complement. MLflow records and charts the runs you already did; oryxflow is
-the machinery that produces them, deciding which steps must execute, reusing the ones that don't,
-and guaranteeing your model scored on features built by current code. Use both. The one case where
-oryxflow alone is enough is when what you actually wanted from a tracker was caching and
-reproducible reruns rather than a dashboard.
+the machinery that produces them, guaranteeing your model scored on features built by current code,
+deciding which steps must execute, and reusing the ones that don't. Use both. The one case where
+oryxflow alone is enough is when what you actually wanted from a tracker was reproducible reruns
+rather than a dashboard.
 
 **Do I still need an experiment tracker if I use oryxflow?**
 If you want a hosted dashboard, side-by-side run comparison, or a leaderboard your team can
@@ -223,7 +225,7 @@ log in one call, and `self.task_id` identifies the exact cached output the logge
 
 **What's the difference between pipeline caching and experiment tracking?**
 Experiment tracking answers which run got which metric with which parameters, and gives you a UI
-to sort and chart it. Pipeline caching — what oryxflow does — answers which steps must actually
-rerun and which are already computed, so an unchanged feature build isn't recomputed and a model
-is never scored on stale inputs. A tracker records what happened; oryxflow makes the computation
-behind it reproducible and cheap to repeat.
+to sort and chart it. Pipeline caching — what oryxflow does — answers whether a result is still
+valid: which steps a change has invalidated and must rerun, and which are already current. So a
+model is never scored on stale inputs, and an unchanged feature build isn't recomputed. A tracker
+records what happened; oryxflow makes the computation behind it reproducible, and cheap to repeat.

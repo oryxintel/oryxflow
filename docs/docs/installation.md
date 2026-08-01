@@ -62,5 +62,5 @@ See [Build with Claude Code](claude-plugin/index.md) for what it sets up.
 
 ## Next steps
 
-- [Quickstart](quickstart.md) — build your first self-caching pipeline.
+- [Quickstart](quickstart.md) — build your first pipeline: results you can trust and reproduce.
 - [Transition from scripts](transition.md) — convert an existing analysis script.

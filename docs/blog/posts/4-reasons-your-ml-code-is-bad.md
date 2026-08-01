@@ -25,13 +25,20 @@ Your current workflow probably chains several functions together like in the exa
 
 
 
-- it doesn't scale well as you add complexity
-
 - you have to manually keep track of which functions were run with which parameter
 
 - you have to manually keep track of where data is saved
 
+- it doesn't scale well as you add complexity
+
 - pickle files are neither compressed nor portable
+
+
+
+The first two are the expensive ones, because they fail *silently*. Nothing errors when
+`data.pkl` was written by a version of `get_data()` you have since edited, or when you
+flipped `do_preprocess` and forgot which of the saved files that produced. You just get a
+number, and no way to tell whether you can believe it.
 
 
 
@@ -161,15 +168,19 @@ The benefits of doings this are:
 
 
 
+- If input data, code or parameters change, the task automatically reruns — so a result can never quietly sit on inputs you have since changed
+
+- If the input task is not complete it will automatically run, so you never train on a half-built intermediate
+
+- You can load and save data without hardcoding filenames, so no output can be read under the wrong name
+
 - All tasks follow the same pattern no matter how complex your workflow gets
 
 - You have a scalable input <span class="title-ref">requires()</span> and processing function <span class="title-ref">run()</span>
 
-- You can quickly load and save data without having to hardcode filenames
 
-- If the input task is not complete it will automatically run
 
-- If input data or parameters change, the function will automatically rerun
+And the reuse comes along for the ride: everything that *didn't* change is loaded rather than recomputed, so keeping the pipeline honest costs you less time than the linear script did, not more.
 
 
 
@@ -311,7 +322,7 @@ print(sklearn.metrics.accuracy_score(df_train['y'],model.predict(df_train.iloc[:
 
 
 
-Writing machine learning code as a linear series of functions likely creates many workflow problems. Because of the complex dependencies between different ML tasks it is better to write them as a DAG. oryxflow makes it very easy for you. Alternatively you can use luigi and airflow but they are more optimized for ETL than data science.
+Writing machine learning code as a linear series of functions likely creates many workflow problems, and the worst of them are the quiet ones — a result built on an intermediate that no longer matches the code that supposedly produced it. Because of the complex dependencies between different ML tasks it is better to write them as a DAG, where a change reruns exactly what it affects and every output stays tied to the code and parameters behind it. oryxflow makes it very easy for you. Alternatively you can use luigi and airflow, but they are more optimized for ETL scheduling than for the data-science research loop — and they are a complementary layer rather than a replacement.
 
 
 

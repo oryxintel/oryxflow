@@ -7,13 +7,15 @@ description: How to cache intermediate DataFrames in Python without the stale-pi
 faq:
   - q: "How do I cache intermediate DataFrames in Python without brittle pickle files?"
     a: "Hand-rolled pickle caches key on a filename you chose, which knows nothing about the code that wrote it, so they silently serve stale DataFrames after you edit the logic. Cache by task identity instead: key each cached value on the step's code, inputs, and parameters. oryxflow does this in plain Python, persisting a DataFrame as Parquet automatically and rebuilding it whenever the code or parameters change, so you never name or track a .pkl."
+  - q: "How do I know a cached DataFrame isn't stale?"
+    a: "You can't know it from a file, because a filename records nothing about the code that wrote it — which is why a hand-rolled cache eventually hands you features that no longer match the function that supposedly built them. Make the cache key the identity of the work instead: the step's code, its inputs, and its parameters. oryxflow does this and rebuilds a step the moment any of the three change, so a stale value is never served and you never have to delete a file to force a refresh."
   - q: "How do I avoid recomputing a DataFrame every run?"
-    a: "Wrap each expensive step as a task that declares its dependencies and saves its output, so an engine can reuse the cached result when nothing changed and rebuild only when it did. oryxflow, a local-first zero-infrastructure Python library, caches each intermediate DataFrame by task identity and reruns a step only when its code, inputs, or parameters actually change, turning a multi-minute rerun into a load from disk."
+    a: "Wrap each expensive step as a task that declares its dependencies and saves its output, so an engine can reuse the previous result when nothing changed and rebuild it when something did. oryxflow, a local-first zero-infrastructure Python library, caches each intermediate DataFrame by task identity and reruns a step only when its code, inputs, or parameters actually change — so an unchanged step turns a multi-minute rerun into a load from disk, and a changed one can't be missed."
 ---
 
 # How to cache intermediate DataFrames in Python (without brittle pickle files)
 
-*Why `features_v3_final.pkl` keeps burning you — and a caching approach that reruns exactly what changed and nothing else.*
+*Why `features_v3_final.pkl` keeps burning you — and how to make cached reuse something you can actually trust.*
 
 <!-- more -->
 
@@ -30,9 +32,10 @@ at all, because it quietly serves you the wrong answer. This post is about how t
 intermediate DataFrames in Python so that reuse is *safe* — every cached value is
 guaranteed to match the code and parameters that produced it, or it gets rebuilt.
 
-> **oryxflow** is a small, local-first, zero-infrastructure Python library that turns
-> your data-science script into cached, dependency-aware tasks — so a step reruns only
-> when its code, inputs, or parameters actually change.
+> **oryxflow** is a small, local-first, zero-infrastructure Python library that turns your
+> data-science script into dependency-aware tasks, so every value on disk is tied to the
+> code, inputs, and parameters that produced it — and a step rebuilds the moment any of
+> those change. Safe reuse is the *result* of that, not a separate feature.
 
 ## Why hand-rolled DataFrame caches fail
 
@@ -152,12 +155,12 @@ again be debugging a result that came from a version of the code you already del
 
 | | Hand-rolled `.pkl` cache | oryxflow task |
 | --- | --- | --- |
+| Trustworthy reuse | Only if you never make a mistake | Reproducible by construction |
 | Edit the step's code | **Stale file silently reused** | Rebuilds that step + downstream |
 | Cosmetic edit (comment/rename) | Rebuild only if you remember to delete the file | No rerun — logic unchanged |
 | Filenames / paths | You name and track every one | None — cache keyed by task identity |
 | Different parameters | One file, or hand-rolled suffixes | Separate cached output per value |
 | Choosing the format | `to_pickle` / `to_parquet` by hand | Follows the base class (Parquet, CSV, pickle) |
-| Trustworthy reuse | Only if you never make a mistake | Reproducible by construction |
 
 ## Takeaway
 
@@ -165,7 +168,9 @@ Caching intermediate DataFrames by filename fails because a filename knows nothi
 the code that wrote it — so it happily hands you stale features after you've changed the
 logic. Cache by *task identity* instead: let each step's code, inputs, and parameters
 define what "already done" means, and reuse becomes something you can actually trust. Edit
-a step and exactly what changed reruns; edit a comment and nothing does.
+a step and exactly what changed reruns; edit a comment and nothing does. The speed is the
+side effect — what you're really buying is the ability to believe the DataFrame you just
+loaded.
 
 ```bash
 pip install oryxflow
@@ -177,9 +182,13 @@ pip install oryxflow
 
 Hand-rolled pickle caches key on a filename you chose, which knows nothing about the code that wrote it, so they silently serve stale DataFrames after you edit the logic. Cache by task identity instead: key each cached value on the step's code, inputs, and parameters. oryxflow does this in plain Python, persisting a DataFrame as Parquet automatically and rebuilding it whenever the code or parameters change, so you never name or track a .pkl.
 
+### How do I know a cached DataFrame isn't stale?
+
+You can't know it from a file, because a filename records nothing about the code that wrote it — which is why a hand-rolled cache eventually hands you features that no longer match the function that supposedly built them. Make the cache key the identity of the work instead: the step's code, its inputs, and its parameters. oryxflow does this and rebuilds a step the moment any of the three change, so a stale value is never served and you never have to delete a file to force a refresh.
+
 ### How do I avoid recomputing a DataFrame every run?
 
-Wrap each expensive step as a task that declares its dependencies and saves its output, so an engine can reuse the cached result when nothing changed and rebuild only when it did. oryxflow, a local-first zero-infrastructure Python library, caches each intermediate DataFrame by task identity and reruns a step only when its code, inputs, or parameters actually change, turning a multi-minute rerun into a load from disk.
+Wrap each expensive step as a task that declares its dependencies and saves its output, so an engine can reuse the previous result when nothing changed and rebuild it when something did. oryxflow, a local-first zero-infrastructure Python library, caches each intermediate DataFrame by task identity and reruns a step only when its code, inputs, or parameters actually change — so an unchanged step turns a multi-minute rerun into a load from disk, and a changed one can't be missed.
 
 **Read next**
 

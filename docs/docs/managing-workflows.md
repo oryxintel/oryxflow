@@ -1,10 +1,12 @@
 # Managing Complex Workflows
 
-As a project grows, the expensive part is rarely the final result — it's the *granular* work underneath it. Fetching data from a slow or paid API. Training a model once per hyperparameter setting. Re-running that work every time you tweak something downstream is what makes iteration painful.
+As a project grows, the thing that actually bites is not that a run is slow — it's that a result can quietly stop being true. You improve the cleaning logic and the model keeps training on last week's features. You change a threshold and can no longer say which chart used which value. Nothing errors; the number looks the same whether it's right or wrong.
 
-oryxflow's answer is to make each granular unit its own **task**, cached independently. The engine tracks completeness per task, so when you change one thing it re-runs exactly what changed — and leaves the expensive, unchanged work alone. This page walks through the pattern data scientists reach for constantly:
+oryxflow's answer is to make each granular unit its own **task** with its own identity, derived from its parameters *and* its code. The engine tracks per task whether the saved output still matches that identity, which buys you two things: a change to a parameter, to a task's code, or to anything upstream reruns exactly what it affects, so a result can't quietly sit on a stale input; and every output stays tied to what produced it, so you can regenerate it — and explain it — months later. Then the pleasant surprise: none of that costs you time, because completed work is reused rather than recomputed. The slow data pull and the models you didn't touch are simply not repeated.
 
-1.  **Iterate granular** — one task per item (per hyperparameter, per state, per input file), each cached on its own.
+That is what keeps a growing analysis reproducible in practice rather than in principle. This page walks through the pattern data scientists reach for constantly:
+
+1.  **Iterate granular** — one task per item (per hyperparameter, per state, per input file), each with its own identity and its own saved output.
 2.  **Aggregate** — combine those outputs one level up into a single result.
 3.  **Selectively reset** — when something the engine *can't* see changes (a data file, an external API), invalidate just that family of tasks and let everything downstream recompute. The expensive leaves stay cached. (Parameter and code changes need no reset — they rerun on their own; see below.)
 
@@ -190,7 +192,7 @@ Contrast the three reset scopes you'll actually use:
 - `flow.reset_upstream(Tune, only=TrainModel)` — one *family*, everywhere it appears upstream. Use when something the code hash can't see changed for that family and you want every instance recomputed, cheap dependencies preserved.
 - `flow.reset_upstream(Tune)` — the whole upstream, including `LoadData`. Use only when the raw inputs themselves are stale.
 
-This is the core discipline: **reset at the level you changed, not above it.** It's what keeps a tweak to a fast step from triggering hours of expensive re-fetching or re-computation.
+This is the core discipline: **reset at the level you changed, not above it.** Scoped that precisely, a refresh is something you'll actually do — every time, on the spot — instead of postponing it because it means hours of re-fetching. Cheap to refresh is what keeps a pipeline honest.
 
 ## The event stream: what ran, when, and why
 

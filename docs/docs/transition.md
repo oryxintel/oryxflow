@@ -1,13 +1,13 @@
-# Transition to oryxflow
+# Transition to oryxflow: from scripts to reproducible data science pipelines
 
-Most data-science code starts as a script: a chain of functions that read a file, transform it, and write the next file, wired together by hand at the bottom. It works until it doesn't — you change one step and have to remember which downstream files are now stale, you re-run the whole thing (including the slow data pull) just to test a small change, and six months later you can't tell which parameters produced which output.
+Most data-science code starts as a script: a chain of functions that read a file, transform it, and write the next file, wired together by hand at the bottom. It works until it doesn't — you change one step and have to remember which downstream files are now stale, six months later you can't tell which parameters produced which output, and the only safe move you have left is to re-run the whole thing, slow data pull included, to test a one-line change.
 
-oryxflow turns that script into a pipeline of **tasks** and takes over the bookkeeping. You get three things you were doing in your head before:
+oryxflow turns that script into a pipeline of **tasks** and takes over that bookkeeping. Four things you were doing in your head become properties of the code:
 
-- **No wasted recomputation** — a task that has already produced its output is skipped, so re-running the pipeline only runs what actually changed (a small edit no longer re-pulls the raw data).
-- **Reproducibility** — every output is tied to the task and parameters that produced it, so you always know how a result was made and can reproduce it exactly.
-- **Automatic parameter management** — change a parameter and oryxflow reruns exactly the tasks that depend on it, and keeps the outputs for each parameter set side by side.
-- **Provenance you can query** — oryxflow records what ran, when, and why, and (when you set a `code_version`) catches the classic trap of editing a task's code while the cache serves the old output. "Is this stale?" and "did I already run this?" stop being things you track in your head.
+- **You can believe the number** — a task's output is tied to the code and parameters that produced it, so it can't quietly be served to you after either has changed. Edit a task's logic, or a helper it calls, and that task and everything downstream recompute on the next run; the classic trap of testing new code against an old cached output simply isn't available.
+- **You can reproduce it** — every output is traceable to the task, code, and parameters behind it, so "how was this made?" has an answer you can look up rather than reconstruct, and you can regenerate the result on demand.
+- **Provenance you can query** — oryxflow records what ran, when, and why. "Is this stale?" and "did I already run this?" stop being things you track in your head.
+- **And it's faster, not slower** — that rigor normally costs you rerun time. Here it doesn't: a task whose output is already current is skipped, so a small edit no longer re-pulls the raw data, and each parameter set keeps its own output side by side instead of overwriting the last one.
 
 ## Current Workflow Using Functions
 

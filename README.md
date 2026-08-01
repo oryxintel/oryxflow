@@ -5,11 +5,12 @@
 [![Socket Badge](https://socket.dev/api/badge/pypi/package/oryxflow)](https://socket.dev/pypi/package/oryxflow)
 [![Docs](https://img.shields.io/badge/docs-docs.oryxflow.dev-blue)](https://docs.oryxflow.dev/)
 
-**Faster, cheaper, more trustworthy data analysis — for humans and AI coding agents.**
+**Trustworthy, reproducible data analysis — for humans and AI coding agents.**
 
-oryxflow turns a data-science script into a pipeline that reruns exactly what a change affects,
-records how each result was made, and caches every step so you never pay twice for the same work.
-You never name an intermediate file or track which parameters produced which output again.
+oryxflow turns a data-science script into a pipeline where no result can quietly sit on stale data,
+and every result records the code and inputs that made it. You never name an intermediate file or
+track which parameters produced which output again. Rigor like that normally costs you rerun
+time — here it doesn't, because finished steps are never recomputed.
 
 It's a Python library. No server, no database, no account, no config files.
 
@@ -20,10 +21,8 @@ pip install oryxflow
 ## The problem: iterative analysis quietly stops being trustworthy
 
 Almost every project starts as a script that works. Then it accumulates the failures that
-make your workflow inefficient and erode trust in the result:
+erode trust in the result — and make the work slower while they're at it:
 
-- **Wasted recomputation.** A one-line change downstream re-runs the 10-minute data pull, so you
-  either wait or start hand-rolling `if os.path.exists(...)` caches that themselves go stale.
 - **Stale intermediates.** You change a feature, forget to regenerate a cached file, and train
   on yesterday's data. Nothing errors. The number is just wrong.
 - **A folder full of files you have to keep straight.** `features_v3.pkl`,
@@ -34,32 +33,36 @@ make your workflow inefficient and erode trust in the result:
 - **AI-generated code you can't fully trust.** Coding agents write plausible pandas and
   scikit-learn fast — but across a long session they lose track of lineage and what's already computed and
   whether it's still valid, and silently build on stale state.
+- **Wasted recomputation.** And being careful about all this looks like it costs you time: a
+  one-line change downstream re-runs the 10-minute data pull, so you either wait or start
+  hand-rolling `if os.path.exists(...)` caches that themselves go stale.
 
-The result are **trust** errors — in the mechanics of the pipeline. And
+These are **trust** errors — in the mechanics of the pipeline. And
 they get worse, not better, as projects grow in complexity and an AI agent writes more of the code.
 
 ## The solution: What oryxflow gives you
 
+- **Reruns exactly what changed.** Change a parameter, a data input, or a task's code and exactly
+  the affected outputs rebuild — you can't accidentally evaluate a new model on old features, so a
+  number can't quietly sit on stale inputs.
 - **Reproducibility by default.** Every output is tied to the exact task, parameters, and code
   version that produced it. "Can I reproduce last week's result?" becomes yes, mechanically.
 - **Lineage you can query.** oryxflow records what ran, when, with which parameters and code,
   and *why* it recomputed. "Is this stale? Was it built with current code?" are queries, not
   guesses.
-- **Reruns exactly what changed.** Change a parameter, a data input, or a task's code and exactly
-  the affected outputs rebuild — you can't accidentally evaluate a new model on old features.
 - **No storage or parameter boilerplate.** You never name a file, build a path, or track which
   settings produced which output. `self.save(df)` puts it away, `flow.outputLoad()` gets it back,
   and oryxflow works out where it lives from the task and its parameters.
-- **Speed and cost savings.** Completed steps load from cache instead of recomputing, so the
-  edit–run loop drops from minutes to seconds. An AI agent stops paying — in time and tokens — to
-  redo expensive work it already did.
-- **AI-agent reliability.** The same cache and lineage log become an agent's memory across
+- **And it costs you less, not more.** Reproducibility is normally a tax you pay in rerun time.
+  Here it isn't: completed steps load from cache instead of recomputing, so the edit–run loop drops
+  from minutes to seconds, and an AI agent stops paying — in time and tokens — to redo expensive
+  work it already did.
+- **AI-agent reliability.** The same lineage log and cache become an agent's memory across
   sessions. The companion [Claude Code plugin](claude-plugin/index.md) ships these disciplines
-  as an auto-activating skill, so the agent uses the cache correctly instead of trusting stale
+  as an auto-activating skill, so the agent checks that record instead of trusting stale
   state.
 
-Caching is the *engine*. Trust — reproducible, lineage-tracked reruns that update exactly what
-changed — is the *outcome*.
+**Trust and reproducibility are the product. Caching is just how you get them for free.**
 
 [More on why oryxflow](https://docs.oryxflow.dev/docs/why-oryxflow/).
 
@@ -145,7 +148,7 @@ run.)
 
 That's the whole idea. Caching is how it works; **trust is what you get.**
 
-And it Works with anything. A task's `run()` is just Python, so any ML library (sklearn, PyTorch,
+And it works with anything. A task's `run()` is just Python, so any ML library (sklearn, PyTorch,
   Keras, XGBoost) and any data stack works inside it. oryxflow manages the graph and the storage,
   not your math. Outputs save as parquet, pickle, CSV, JSON, Excel, Markdown, or an in-memory cache
   — locally or on S3/GCS.
@@ -169,10 +172,12 @@ already ran, what's still valid, and what its last edit just invalidated. That's
 leave in a context window.
 
 The [oryxflow Claude Code plugin](https://github.com/oryxintel/oryxflow-claude-plugin) teaches your
-coding agent to build the analysis this way — so it reuses expensive results instead of burning your
-time and tokens redoing them, and can't quietly train a model on stale data. oryxflow keeps the
+coding agent to build the analysis this way — so it can't quietly train a model on stale data, and
+every result it hands you can be traced back to the code and inputs that made it. oryxflow keeps the
 record of what ran outside the agent; the plugin teaches the agent to check that record instead of
-trusting its own memory. It's a plugin (a skill plus slash commands), not an MCP server.
+trusting its own memory. And because it reuses expensive results rather than redoing them, that
+discipline costs you less time and fewer tokens, not more. It's a plugin (a skill plus slash
+commands), not an MCP server.
 
 ```text
 /plugin marketplace add oryxintel/oryxflow-claude-plugin

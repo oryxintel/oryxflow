@@ -1,21 +1,24 @@
 ---
 title: Documentation
-description: oryxflow documentation — install, quickstart, guides for tasks, workflows, parameters, I/O formats, and the API reference.
+description: "oryxflow documentation — build trustworthy, reproducible data science pipelines in Python: install, quickstart, guides for tasks, workflows, parameters, I/O formats, and the API reference."
 ---
 
-# Documentation
+# oryxflow documentation
 
-Everything you need to build data-science pipelines with oryxflow. Declare each step as a
-**task**. The engine runs your steps in dependency order, skips what's already computed, and
-reruns exactly what a parameter, data, or code change affects — and you load any result by name.
-You get faster, cheaper, more **trustworthy** data analysis, reproducible and lineage-tracked by
-default, for humans and AI coding agents alike — with no filenames to invent and no note about
-which parameters produced which output.
+Everything you need to build data-science pipelines you can believe. Declare each step as a
+**task**. The engine runs your steps in dependency order and reruns exactly what a parameter,
+data, or code change affects, so no result is ever built on stale data — and it records what
+produced every output, which makes AI data analysis reproducible by default, for humans and AI
+coding agents alike. There are no filenames to invent and no note to keep about which parameters
+produced which output; you load any result by name. None of that costs you time, either: anything
+already computed loads from cache instead of running again.
 
 New here? Read **[Why oryxflow](why-oryxflow.md)** for the positioning, then start with
 **[Installation](installation.md)** and the **[Quickstart](quickstart.md)**. Already have a project
 that got out of hand? Go straight to
 **[Migrate a messy notebook project](migrate-notebook-to-pipeline.md)**.
+
+## Guides for reproducible data science
 
 <div class="grid cards" markdown>
 

@@ -6,7 +6,7 @@ categories:
 description: An honest guide to when oryxflow is the wrong tool — production orchestration, distributed scale, dashboards, and what a caching pipeline library can't check.
 faq:
   - q: "When should I not use oryxflow?"
-    a: "Skip oryxflow for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for the research loop; it caches task outputs and skips unchanged work, but it doesn't schedule, scale out, or display."
+    a: "Skip oryxflow for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for making research results trustworthy and reproducible; it reruns exactly what a change affects and reuses the rest, but it doesn't schedule, scale out, or display."
   - q: "Is oryxflow overkill for a quick one-off analysis?"
     a: "No — a five-line cell you run once doesn't need task classes, and you don't have to decide upfront either way. If you build with the oryxflow Claude Code plugin, exploration gets a home in the project from the start: a read-only probe script that states the question it answers and still runs next session, instead of a snippet you lose. When a probe turns out to be load-bearing — you keep re-running it, or something downstream depends on its result — /oryxflow:migrate lifts it into cached, parameterized tasks and never deletes the original. So you can start small in oryxflow and scale to any complexity, with no rewrite in between."
   - q: "Does oryxflow check that my analysis is correct?"
@@ -19,7 +19,7 @@ faq:
 
 <!-- more -->
 
-oryxflow is a local, zero-infrastructure library for the research loop: it caches task outputs, tracks lineage, and skips work whose inputs and code haven't changed, so your pipeline stays reproducible without a server, a scheduler, or a database. That's genuinely useful — but only for a specific shape of problem. Every honest tool has a boundary, and pretending oryxflow fits everywhere would waste your time and cost you trust. So here is where it doesn't fit, and what to reach for instead.
+oryxflow is a local, zero-infrastructure library for the research loop: it ties every result to the code and inputs that produced it, tracks lineage, and reruns exactly what a change affects — so a number can't quietly sit on stale data and you can regenerate any result months later, without a server, a scheduler, or a database. (It reuses the steps that didn't change, which is why none of that costs you rerun time.) That's genuinely useful — but only for a specific shape of problem. Every honest tool has a boundary, and pretending oryxflow fits everywhere would waste your time and cost you trust. So here is where it doesn't fit, and what to reach for instead.
 
 ## A quick one-off doesn't need a pipeline — but you can still start here
 
@@ -35,7 +35,7 @@ Then, when a script turns out to be load-bearing — you keep re-running it, som
 
 Scheduled runs at 6am, retries across a cluster, backfills over a date range, alerting when a job fails, SLAs your team is on the hook for — that's production operations, and oryxflow doesn't do it. There's no scheduler, no distributed retry, no alerting, and no operational UI.
 
-**Use instead:** [Airflow](https://airflow.apache.org/), [Prefect](https://www.prefect.io/), or [Dagster](https://dagster.io/). These are excellent at what they do, and they do a *different* job than oryxflow — they orchestrate operations, oryxflow accelerates the research loop that happens before anything is scheduled. Many teams develop logic in oryxflow and later wrap the finished pipeline in one of these for production. They're complementary, not competitors.
+**Use instead:** [Airflow](https://airflow.apache.org/), [Prefect](https://www.prefect.io/), or [Dagster](https://dagster.io/). These are excellent at what they do, and they do a *different* job than oryxflow — they orchestrate operations; oryxflow makes the research loop that happens before anything is scheduled trustworthy and reproducible. Many teams develop logic in oryxflow and later wrap the finished pipeline in one of these for production. They're complementary, not competitors.
 
 ## Don't reach for oryxflow when… you need distributed or very-large-scale execution
 
@@ -73,13 +73,14 @@ Every one of those is reproducible, lineage-tracked, and wrong. oryxflow manages
 
 With the boundaries drawn honestly, the fit is clear. oryxflow earns its keep when:
 
-- your pipeline is a **deep chain** of dependent steps,
-- some of those steps are **expensive** (minutes to hours),
-- you sweep a **matrix of parameters** and want to re-run only what changed,
-- you need to **reproduce or hand off** research months later, and
+- a result has to be **defensible** — you'll hand it to someone, or make a decision on it,
+- you need to **reproduce or hand off** that research months later,
+- your pipeline is a **deep chain** of dependent steps, where staleness has somewhere to hide,
+- some of those steps are **expensive** (minutes to hours), so rerunning everything to be sure isn't an option,
+- you sweep a **matrix of parameters** and want every configuration compared against the same upstream, and
 - pipelines are **authored by AI agents** that benefit from an explicit, inspectable task graph.
 
-A typical task is small and declarative — declare dependencies, load inputs, save outputs, and the engine skips anything already computed:
+A typical task is small and declarative — declare dependencies, load inputs, save outputs, and the engine reruns what a change affects and reuses the rest:
 
 ```python
 @oryxflow.requires(CleanData)
@@ -92,7 +93,7 @@ flow = oryxflow.Workflow(task=Features)
 flow.run()
 ```
 
-That's the sweet spot: enough depth and cost that caching pays for itself, run often enough that reproducibility matters.
+That's the sweet spot: results that have to hold up, in a pipeline deep and expensive enough that you'd never verify them by rerunning the whole thing from scratch.
 
 ## Takeaway
 
@@ -108,7 +109,7 @@ pip install oryxflow
 
 ### When should I not use oryxflow?
 
-Skip oryxflow for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for the research loop; it caches task outputs and skips unchanged work, but it doesn't schedule, scale out, or display.
+Skip oryxflow for production orchestration (scheduling, retries, alerting — use Airflow, Prefect, or Dagster), for distributed or larger-than-memory execution (Flyte or Metaflow), for a hosted experiment dashboard (MLflow or W&B), and for Git-tied data versioning (DVC). oryxflow is a local, zero-infrastructure library for making research results trustworthy and reproducible; it reruns exactly what a change affects and reuses the rest, but it doesn't schedule, scale out, or display.
 
 ### Is oryxflow overkill for a quick one-off analysis?
 

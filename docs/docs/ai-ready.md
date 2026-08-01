@@ -15,11 +15,13 @@ faq:
 # oryxflow is built for AI coding agents — documentation included
 
 Most libraries are documented for humans and then discovered by agents by accident. oryxflow is
-written for both. Two halves:
+written for both — because trustworthy, reproducible AI data analysis depends as much on what the
+agent can read as on what it can run. Two halves:
 
-- **The library** gives an agent the discipline it can't hold in its head — every step cached with
-  an identity derived from its parameters *and* its code, so it reuses expensive results and can't
-  build on stale ones. That's the story in
+- **The library** gives an agent the discipline it can't hold in its head — every step has an
+  identity derived from its parameters *and* its code, so an agent can't build on a stale result,
+  and every number it hands you stays traceable to what produced it. Because that identity is also
+  what lets completed work be reused, the careful path is the cheap one. That's the story in
   [Claude Code for data science](claude-code-for-data-science.md).
 - **The documentation** gives an agent something it can actually read, in bulk, and trust. That's
   this page, collected in one place so you don't have to take "AI-friendly" on faith.
@@ -84,7 +86,7 @@ Canonical URLs are stamped on every page and the sitemap's freshness dates come 
 history, so an agent or crawler comparing versions sees one authoritative copy with an honest
 last-modified date.
 
-## The conventions ship as a skill, not just prose
+## The conventions ship as a Claude Code skill, not just prose
 
 Reading the docs is the general-purpose route. For Claude Code there's a shortcut: the
 [oryxflow plugin](claude-plugin/index.md) installs a skill that auto-activates in a pipeline
@@ -127,4 +129,5 @@ the same conventions as a skill; the library itself is an ordinary Python packag
 - **[Build with Claude Code](claude-plugin/index.md)** — the plugin, its commands and its trust
   model.
 - **[API Reference](reference.md)** — the generated symbol reference.
-- **[Quickstart](quickstart.md)** — from nothing to a self-caching pipeline in minutes.
+- **[Quickstart](quickstart.md)** — from nothing to a reproducible, self-caching pipeline in
+  minutes.
