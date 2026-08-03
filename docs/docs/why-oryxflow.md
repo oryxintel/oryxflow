@@ -163,7 +163,7 @@ A few honest specifics:
 - **vs MLflow / W&B** — complementary, not competing. Trackers answer "which run scored 0.91?";
   oryxflow answers "which steps do I actually need to rerun to reproduce it, and are they
   stale?" Keep logging to your tracker *inside* oryxflow tasks. See
-  [MLflow or pipeline caching?](../blog/posts/mlflow-or-pipeline-caching.md)
+  [MLflow, or a reproducible pipeline?](../blog/posts/mlflow-or-pipeline-caching.md)
 - **vs Airflow / Prefect / Dagster** — a different job. Those run scheduled production pipelines
   on real infrastructure; oryxflow is a `pip install` for the local research loop. See
   [oryxflow vs Airflow](../blog/posts/oryxflow-vs-airflow.md).

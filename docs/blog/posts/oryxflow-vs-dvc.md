@@ -24,7 +24,7 @@ hash changes; [oryxflow](https://github.com/oryxintel/oryxflow) is a small, loca
 library that turns your task classes into a cached, dependency-aware DAG whose identity is built
 from parameters plus automatic code-change detection. Neither replaces the other. This is the deeper
 dive on where the line falls (there's a shorter DVC section in
-[Do you need MLflow, or pipeline caching?](mlflow-or-pipeline-caching.md) — this post goes further).
+[Do you need MLflow, or a reproducible pipeline?](mlflow-or-pipeline-caching.md) — this post goes further).
 
 ## What is oryxflow, in one sentence?
 
@@ -188,7 +188,7 @@ are no command strings or file lists to declare by hand.
 
 **Read next**
 
-- **[Do you need MLflow, or pipeline caching?](mlflow-or-pipeline-caching.md)** — the shorter DVC
+- **[Do you need MLflow, or a reproducible pipeline?](mlflow-or-pipeline-caching.md)** — the shorter DVC
   section and the tracking-vs-caching split.
 - **[oryxflow vs the field](oryxflow-vs-the-field.md)** — the full framework comparison.
 - **[oryxflow vs Airflow](oryxflow-vs-airflow.md)** — research caching vs production scheduling.

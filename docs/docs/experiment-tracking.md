@@ -161,7 +161,7 @@ tracker because your pipeline isn't reproducible, or expecting a caching layer t
 This page states the division of labor. The arguments behind it live elsewhere, so you don't get
 them twice:
 
-- **[Do you need MLflow, or pipeline caching?](../blog/posts/mlflow-or-pipeline-caching.md)** —
+- **[Do you need MLflow, or a reproducible pipeline?](../blog/posts/mlflow-or-pipeline-caching.md)** —
   the two problems that both get called "experiment management," and how to tell which one is
   biting you.
 - **[MLflow alternatives](../blog/posts/mlflow-alternatives.md)** — an honest roundup of the

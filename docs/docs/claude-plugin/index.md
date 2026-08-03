@@ -77,7 +77,9 @@ and the plugin makes the agent *use* that machinery correctly. It:
 These are the same disciplines documented in the
 [CLAUDE.md snippet for AI-agent projects](../managing-workflows.md#claudemd-snippet-for-ai-agent-projects)
 — shipped as a skill so they load automatically and stay current with the library, instead of a
-copy you paste and forget.
+copy you paste and forget. ([Claude Code skills for data
+science](../../blog/posts/claude-code-skills-for-data-science.md) explains why a skill, rather
+than a data connector or a notebook runner, is the piece that carries this discipline.)
 
 ## In this section
 

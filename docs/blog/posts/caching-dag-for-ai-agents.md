@@ -13,7 +13,7 @@ faq:
     a: "The same task identity that keeps results honest also makes reuse safe: because each step is keyed on its code, inputs and parameters, anything genuinely unchanged can load from disk instead of recomputing, so the big join or model fit runs once rather than every turn. In oryxflow that is automatic — the agent's run-edit loop stops being a recompute tax, which is what stops reproducibility from costing you time."
 ---
 
-# Why a caching DAG makes your AI coding agent a better data scientist
+# How to make Claude Code a trustworthy data scientist
 
 *AI agents like Claude Code now write real data science pipelines — feature engineering,
 model training, experiment sweeps. Here's the honest account of where they fail at it, and
@@ -213,7 +213,9 @@ complex projects where the library otherwise shines.
    reproducible just as faithfully as a right one.
 
 Notice that limits (1) and (2) are not analytical — they're mechanical gaps the library
-leaves open. Which is the whole point of pairing the library with an agent-side skill.
+leaves open. Which is the whole point of pairing the library with an agent-side skill — see
+[Claude Code skills for data science](claude-code-skills-for-data-science.md) for what a skill
+is and why it, rather than a data connector, is the thing that closes a gap like this.
 
 ## Library plus plugin: a matched pair
 

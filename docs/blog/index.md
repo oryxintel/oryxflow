@@ -19,7 +19,7 @@ happens to be the fast, cheap one.
 
 **Trust, reproducibility & caching**
 
-- [From notebook to a reproducible, cached pipeline](posts/notebook-to-pipeline.md) — migrate an
+- [Turn a messy notebook into a reproducible pipeline](posts/notebook-to-pipeline.md) — migrate an
   analysis into tasks, one step at a time, so every result is tied to the code that made it.
 - [4 reasons your machine learning code is bad](posts/4-reasons-your-ml-code-is-bad.md) — the
   failure modes a task DAG fixes, starting with the silent one.
@@ -40,7 +40,7 @@ happens to be the fast, cheap one.
   platform.
 - [oryxflow vs DVC](posts/oryxflow-vs-dvc.md) — native Python task identity vs file-hash data
   versioning.
-- [MLflow or pipeline caching?](posts/mlflow-or-pipeline-caching.md) — experiment tracking vs
+- [MLflow, or a reproducible pipeline?](posts/mlflow-or-pipeline-caching.md) — experiment tracking vs
   workflow caching (and DVC).
 - [MLflow alternatives](posts/mlflow-alternatives.md) — the experiment-tracker landscape, and
   where a caching DAG fits beside (not against) it.
@@ -49,8 +49,11 @@ happens to be the fast, cheap one.
 
 **Trustworthy AI-assisted data science**
 
-- [Why a caching DAG makes your AI coding agent a better data scientist](posts/caching-dag-for-ai-agents.md)
+- [How to make Claude Code a trustworthy data scientist](posts/caching-dag-for-ai-agents.md)
   — where agents fail at pipeline work, and what removes those failures.
+- [Claude Code skills for data science](posts/claude-code-skills-for-data-science.md) — what a
+  skill is, how it differs from a plugin, a slash command and an MCP server, and why it's the
+  piece that keeps AI-written analysis reproducible.
 - [Best practices for AI-assisted data analysis](posts/ai-data-analysis-best-practices.md) — how to
   keep AI-generated analysis reproducible, auditable, and honest about correctness.
 - [The best Claude Code plugins and tools for data science](posts/best-claude-code-plugins-data-science.md)

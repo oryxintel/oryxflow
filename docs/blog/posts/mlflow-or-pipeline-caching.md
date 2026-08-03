@@ -13,7 +13,7 @@ faq:
     a: "Yes, and that's the recommended pattern. Put your tracker's logging calls inside your cached oryxflow tasks: oryxflow owns the pipeline — dependency order, caching, minimal reruns, reproducibility — while MLflow owns the record of what each run scored. You get a reproducible computation graph and a clean experiment log, without either tool pretending to be the other."
 ---
 
-# Do you need MLflow, or do you need reproducible pipeline caching?
+# Do you need MLflow, or do you need a reproducible pipeline?
 
 *They sound like the same problem. They're not — and mixing them up is why so many ML
 projects still can't reproduce last week's result.*

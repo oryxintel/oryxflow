@@ -40,7 +40,10 @@ can't.
 Claude Code plugins extend the agent with new abilities; **skills** are the part that teaches it
 *how to work* — conventions and procedures that load into context automatically when they're
 relevant. (For the precise distinction, see
-[the glossary](glossary.md#what-is-the-difference-between-a-claude-code-plugin-a-skill-and-a-slash-command).)
+[the glossary](glossary.md#what-is-the-difference-between-a-claude-code-plugin-a-skill-and-a-slash-command),
+or [Claude Code skills for data science](../blog/posts/claude-code-skills-for-data-science.md)
+for the longer version — what a skill is, what it isn't, and why it's the piece that makes
+AI-written analysis reproducible.)
 For data science, the useful plugins fall into a few jobs: connecting to your data, running
 notebooks, scaffolding a project, and — the one most tools skip — making sure the analysis is still
 **accurate** ten iterations in, when the agent has edited half the pipeline and nothing has raised an

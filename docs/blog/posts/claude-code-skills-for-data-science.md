@@ -13,7 +13,7 @@ faq:
     a: "A data-science skill teaches the agent how to work, not what data to fetch. It has the agent read cache state at session start, verify after each edit that the right steps reran, answer staleness or expensive-recompute prompts deliberately, and record lineage as memory across sessions. The oryxflow skill encodes exactly this reproducibility discipline."
 ---
 
-# Claude Code skills for data science: what they are and why they matter
+# Claude Code skills for data science: what they are, and what they aren't
 
 *A skill is the part of a Claude Code plugin that teaches the agent how to work. For data
 science, that turns out to be exactly what's missing from "AI writes the analysis fast."*

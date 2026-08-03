@@ -65,7 +65,9 @@ costs you less time than not having it.
 
 The companion [Claude Code plugin](https://github.com/oryxintel/oryxflow-claude-plugin)
 is what makes an agent good at using that model. It's a **skill plus a handful of slash
-commands** that activates automatically when you're working in an oryxflow project. It
+commands** that activates automatically when you're working in an oryxflow project — if the
+skill/plugin/MCP distinction is fuzzy, [Claude Code skills for data
+science](claude-code-skills-for-data-science.md) untangles it. It
 front-loads the correct idioms so the agent doesn't build on stale data, verifies that an
 edit actually reran the tasks it should have, and reuses finished work instead of
 recomputing it. In practice that means:
@@ -115,7 +117,7 @@ Their honest limitation is the same statelessness problem we opened with: a note
 pile of cells with hidden execution order, and an agent iterating in one has no built-in
 notion of what's stale. That's exactly why the common path is **explore in a notebook, then
 graduate the keeper steps into a cached pipeline** — the subject of
-[From notebook to a reproducible, cached pipeline](notebook-to-pipeline.md).
+[Turn a messy notebook into a reproducible pipeline](notebook-to-pipeline.md).
 
 ## Experiment tracking — MLflow (including its experimental MCP)
 
@@ -129,7 +131,7 @@ Reproducibility answers *"which steps do I need to rerun to recreate that run, a
 already computed?"* — a computation problem. A tracker will faithfully log a score without
 any idea whether the features feeding it are stale. Put your tracker calls **inside** your
 cached tasks and you get both: a reproducible graph and a searchable record. We go deeper in
-[MLflow or pipeline caching?](mlflow-or-pipeline-caching.md).
+[MLflow, or a reproducible pipeline?](mlflow-or-pipeline-caching.md).
 
 ## At a glance
 
@@ -183,8 +185,8 @@ the half agents keep getting wrong.
 pip install oryxflow
 ```
 
-**Read next:** [The caching DAG that keeps AI agents honest](caching-dag-for-ai-agents.md) ·
+**Read next:** [How to make Claude Code a trustworthy data scientist](caching-dag-for-ai-agents.md) ·
 [When not to use oryxflow](when-not-to-use-oryxflow.md) ·
-[From notebook to a reproducible, cached pipeline](notebook-to-pipeline.md) ·
+[Turn a messy notebook into a reproducible pipeline](notebook-to-pipeline.md) ·
 [Plugin commands](../../docs/claude-plugin/commands.md) · Plugin repo:
 <https://github.com/oryxintel/oryxflow-claude-plugin>

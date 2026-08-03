@@ -222,5 +222,5 @@ oryxflow fills locally.
 
 - **[Why oryxflow](../../docs/why-oryxflow.md)** — the positioning in full.
 - **[oryxflow vs Airflow](oryxflow-vs-airflow.md)** — research workflows vs production orchestration.
-- **[MLflow or pipeline caching?](mlflow-or-pipeline-caching.md)** — the experiment-tracking half.
+- **[MLflow, or a reproducible pipeline?](mlflow-or-pipeline-caching.md)** — the experiment-tracking half.
 - Source & examples: <https://github.com/oryxintel/oryxflow>

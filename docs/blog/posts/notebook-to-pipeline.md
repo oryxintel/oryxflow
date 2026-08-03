@@ -3,7 +3,7 @@ date: 2026-07-23
 slug: notebook-to-reproducible-pipeline
 categories:
   - Reproducibility
-description: A step-by-step guide to converting a linear Python notebook into a reproducible, cached pipeline with oryxflow — incrementally, without a rewrite.
+description: A step-by-step guide to turning a messy Python notebook into a reproducible data analysis pipeline with oryxflow — one step at a time, without a rewrite, and without rerunning what didn't change.
 faq:
   - q: "Why do I get different numbers when I rerun a notebook a week later?"
     a: "Usually it's hidden state, out-of-order cell execution, or stale intermediate results that never refreshed after an upstream change — none of which surface as errors, they just quietly make your output wrong. oryxflow removes all three by declaring each step as a task with explicit dependencies: the engine runs them in the right order, stores each output under an id derived from its code and parameters, and reruns a step whenever its code or inputs actually change."
@@ -13,9 +13,9 @@ faq:
     a: "No — that's the point of migrating incrementally. Start by converting the single step that hurts most, usually the slow load, and leave the rest of your cells untouched, now fed by flow.outputLoad(). You have a working pipeline after every step, and you only pull the next step into a task when it earns it. oryxflow is designed for this one-step-at-a-time conversion, not a big-bang rewrite."
 ---
 
-# From notebook to a reproducible, cached pipeline in Python
+# How to turn a messy notebook into a reproducible pipeline, one step at a time
 
-*Turn a working-but-fragile notebook into a pipeline you can trust — one step at a time, without a big rewrite.*
+*It was supposed to be a quick analysis. Turn it into a pipeline you can trust — one step at a time, without a big rewrite.*
 
 <!-- more -->
 

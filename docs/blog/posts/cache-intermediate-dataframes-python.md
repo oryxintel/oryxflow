@@ -194,7 +194,7 @@ Wrap each expensive step as a task that declares its dependencies and saves its 
 
 - [Stop rerunning your whole pipeline](stop-rerunning-your-pipeline.md) — the deeper dive on caching a DAG.
 - [Parameter sweeps without rerunning everything](parameter-sweeps-without-rerunning.md) — reuse shared upstream work across a grid.
-- [From notebook to pipeline](notebook-to-pipeline.md) — turn an exploratory notebook into cached tasks.
-- [MLflow, or pipeline caching?](mlflow-or-pipeline-caching.md) — how caching complements experiment tracking.
+- [Turn a messy notebook into a reproducible pipeline](notebook-to-pipeline.md) — turn an exploratory notebook into cached tasks.
+- [MLflow, or a reproducible pipeline?](mlflow-or-pipeline-caching.md) — how caching complements experiment tracking.
 - [Why oryxflow](../../docs/why-oryxflow.md) and [Managing workflows](../../docs/managing-workflows.md) in the docs.
 - Source and examples: <https://github.com/oryxintel/oryxflow>

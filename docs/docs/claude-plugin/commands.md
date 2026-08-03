@@ -32,7 +32,7 @@ one. The end state is reproducible and lineage-tracked, and the expensive steps 
 every edit.
 
 See the companion guide
-[From notebook to a reproducible, cached pipeline](../../blog/posts/notebook-to-pipeline.md) for
+[Turn a messy notebook into a reproducible pipeline](../../blog/posts/notebook-to-pipeline.md) for
 what that transformation looks like step by step.
 
 ## After scaffolding

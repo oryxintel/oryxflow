@@ -188,8 +188,8 @@ speed while getting analysis you can actually defend.
 pip install oryxflow
 ```
 
-**Read next:** [Why AI agents need a caching DAG](caching-dag-for-ai-agents.md) ·
-[MLflow or pipeline caching?](mlflow-or-pipeline-caching.md) ·
+**Read next:** [Make Claude Code a trustworthy data scientist](caching-dag-for-ai-agents.md) ·
+[MLflow, or a reproducible pipeline?](mlflow-or-pipeline-caching.md) ·
 [When *not* to use oryxflow](when-not-to-use-oryxflow.md) ·
 [Why oryxflow](../../docs/why-oryxflow.md) ·
 [The Claude Code plugin](../../docs/claude-plugin/index.md)

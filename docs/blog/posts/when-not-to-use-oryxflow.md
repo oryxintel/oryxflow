@@ -47,7 +47,7 @@ If a single step needs a Kubernetes cluster, or your data doesn't fit on one mac
 
 If what you need is a searchable web UI showing every run's metrics, params, and charts side by side — sortable, filterable, shareable with your team — oryxflow doesn't provide it. It gives you a queryable lineage log, not a hosted dashboard.
 
-**Use instead:** [MLflow](https://mlflow.org/) or [Weights & Biases](https://wandb.ai/). And note these *compose* with oryxflow: log your metrics to MLflow from inside a task's `run()`, and let oryxflow handle the caching and reproducibility around it. You don't pick one — you use both, each for its strength. (More on that split in [MLflow or pipeline caching](mlflow-or-pipeline-caching.md).)
+**Use instead:** [MLflow](https://mlflow.org/) or [Weights & Biases](https://wandb.ai/). And note these *compose* with oryxflow: log your metrics to MLflow from inside a task's `run()`, and let oryxflow handle the caching and reproducibility around it. You don't pick one — you use both, each for its strength. (More on that split in [MLflow, or a reproducible pipeline](mlflow-or-pipeline-caching.md).)
 
 ## Don't reach for oryxflow when… you need Git-tied data versioning
 
@@ -119,4 +119,4 @@ No — a five-line cell you run once doesn't need task classes, and you don't ha
 
 No — and no workflow tool does. oryxflow guarantees an output was produced by the exact code and inputs it recorded, which makes your pipeline reproducible, not correct. It will happily cache, with full lineage, a leaked test set, a bad join, or a backtest that peeks at the future. Those bugs are caught by sanity checks, held-out validation, and reading your own numbers skeptically — not by any caching machinery.
 
-**Read next:** [Why oryxflow](../../docs/why-oryxflow.md) · [Managing complex workflows](../../docs/managing-workflows.md) · [oryxflow vs the field](oryxflow-vs-the-field.md) · [MLflow or pipeline caching](mlflow-or-pipeline-caching.md) · [Claude plugin](../../docs/claude-plugin/index.md) · [GitHub](https://github.com/oryxintel/oryxflow)
+**Read next:** [Why oryxflow](../../docs/why-oryxflow.md) · [Managing complex workflows](../../docs/managing-workflows.md) · [oryxflow vs the field](oryxflow-vs-the-field.md) · [MLflow, or a reproducible pipeline](mlflow-or-pipeline-caching.md) · [Claude plugin](../../docs/claude-plugin/index.md) · [GitHub](https://github.com/oryxintel/oryxflow)

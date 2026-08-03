@@ -197,9 +197,10 @@ work inside that structure. Orchestrators like Airflow are a complementary sched
 **Read next**
 
 - [Claude Code for data science](../../docs/claude-code-for-data-science.md)
-- [Why a caching DAG makes your AI coding agent a better data scientist](caching-dag-for-ai-agents.md)
+- [How to make Claude Code a trustworthy data scientist](caching-dag-for-ai-agents.md)
+- [Claude Code skills for data science](claude-code-skills-for-data-science.md)
 - [When *not* to use oryxflow](when-not-to-use-oryxflow.md)
-- [From notebook to pipeline](notebook-to-pipeline.md)
+- [Turn a messy notebook into a reproducible pipeline](notebook-to-pipeline.md)
 - [Why oryxflow](../../docs/why-oryxflow.md)
 - [Build with Claude Code: the oryxflow plugin](../../docs/claude-plugin/index.md)
 - [Why a plugin, not just a library](../../docs/claude-plugin/why.md)
