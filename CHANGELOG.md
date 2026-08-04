@@ -14,6 +14,26 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 
 ## [Unreleased]
 ### Added
+- `Workflow.dependents(task, root=None, paths=False)` and `Workflow.dependencies(task=None,
+  target=None, paths=False)` (plus `WorkflowMulti` variants with a `flow=` selector) — ask the DAG
+  "what depends on this task" / "what does it depend on" instead of grepping or hand-rolling a walk
+  over `requires()`. `task` may be a **class, family string, or instance**; a class/string is *not*
+  instantiated, so it works for fanned-out / DAG-internal families that `get_task()` can't build.
+  `paths=True` returns the ordered `root→task` routes (a list of task lists) instead of the deduped
+  set. Backed by `core.find_deps` (set) and the new `core.find_paths` (ordered, re-exported as
+  `oryxflow.find_paths`); both are now memoized, so the walk is polynomial on diamond-heavy DAGs
+  instead of exponential. `dependents(X)` is the discoverable, correctly-named form of the
+  confusingly-argued `taskflow_downstream(task, task_downstream)` (kept as an alias).
+- `Workflow.check_inputs(tasks=None, raise_on_unused=False, include_clean=False)` — static AST lint
+  that reports a declared `@oryxflow.requires` dependency whose data `run()` **loads and never
+  reads**. Such a dead dependency is invisible to every dependency query (the edge is real, only
+  the data is dead) yet still forces its whole upstream band on every cold build. `preview()` and
+  `run()` warn about these automatically via a new `UnusedInputWarning` (re-exported, deduped per
+  family, joins `RunResult.warnings`). Three verdicts — `unused` / `clean` / `unanalyzed` (a shape
+  it can't prove is `unanalyzed`, never silently `clean`); outer unpack elements are dependencies,
+  inner are that dep's `persists` (a top-level `_` is a finding, an inner `_` is normal). Suppress a
+  deliberately-unused dependency with a `# oryxflow: input-unused` comment. New module
+  `oryxflow/inputcheck.py`.
 - `@oryxflow.requires_each(task, **grid)` — declare one dependency **per value** instead of one
   dependency: `@oryxflow.requires_each(ModelTrain, model=MODELS)` on the task that combines them.
   Like `@oryxflow.requires` it copies the dependency's parameters onto the decorated task, minus

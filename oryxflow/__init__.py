@@ -7,7 +7,7 @@ except _PkgNotFound:          # running from a source tree that was never instal
     __version__ = "0.0.0+unknown"
 
 from oryxflow import core
-from oryxflow.core import flatten, RunResult, MultiRunResult, TaskFailure, StalenessWarning
+from oryxflow.core import flatten, RunResult, MultiRunResult, TaskFailure, StalenessWarning, find_deps, find_paths
 from oryxflow.log import logger, enable_logging, disable_logging
 from oryxflow.parameter import (
     Parameter,
@@ -92,10 +92,41 @@ def preview(tasks, indent='', last=True, show_params=True, clip_params=False, pr
     for t in tasks:
         msg += oryxflow.utils.print_tree(t, indent=indent, last=last, show_params=show_params, clip_params=clip_params)
     msg += '\n ===== oryxflow Execution Preview ===== \n'
+    unused = _scan_unused_inputs(tasks)
+    if unused:
+        # surface dead dependencies before a cold build pays for them: preview() is what a user
+        # runs BEFORE committing to a run, which is exactly when a heavy dead dependency bites.
+        msg += '\n ===== UNUSED INPUTS ===== \n'
+        for f in unused:
+            msg += ' ! ' + f.message() + '\n'
+        msg += ' ===== UNUSED INPUTS ===== \n'
     if print_it:
         print(msg)
     else:
         return msg
+
+
+def _scan_unused_inputs(tasks):
+    """Every 'unused' input finding across the previewed DAG(s), deduped by (family, dependency)
+    so a fanned-out family reports once. Never raises -- an advisory must not break preview()."""
+    from oryxflow import inputcheck
+    seen, out = set(), []
+    for root in tasks:
+        try:
+            band = oryxflow.utils.traverse(root)
+        except Exception:
+            continue
+        for t in band:
+            try:
+                findings = inputcheck.check_class(type(t))
+            except Exception:
+                continue
+            for f in findings:
+                key = (f.task_family, f.dep_family)
+                if f.verdict == 'unused' and key not in seen:
+                    seen.add(key)
+                    out.append(f)
+    return out
 
 
 
@@ -174,6 +205,7 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
 # accept_code lives in codecheck (the invalidation-policy module) and is re-exported
 # here as public API
 from oryxflow.codecheck import accept_code
+from oryxflow.inputcheck import UnusedInputWarning, InputFinding, check_class as _check_class
 
 
 def taskflow_upstream(task, only_complete=False):
@@ -193,11 +225,14 @@ def taskflow_upstream(task, only_complete=False):
 
 def taskflow_downstream(task, task_downstream, only_complete=False):
     """
-    Get all downstream outputs for a task
+    All tasks on any path between a downstream root and an upstream family -- the band that
+    depends on ``task``. NB the argument order reads backwards: ``task`` is the UPSTREAM family
+    looked up, ``task_downstream`` is the ROOT walked down from. For a discoverable form on a
+    flow, prefer :meth:`Workflow.dependents` (``flow.dependents(task)``).
 
     Args:
-        task (obj): task
-        task_downstream (obj): downstream target task
+        task (obj): the upstream family whose dependents you want (only ``.task_family`` is used)
+        task_downstream (obj): the downstream root task to walk from
 
     """
     tasks = core.find_deps(task_downstream, task.task_family)
@@ -245,6 +280,13 @@ def _as_families(x):
     for use with ``isinstance`` / family matching. Shared by invalidate_upstream (``only=``)
     and invalidate_downstream (family list)."""
     return tuple(x) if isinstance(x, (list, tuple, set)) else (x,)
+
+
+def _family_str(x):
+    """Normalize a task class / instance / family string to a family string. A class or instance
+    exposes ``.task_family`` (a class attribute set by the Register metaclass), so neither needs
+    instantiating -- that is what lets a fanned-out / DAG-internal family be looked up by name."""
+    return x if isinstance(x, str) else x.task_family
 
 
 def invalidate_upstream(task, confirm=False, only=None):
@@ -696,6 +738,112 @@ class Workflow(object):
         task_inst = self.get_task(task)
         return invalidate_upstream(task_inst, confirm, only=only)
 
+    def dependents(self, task, root=None, paths=False):
+        """What (transitively) depends on ``task``, within this flow -- the reverse lookup.
+
+        Every task on a path from the flow root down to ``task``'s family: the band that would
+        recompute if ``task`` changed. Same graph machinery as ``reset_downstream``, so the answer
+        agrees with what a reset would invalidate.
+
+        Args:
+            task (class, str, instance): the family to look up. A CLASS or family STRING is
+                preferred -- neither is instantiated, so this works for fanned-out / DAG-internal
+                families that ``get_task()`` cannot build.
+            root (class, instance): flow root to scope the search from (default: the flow's
+                default task). Only tasks reachable from ``root`` are in scope.
+            paths (bool): if True, return the ordered ``root -> ... -> task`` paths (a list of
+                lists of task instances) instead of the deduped set -- use it to see HOW MANY
+                distinct routes reach ``task``, not merely that it is reached.
+
+        Returns: a set of task instances (``paths=False``), or a list of ordered paths
+            (``paths=True``). Both the target family and the root are included.
+        """
+        root_inst = self.get_task(root)
+        family = _family_str(task)
+        if paths:
+            return core.find_paths(root_inst, family)
+        return core.find_deps(root_inst, family)
+
+    def dependencies(self, task=None, target=None, paths=False):
+        """What ``task`` depends on, within this flow -- the forward lookup.
+
+        With no ``target``, the whole upstream cone of ``task`` (default: the flow's default
+        task). With ``target``, narrows to the band of tasks on all paths between ``task`` and
+        ``target`` -- identical to ``dependents(target, root=task)`` (the band is one thing viewed
+        from either end).
+
+        Args:
+            task (class, str, instance): downstream anchor (default: the flow's default task).
+                Must resolve with the flow's params when ``target`` is not given (it is walked
+                directly); when ``target`` is given it may also be a bare class/string.
+            target (class, str, instance): optional upstream family to stop at.
+            paths (bool): with ``target``, return ordered ``task -> ... -> target`` paths instead
+                of the set. Without ``target``, ``paths`` is ignored (a full upstream cone has no
+                single goal to order toward).
+
+        Returns: a set of task instances, or (``paths=True`` with ``target``) a list of paths.
+        """
+        if target is None:
+            return set(taskflow_upstream(self.get_task(task)))
+        anchor = self.get_task(task)
+        family = _family_str(target)
+        if paths:
+            return core.find_paths(anchor, family)
+        return core.find_deps(anchor, family)
+
+    def check_inputs(self, tasks=None, raise_on_unused=False, include_clean=False, print_it=True):
+        """Static check: which declared dependencies does ``run()`` load and never use?
+
+        A dead dependency is still HONOURED by the scheduler -- its upstream band is computed on
+        every cold build to produce a frame that is discarded. No dependency-graph query finds
+        this (the edge is real; only the data is dead), so it is checked by reading each ``run()``
+        by AST. This also runs automatically inside ``preview()`` / ``run()`` -- call it explicitly
+        for CI.
+
+        Args:
+            tasks (class, list): roots to sweep (default: the flow's default task).
+            raise_on_unused (bool): raise ``ValueError``, every finding formatted, instead of
+                returning -- so a CI caller does not re-implement the filter and message.
+            include_clean (bool): also return ``clean`` / ``unanalyzed`` records (coverage report).
+            print_it (bool): print a rendered summary (ignored when ``raise_on_unused``).
+
+        Returns: list[InputFinding] -- ``unused`` only unless ``include_clean``.
+        """
+        from oryxflow import inputcheck
+        if tasks is None:
+            tasks = [self.default_task]
+        elif not isinstance(tasks, (list, tuple)):
+            tasks = [tasks]
+        # walk each root's band without instantiating mid-DAG tasks: read families off the DAG
+        # we can build, plus the requested roots themselves.
+        seen_fam, records = set(), []
+        band = []
+        for root in tasks:
+            try:
+                band += taskflow_upstream(self.get_task(root))
+            except Exception:
+                pass
+        for t in band:
+            fam = type(t).__name__
+            if fam in seen_fam:
+                continue
+            seen_fam.add(fam)
+            records += inputcheck.check_class(type(t))
+        unused = [f for f in records if f.verdict == 'unused']
+        if raise_on_unused and unused:
+            raise ValueError('unused declared dependencies:\n' +
+                             '\n'.join('  ' + f.message() for f in unused))
+        result = records if include_clean else unused
+        if print_it and not raise_on_unused:
+            if unused:
+                print('check_inputs: {} unused dependenc{}:'.format(
+                    len(unused), 'y' if len(unused) == 1 else 'ies'))
+                for f in unused:
+                    print('  ! ' + f.message())
+            else:
+                print('check_inputs: no unused declared dependencies found')
+        return result
+
     def accept_code(self, task=None):
         """
         Accept an output-equivalent code change for a task and its entire upstream
@@ -1006,6 +1154,39 @@ class WorkflowMulti(object):
             return False
 
         return {self.workflow_objs[exp_name].reset_upstream(task, confirm=False, only=only) for exp_name in self.params.keys()}
+
+    def dependents(self, task, root=None, flow=None, paths=False):
+        """What depends on ``task`` (see :meth:`Workflow.dependents`), for one flow or all flows.
+
+        Args:
+            flow (string): flow name; if not passed, returns a dict keyed by flow name.
+        """
+        if flow is not None:
+            return self.workflow_objs[flow].dependents(task, root=root, paths=paths)
+        return {exp: self.workflow_objs[exp].dependents(task, root=root, paths=paths)
+                for exp in self.params.keys()}
+
+    def dependencies(self, task=None, target=None, flow=None, paths=False):
+        """What ``task`` depends on (see :meth:`Workflow.dependencies`), for one flow or all flows.
+
+        Args:
+            flow (string): flow name; if not passed, returns a dict keyed by flow name.
+        """
+        if flow is not None:
+            return self.workflow_objs[flow].dependencies(task, target=target, paths=paths)
+        return {exp: self.workflow_objs[exp].dependencies(task, target=target, paths=paths)
+                for exp in self.params.keys()}
+
+    def check_inputs(self, tasks=None, flow=None, raise_on_unused=False, include_clean=False,
+                     print_it=True):
+        """Declared deps whose data run() never reads (see :meth:`Workflow.check_inputs`). The
+        finding is per task family, so a single representative flow answers it -- default to the
+        first flow rather than warning identically once per flow."""
+        if flow is None:
+            flow = next(iter(self.params.keys()))
+        return self.workflow_objs[flow].check_inputs(
+            tasks=tasks, raise_on_unused=raise_on_unused, include_clean=include_clean,
+            print_it=print_it)
 
     def preview(self, tasks=None, flow=None, indent='', last=True, show_params=True, clip_params=False, print_it=True):
         """

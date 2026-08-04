@@ -840,21 +840,82 @@ def _get_task_requires(task):
     return set(flatten(task.requires()))
 
 
+def _all_upstream(root):
+    """Every task reachable upstream of ``root`` (root included). Memoized by task_id."""
+    out = {}
+    stack = [root]
+    while stack:
+        t = stack.pop()
+        if t.task_id in out:
+            continue
+        out[t.task_id] = t
+        stack.extend(_get_task_requires(t))
+    return set(out.values())
+
+
+def _reachable_to(node, goal_family, cache):
+    """Set of tasks on any path from ``node`` down to ``goal_family`` (node included when it is
+    on such a path). Memoized per node -> polynomial even on diamond-heavy DAGs."""
+    if node.task_id in cache:
+        return cache[node.task_id]
+    cache[node.task_id] = set()          # re-entry / cycle guard
+    acc = set()
+    for child in _get_task_requires(node):
+        acc |= _reachable_to(child, goal_family, cache)
+    if acc or node.task_family == goal_family:
+        acc = acc | {node}
+    cache[node.task_id] = acc
+    return acc
+
+
+def _suffix_paths(node, goal_family, cache):
+    """List of ordered paths (each a list of tasks, ``node`` first) from ``node`` down to every
+    occurrence of ``goal_family``. Memoized per node -> shared suffixes computed once."""
+    if node.task_id in cache:
+        return cache[node.task_id]
+    cache[node.task_id] = []             # re-entry / cycle guard
+    paths = []
+    if node.task_family == goal_family:
+        paths.append([node])
+    for child in _get_task_requires(node):
+        for sub in _suffix_paths(child, goal_family, cache):
+            paths.append([node] + sub)
+    cache[node.task_id] = paths
+    return paths
+
+
 def dfs_paths(start_task, goal_task_family, path=None):
-    """Yield tasks on every dependency path from ``start_task`` to ``goal_task_family``."""
-    if path is None:
-        path = [start_task]
-    if start_task.task_family == goal_task_family or goal_task_family is None:
-        for item in path:
-            yield item
-    for next_task in _get_task_requires(start_task) - set(path):
-        for t in dfs_paths(next_task, goal_task_family, path + [next_task]):
+    """Back-compat generator: yield tasks on paths from ``start_task`` to ``goal_task_family``
+    (``goal_task_family=None`` yields the whole upstream DAG). Superseded by ``find_paths``
+    (ordered paths) and ``find_deps`` (deduped set); both are memoized."""
+    if goal_task_family is None:
+        for t in _all_upstream(start_task):
+            yield t
+        return
+    for p in _suffix_paths(start_task, goal_task_family, {}):
+        for t in p:
             yield t
 
 
 def find_deps(task, upstream_task_family):
-    """Return the set of all tasks on all paths between ``task`` and ``upstream_task_family``."""
-    return {t for t in dfs_paths(task, upstream_task_family)}
+    """Set of all tasks on all paths between ``task`` (the downstream root) and
+    ``upstream_task_family``. ``upstream_task_family=None`` returns the whole upstream DAG."""
+    if upstream_task_family is None:
+        return _all_upstream(task)
+    return _reachable_to(task, upstream_task_family, {})
+
+
+def find_paths(task, upstream_task_family):
+    """Ordered dependency paths (``task`` -> ... -> ``upstream_task_family``), deduped, root
+    first. Returns a list of lists of task instances; empty if the family is unreachable."""
+    seen = set()
+    out = []
+    for p in _suffix_paths(task, upstream_task_family, {}):
+        key = tuple(t.task_id for t in p)
+        if key not in seen:
+            seen.add(key)
+            out.append(p)
+    return out
 
 
 # ----------------------------------------------------------------------------------------------
@@ -1062,6 +1123,8 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         tid = task.task_id
         if tid in visited:
             return visited[tid]
+
+        _advisor.check_inputs(task)
 
         if task.complete():
             _advisor.advise(task)

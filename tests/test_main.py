@@ -1483,3 +1483,64 @@ class TestMain:
         assert ULeaf(grp='x', sub='a').complete(cascade=False)
         assert not UMid(grp='x').complete(cascade=False)
 
+    def test_dependents_and_dependencies(self, cleanup):
+        # reverse lookup: what depends on a fanned-out mid family, by class AND by string
+        # (neither instantiates the mid task, whose `grp` is internal to the DAG).
+        class QLeaf(oryxflow.tasks.TaskCachePandas):
+            grp = oryxflow.Parameter(); sub = oryxflow.Parameter()
+            def run(self): self.save(pd.DataFrame({'v': range(2)}))
+
+        class QMid(oryxflow.tasks.TaskCachePandas):
+            grp = oryxflow.Parameter()
+            def requires(self): return {s: QLeaf(grp=self.grp, sub=s) for s in ['a', 'b']}
+            def run(self): self.save(self.inputLoadConcat())
+
+        class QTop(oryxflow.tasks.TaskCachePandas):
+            def requires(self): return {g: QMid(grp=g) for g in ['x', 'y']}
+            def run(self): self.save(self.inputLoadConcat())
+
+        flow = oryxflow.Workflow(QTop)
+
+        # QMid can't be get_task()'d from the flow (grp is DAG-internal) -- but dependents
+        # takes the family without instantiating it.
+        with pytest.raises(Exception):
+            flow.get_task(QMid)
+
+        by_class = flow.dependents(QMid)
+        by_str = flow.dependents('QMid')
+        assert {t.task_id for t in by_class} == {t.task_id for t in by_str}
+        assert sorted({type(t).__name__ for t in by_class}) == ['QMid', 'QTop']
+
+        # paths: one distinct route per fanned branch (QTop -> QMid(x), QTop -> QMid(y))
+        paths = flow.dependents(QMid, paths=True)
+        assert len(paths) == 2
+        assert all(p[0].task_family == 'QTop' and p[-1].task_family == 'QMid' for p in paths)
+
+        # unreachable family -> empty
+        assert flow.dependents('DoesNotExist') == set()
+
+        # forward lookup: bare dependencies() == full upstream cone of the default task
+        assert {t.task_id for t in flow.dependencies()} == \
+               {t.task_id for t in oryxflow.taskflow_upstream(QTop())}
+        # the band is one thing from either end
+        assert {t.task_id for t in flow.dependencies(QTop, target=QLeaf)} == \
+               {t.task_id for t in flow.dependents(QLeaf, root=QTop)}
+
+    def test_dependents_workflowmulti(self, cleanup):
+        class NLeaf(oryxflow.tasks.TaskCachePandas):
+            region = oryxflow.Parameter()
+            def run(self): self.save(pd.DataFrame({'v': range(2)}))
+
+        class NTop(oryxflow.tasks.TaskCachePandas):
+            region = oryxflow.Parameter()
+            def requires(self): return NLeaf(region=self.region)
+            def run(self): self.save(self.inputLoad())
+
+        flow = oryxflow.WorkflowMulti(task=NTop, params={'US': {'region': 'US'},
+                                                        'EU': {'region': 'EU'}})
+        one = flow.dependents(NLeaf, flow='US')
+        assert sorted({type(t).__name__ for t in one}) == ['NLeaf', 'NTop']
+        allflows = flow.dependents(NLeaf)
+        assert set(allflows.keys()) == {'US', 'EU'}
+        assert sorted({type(t).__name__ for t in allflows['EU']}) == ['NLeaf', 'NTop']
+

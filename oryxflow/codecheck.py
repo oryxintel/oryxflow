@@ -103,6 +103,7 @@ class Advisor:
         self.emit = emit
         self.warned = []      # unacknowledged code-change warning strings (RunResult)
         self.advised = set()  # task_ids already checked this build
+        self.input_advised = set()  # task families already input-checked this build
 
     def warn(self, task, msg, changed_files):
         # decision 12a: the advisory must be visible without enable_logging(), so it
@@ -128,6 +129,45 @@ class Advisor:
         self.emit('code_warning',
                   {'task_id': task.task_id, 'family': task.task_family,
                    'changed_files': changed_files, 'code_version': task.code_version},
+                  msg=msg if fresh else None, level='warning')
+
+    def check_inputs(self, task):
+        # advisory: does this family declare a dependency whose data run() never reads? The
+        # result is identical for every parameterization, so check each family ONCE per build
+        # (keyed on task_family, not task_id) -- the same message-level dedupe warn() uses keeps
+        # a fanned-out family from warning per branch.
+        from oryxflow import inputcheck
+        fam = task.task_family
+        if fam in self.input_advised:
+            return
+        self.input_advised.add(fam)
+        try:
+            findings = inputcheck.check_class(type(task))
+        except Exception as e:
+            logger.debug("input check failed for {}: {}: {}", fam, type(e).__name__, e)
+            return
+        for f in findings:
+            if f.verdict == 'unused':
+                self.warn_input(task, f)
+
+    def warn_input(self, task, finding):
+        # same four-channel advisory as warn() (warnings.warn + loguru + event + RunResult),
+        # with per-message dedupe so parameterized instances of one family don't inflate the count
+        msg = finding.message()
+        if msg not in self.warned:
+            self.warned.append(msg)
+        fresh = msg not in _code_warned.values()
+        _code_warned[finding.task_family] = msg
+        if fresh:
+            try:
+                from oryxflow.inputcheck import UnusedInputWarning
+                _stdwarnings.warn(msg, UnusedInputWarning)
+            except Exception:
+                # an app-level 'error' warning filter must never abort a build for an advisory
+                pass
+        self.emit('input_warning',
+                  {'task_id': task.task_id, 'family': finding.task_family,
+                   'dep_family': finding.dep_family, 'source': finding.source},
                   msg=msg if fresh else None, level='warning')
 
     def advise(self, task):
