@@ -14,6 +14,8 @@ import hashlib
 import inspect
 import itertools
 import traceback
+import contextlib
+import threading
 
 from oryxflow.log import logger, TaskLogger
 from oryxflow.parameter import (
@@ -82,6 +84,156 @@ def getpaths(struct):
             return [getpaths(r) for r in struct]
         except TypeError:
             raise Exception('Cannot map %s to Task/dict/list' % str(struct))
+
+
+# ----------------------------------------------------------------------------------------------
+# Traversal-scoped memos
+# ----------------------------------------------------------------------------------------------
+# Three engine questions recurse over a task's whole upstream closure, and a traversal asks each
+# once per task (build) or once per printed NODE (print_tree) -- so the number of evaluations is
+# the number of PATHS through the DAG, not the number of tasks. Measured on a 41-branch fan-out
+# over a shared aggregator (75 tasks), one no-op run(): 1,428 completeness checks, 586 requires()
+# resolutions, 8,439 code-fingerprint evaluations; one preview(): 5,552 / 873 / 13,685.
+#
+# Within ONE traversal none of those answers may change, so each is computed once per task. The
+# memos come in two flavours because their invalidation rules differ:
+#
+#   VOLATILE -- completeness. A task that materializes or is invalidated changes what is
+#     complete, so this memo is dropped at those points: build() brackets every run(),
+#     TaskData.save() clears, invalidate() clears. Clearing is measurably free -- build()'s own
+#     `visited` map means each task is asked once per build at the top level anyway, so a full
+#     43-task rerun executes 75 checks, the same as a no-op run.
+#   STRUCTURAL -- resolved requires() and _code_fingerprint. Both are functions of the code and
+#     the parameters, not of the outputs, so they live for the whole traversal. codehash.freeze()
+#     already brackets build() on that premise (code cannot change mid-build), and _process
+#     resolves requires() before a task runs and input() after it -- a requires() answering
+#     differently across a run would already be wiring a different DAG. Freezing per traversal
+#     enforces an assumption the engine has always made.
+#
+# NOT memoized, and must not be: TaskData._dep_state(), the volatile twin of _code_fingerprint.
+# It folds each dep's record output_id, which is exactly what changes when a dep rematerializes.
+#
+# Keyed on id(task) with the task held in the value, so an id cannot be recycled while its entry
+# lives. NOT keyed on task_id: Workflow propagates a per-flow `path` by mutating a non-parameter
+# attribute onto shared instances, so two flows share a task_id while writing to different
+# directories. What makes flows safe is the SCOPING, not the key -- NEVER widen a scope across
+# flows (WorkflowMulti runs/previews one flow at a time and re-attaches paths between them).
+#
+# State is thread-local: run(main_thread_only=False) supports concurrent builds in an app, and
+# two threads traversing the same memoized instance must not read each other's answers.
+#
+# _traversal_memo_enabled is a core-private kill switch: False restores the un-memoized
+# recursion (strictly slower), and the test suite toggles it to assert the two modes agree. Not
+# a `settings` knob on purpose -- it is not something a user should have to think about; a field
+# rollback is the one-line `oryxflow.core._traversal_memo_enabled = False`.
+_traversal_memo_enabled = True
+
+
+class _TraversalState(threading.local):
+    """Per-thread memo state; the class attributes are the per-thread defaults."""
+    complete = None       # id(task) -> (task, complete?)          None -> no traversal open
+    requires = None       # id(task) -> (task, (deps, groups))
+    fingerprint = None    # id(task) -> (task, fingerprint)
+    depth = 0             # nesting: a task's run() may call oryxflow.run()
+    gen = 0               # bumped on every volatile clear (see _memoized)
+    stats = None          # counters for the traversal in flight
+    last_stats = None     # counters of the most recent completed traversal
+
+
+_traversal = _TraversalState()
+
+
+def _new_stats():
+    return dict(complete_hit=0, complete_miss=0, requires_hit=0, requires_miss=0,
+                fingerprint_hit=0, fingerprint_miss=0, cleared=0)
+
+
+@contextlib.contextmanager
+def traversal_scope():
+    """Memoize completeness, resolved dependencies and code fingerprints for the duration of
+    one traversal -- a build, a preview, a ``Workflow.complete()``, ``accept_code()``, the
+    upstream/downstream walks behind the invalidate helpers.
+
+    Nested scopes share one memo and only the outermost drops it, so a task's ``run()`` calling
+    ``oryxflow.run()`` (flow-within-a-flow) needs no special case: that nested build clears the
+    shared volatile memo whenever it materializes something.
+    """
+    st = _traversal
+    if not _traversal_memo_enabled:
+        yield
+        return
+    if st.depth == 0:
+        st.complete, st.requires, st.fingerprint = {}, {}, {}
+        st.stats = _new_stats()
+    st.depth += 1
+    try:
+        yield
+    finally:
+        st.depth -= 1
+        if st.depth == 0:
+            s = st.last_stats = st.stats
+            logger.debug(
+                "traversal memo: complete {}/{}, requires {}/{}, fingerprint {}/{} hit, "
+                "{} invalidation(s)",
+                s['complete_hit'], s['complete_hit'] + s['complete_miss'],
+                s['requires_hit'], s['requires_hit'] + s['requires_miss'],
+                s['fingerprint_hit'], s['fingerprint_hit'] + s['fingerprint_miss'],
+                s['cleared'])
+            st.complete = st.requires = st.fingerprint = st.stats = None
+
+
+def traversal_stats():
+    """Memo counters for the traversal in flight, else the most recent one.
+
+    Internal. The regression tests assert on the MISS counts: one miss per unique task is the
+    invariant this whole section exists to hold, and unlike wall-clock it is deterministic.
+    """
+    st = _traversal
+    return dict(st.stats or st.last_stats or _new_stats())
+
+
+def traversal_memo_clear():
+    """Drop the volatile memo: something changed what is complete (a task materialized, an
+    output was invalidated). The structural memos are untouched -- neither the code nor the DAG
+    shape changes mid-traversal."""
+    st = _traversal
+    if st.complete is not None:
+        st.complete.clear()
+        st.gen += 1
+        st.stats['cleared'] += 1
+
+
+def _memoized(memo, kind, task, compute):
+    st = _traversal
+    if memo is None:
+        return compute()
+    hit = memo.get(id(task))
+    if hit is not None:
+        st.stats[kind + '_hit'] += 1
+        return hit[1]
+    st.stats[kind + '_miss'] += 1
+    gen = st.gen
+    value = compute()
+    if st.gen == gen:
+        # nothing was invalidated while we were computing; the task is held in the entry so its
+        # id cannot be recycled underneath us
+        memo[id(task)] = (task, value)
+    return value
+
+
+def complete_cached(task, cascade, compute):
+    """Evaluate a cascading ``complete()`` at most once per task per traversal.
+
+    ``cascade=False`` is never memoized: it does no recursion, so there is nothing to save, and
+    it is what the load paths ask right after a save.
+    """
+    if not cascade:
+        return compute()
+    return _memoized(_traversal.complete, 'complete', task, compute)
+
+
+def fingerprint_cached(task, compute):
+    return _memoized(_traversal.fingerprint, 'fingerprint', task, compute)
 
 
 def task_id_str(task_family, params):
@@ -442,10 +594,17 @@ class Task(metaclass=Register):
         rerun automatically -- and edits to unrelated siblings in the same file don't.
         None when neither applies here or upstream (feature inert).
         For tasks WITH an explicit code_version the AST source-hash stays a
-        warn-only advisory and never gates completeness."""
-        # Not memoized: instances are process-long-lived via the Register cache, so a
-        # cached fingerprint would go stale on runtime bumps; recompute is a cheap md5
-        # over a small DAG (task_hashes carries its own mtime-revalidated cache).
+        warn-only advisory and never gates completeness.
+
+        Memoized per TRAVERSAL only (``traversal_scope``), never per instance: instances are
+        process-long-lived via the Register cache, so a cached fingerprint would go stale on a
+        runtime ``code_version`` bump between runs. Within one traversal it cannot change --
+        ``codehash.freeze()`` already brackets ``build()`` on that premise -- and recomputing it
+        is O(paths): 8,439 recursive evaluations for one no-op run over 75 tasks.
+        """
+        return fingerprint_cached(self, self._code_fingerprint_compute)
+
+    def _code_fingerprint_compute(self):
         dep_fps = [d._code_fingerprint for d in self.deps()]
         own = self.code_version
         if own is None:
@@ -617,11 +776,19 @@ def _resolve_requires(task):
     """Return ``(deps, groups)``. ``deps`` is what ``requires()`` yields; ``groups`` maps a
     fan-out group name to ``{dependency key: branch label}``.
 
+    Memoized for the duration of a traversal (``traversal_scope``): every level of every
+    completeness cascade calls this, and for a fan-out each call re-clones every branch.
+
     An UNNAMED fan-out keys dependencies on the value itself, exactly as it always has. Naming
     a group qualifies its keys with that name (``chart_north``) -- which is how naming resolves
     a collision between two fan-outs over the same values. The label stays the bare value, so
     ``inputLoad(flatten=False)`` yields ``{'chart': {'north': ...}}`` either way.
     """
+    return _memoized(_traversal.requires, 'requires', task,
+                     lambda: _resolve_requires_uncached(task))
+
+
+def _resolve_requires_uncached(task):
     cls = type(task)
     spec = cls.__dict__.get('_requires_spec') or getattr(cls, '_requires_spec', [])
 
@@ -1124,8 +1291,6 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         if tid in visited:
             return visited[tid]
 
-        _advisor.check_inputs(task)
-
         if task.complete():
             _advisor.advise(task)
             logger.debug("task skipped (already complete): {}", tid)
@@ -1162,14 +1327,12 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         logger.info("task start: {} ({})", task.task_family, tid)
         t0 = time.perf_counter()
         try:
-            result = task.run()
-            if inspect.isgenerator(result):
-                if not _drive_generator(result):
-                    failed.append(TaskFailure(task, reason="dependency failed"))
-                    _emit_failed(task, 'dependency failed', None,
-                                 time.perf_counter() - t0)
-                    visited[tid] = False
-                    return False
+            if not _run_task(task):
+                failed.append(TaskFailure(task, reason="dependency failed"))
+                _emit_failed(task, 'dependency failed', None,
+                             time.perf_counter() - t0)
+                visited[tid] = False
+                return False
         except Exception as e:
             logger.opt(exception=True).error("task failed: {}", tid)
             tb = traceback.format_exc()
@@ -1213,6 +1376,21 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         visited[tid] = True
         return True
 
+    def _run_task(task):
+        # A task that materializes changes what is complete, so no volatile answer may outlive
+        # it -- and code inside run() (inputLoad, a flow-within-a-flow oryxflow.run(), a manual
+        # complete()) must not read an answer computed before it either. Hence both sides.
+        # TaskData.save() clears too; this bracket also covers tasks that materialize without
+        # save() and runs that fail part-way.
+        traversal_memo_clear()
+        try:
+            result = task.run()
+            if inspect.isgenerator(result):
+                return _drive_generator(result)
+            return True
+        finally:
+            traversal_memo_clear()
+
     def _drive_generator(gen):
         # Drive a generator-style run() that yields tasks (eg TaskAggregator) or dynamic
         # requirements, processing each yielded batch before resuming.
@@ -1249,8 +1427,9 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
     previous_capture = _log.set_task_log_capture(_capture_task_log)
     _codehash.freeze()   # code can't change mid-build: skip per-complete() mtime re-stats
     try:
-        for task in tasks:
-            _process(task)
+        with traversal_scope():
+            for task in tasks:
+                _process(task)
     finally:
         _codehash.unfreeze()
         _log.set_task_log_capture(previous_capture)

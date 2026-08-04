@@ -147,14 +147,17 @@ class TestInputCheckIntegration:
         allrecs = flow.check_inputs(include_clean=True, print_it=False)
         assert len(allrecs) == 3
 
-    def test_build_populates_warnings_once(self, cleanup):
+    def test_run_does_not_lint(self, cleanup):
+        # the unused-input lint is preview-only: run() keeps the execution path free and never
+        # populates RunResult.warnings with a dead-dependency finding (explicit check_inputs()
+        # and preview() are where it surfaces). Also proves run() can't be aborted by the lint
+        # under -W error, since it emits no UnusedInputWarning at all.
         flow = oryxflow.Workflow(LoadsThreeUsesTwo)
         with warnings.catch_warnings():
             warnings.simplefilter('error', inputcheck.UnusedInputWarning)
-            # advisory must NOT abort the build under -W error
             result = flow.run()
         hits = [w for w in result.warnings if 'SrcC' in w and 'never uses it' in w]
-        assert len(hits) == 1                       # once per family, not per parameterization
+        assert len(hits) == 0
 
     def test_preview_shows_unused_block(self, cleanup):
         out = oryxflow.preview(LoadsThreeUsesTwo(), print_it=False)

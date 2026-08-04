@@ -13,6 +13,8 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   prose. Agents grep this file for the symbol in their traceback.
 
 ## [Unreleased]
+
+## [26.8.2] - 2026-08-02
 ### Added
 - `Workflow.dependents(task, root=None, paths=False)` and `Workflow.dependencies(task=None,
   target=None, paths=False)` (plus `WorkflowMulti` variants with a `flow=` selector) — ask the DAG
@@ -27,9 +29,10 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - `Workflow.check_inputs(tasks=None, raise_on_unused=False, include_clean=False)` — static AST lint
   that reports a declared `@oryxflow.requires` dependency whose data `run()` **loads and never
   reads**. Such a dead dependency is invisible to every dependency query (the edge is real, only
-  the data is dead) yet still forces its whole upstream band on every cold build. `preview()` and
-  `run()` warn about these automatically via a new `UnusedInputWarning` (re-exported, deduped per
-  family, joins `RunResult.warnings`). Three verdicts — `unused` / `clean` / `unanalyzed` (a shape
+  the data is dead) yet still forces its whole upstream band on every cold build. `preview()`
+  surfaces these automatically in an `UNUSED INPUTS` block, deduped per family; `run()` does not
+  lint, keeping the execution path free (call `check_inputs()` explicitly for CI). Three verdicts
+  — `unused` / `clean` / `unanalyzed` (a shape
   it can't prove is `unanalyzed`, never silently `clean`); outer unpack elements are dependencies,
   inner are that dep's `persists` (a top-level `_` is a finding, an inner `_` is normal). Suppress a
   deliberately-unused dependency with a `# oryxflow: input-unused` comment. New module
@@ -77,6 +80,20 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   branches; `inputLoadConcat(flatten=False)` returns one DataFrame per group.
 
 ### Changed
+- Traversal-scoped memoization makes no-op re-runs and `preview()` near-instant on wide fan-out
+  DAGs. Three engine questions used to recurse over each task's whole upstream closure once per
+  **path** through the DAG, not once per task: `TaskData.complete(cascade=True)`,
+  `_resolve_requires()`, and `Task._code_fingerprint`. On a 41-branch fan-out over a shared
+  aggregator (75 tasks) a no-op `run()` did 1,428 completeness checks, 586 `requires()`
+  resolutions and 8,439 fingerprint evaluations; `preview()` did 5,552 / 873 / 13,685. A new
+  per-traversal memo (`oryxflow.core.traversal_scope`, opened by `build()`, `preview()`,
+  `Workflow.complete()`, the `taskflow_*` walks, `dependents`/`dependencies` and `accept_code`)
+  collapses each to **one execution per unique task** — the same no-op `run()` now does 75 / 43 / 75.
+  Behaviour is unchanged: completeness answers are dropped whenever a task materializes
+  (`save()`), is invalidated (`reset()`/`invalidate()`), or runs inside a build; the code/DAG-shape
+  memos live for the traversal (the engine already forbids code changes mid-build, per
+  `codehash.freeze()`). A bare `Task.complete()` outside any traversal is unmemoized, exactly as
+  before. With cloud storage this also cuts the per-object existence API calls by the same factor.
 - BREAKING: `cls` and `derive` join `path` and `flows` as **reserved parameter names** — declaring
   `derive = oryxflow.Parameter(...)` (or `cls`) on a task now raises `ValueError` at class
   definition. Both are arguments of `Task.clone()` / `Task.requires_grid()`, so the argument

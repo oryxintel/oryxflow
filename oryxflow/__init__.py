@@ -89,8 +89,9 @@ def preview(tasks, indent='', last=True, show_params=True, clip_params=False, pr
     msg = '\n ===== oryxflow Execution Preview ===== \n'
     if not isinstance(tasks, (list,)):
         tasks = [tasks]
-    for t in tasks:
-        msg += oryxflow.utils.print_tree(t, indent=indent, last=last, show_params=show_params, clip_params=clip_params)
+    with core.traversal_scope():
+        for t in tasks:
+            msg += oryxflow.utils.print_tree(t, indent=indent, last=last, show_params=show_params, clip_params=clip_params)
     msg += '\n ===== oryxflow Execution Preview ===== \n'
     unused = _scan_unused_inputs(tasks)
     if unused:
@@ -164,13 +165,14 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
     if forced is not None:
         if not isinstance(forced, (list,)):
             forced = [forced]
-        invalidate = []
-        for tf in forced:
-            for tup in tasks:
-                invalidate.append(oryxflow.taskflow_downstream(tf, tup))
+        with core.traversal_scope():
+            invalidate = []
+            for tf in forced:
+                for tup in tasks:
+                    invalidate.append(oryxflow.taskflow_downstream(tf, tup))
 
-        invalidate = set().union(*invalidate)
-        invalidate = {t for t in invalidate if t.complete()}
+            invalidate = set().union(*invalidate)
+            invalidate = {t for t in invalidate if t.complete()}
         if len(invalidate) > 0:
             if confirm:
                 print('Forced tasks', invalidate)
@@ -217,10 +219,11 @@ def taskflow_upstream(task, only_complete=False):
 
     """
 
-    tasks = oryxflow.utils.traverse(task)
-    if only_complete:
-        tasks = [t for t in tasks if t.complete()]
-    return tasks
+    with core.traversal_scope():
+        tasks = oryxflow.utils.traverse(task)
+        if only_complete:
+            tasks = [t for t in tasks if t.complete()]
+        return tasks
 
 
 def taskflow_downstream(task, task_downstream, only_complete=False):
@@ -235,10 +238,11 @@ def taskflow_downstream(task, task_downstream, only_complete=False):
         task_downstream (obj): the downstream root task to walk from
 
     """
-    tasks = core.find_deps(task_downstream, task.task_family)
-    if only_complete:
-        tasks = {t for t in tasks if t.complete()}
-    return tasks
+    with core.traversal_scope():
+        tasks = core.find_deps(task_downstream, task.task_family)
+        if only_complete:
+            tasks = {t for t in tasks if t.complete()}
+        return tasks
 
 
 def invalidate_all(confirm=False):
@@ -669,7 +673,8 @@ class Workflow(object):
             return output.path
 
     def complete(self, task=None, cascade=True):
-        return self.get_task(task).complete(cascade=cascade)
+        with core.traversal_scope():
+            return self.get_task(task).complete(cascade=cascade)
 
     def output(self, task=None):
         return self.get_task(task).output()
@@ -758,11 +763,12 @@ class Workflow(object):
         Returns: a set of task instances (``paths=False``), or a list of ordered paths
             (``paths=True``). Both the target family and the root are included.
         """
-        root_inst = self.get_task(root)
-        family = _family_str(task)
-        if paths:
-            return core.find_paths(root_inst, family)
-        return core.find_deps(root_inst, family)
+        with core.traversal_scope():
+            root_inst = self.get_task(root)
+            family = _family_str(task)
+            if paths:
+                return core.find_paths(root_inst, family)
+            return core.find_deps(root_inst, family)
 
     def dependencies(self, task=None, target=None, paths=False):
         """What ``task`` depends on, within this flow -- the forward lookup.
@@ -783,13 +789,14 @@ class Workflow(object):
 
         Returns: a set of task instances, or (``paths=True`` with ``target``) a list of paths.
         """
-        if target is None:
-            return set(taskflow_upstream(self.get_task(task)))
-        anchor = self.get_task(task)
-        family = _family_str(target)
-        if paths:
-            return core.find_paths(anchor, family)
-        return core.find_deps(anchor, family)
+        with core.traversal_scope():
+            if target is None:
+                return set(taskflow_upstream(self.get_task(task)))
+            anchor = self.get_task(task)
+            family = _family_str(target)
+            if paths:
+                return core.find_paths(anchor, family)
+            return core.find_deps(anchor, family)
 
     def check_inputs(self, tasks=None, raise_on_unused=False, include_clean=False, print_it=True):
         """Static check: which declared dependencies does ``run()`` load and never use?
@@ -797,8 +804,9 @@ class Workflow(object):
         A dead dependency is still HONOURED by the scheduler -- its upstream band is computed on
         every cold build to produce a frame that is discarded. No dependency-graph query finds
         this (the edge is real; only the data is dead), so it is checked by reading each ``run()``
-        by AST. This also runs automatically inside ``preview()`` / ``run()`` -- call it explicitly
-        for CI.
+        by AST. The same scan runs automatically inside ``preview()`` (surfaced as its ``UNUSED
+        INPUTS`` block) -- ``run()`` does not lint, to keep the execution path free; call this
+        explicitly for CI.
 
         Args:
             tasks (class, list): roots to sweep (default: the flow's default task).

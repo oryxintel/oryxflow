@@ -98,6 +98,8 @@ class TaskData(core.Task):
             else:
                 [t.invalidate() for t in self.output().values()]
             self._invalidate_meta()
+            # this task's outputs changed: an open traversal's completeness answers are stale
+            core.traversal_memo_clear()
             logger.debug("invalidated {}", self.task_id)
         return True
 
@@ -119,7 +121,13 @@ class TaskData(core.Task):
         matches the current one (``_code_ok`` -- a ``code_version`` bump makes the
         task incomplete and forces a rerun; authoritative, unlike the warn-only AST
         source-hash advisory). With ``check_dependencies``, cascades upstream.
+
+        The cascading form is evaluated once per task per engine traversal (see
+        ``core.traversal_scope``); ``cascade=False`` is never memoized.
         """
+        return core.complete_cached(self, cascade, lambda: self._complete_check(cascade))
+
+    def _complete_check(self, cascade):
         complete = super().complete()
         if complete and not getattr(self, 'external', False):
             complete = self._code_ok()
@@ -435,6 +443,8 @@ class TaskData(core.Task):
             for k, v in data.items():
                 targets[k].save(v, **kwargs)
         logger.debug("saved {} keys={}", self.task_id, list(self.persist))
+        # this task's outputs changed: an open traversal's completeness answers are stale
+        core.traversal_memo_clear()
 
     def _get_meta_path_with_format(self, task, format='pickle'):
         """Get metadata path for a given task and format"""
@@ -623,6 +633,8 @@ class TaskExcelPandas(TaskData):
                 raise ValueError(
                     'Save dictionary needs to be consistent with Task.persist')
         self.output().save(data, **kwargs)
+        # this task's outputs changed: an open traversal's completeness answers are stale
+        core.traversal_memo_clear()
 
     def outputLoad(self, keys=None, as_dict=False, cached=False):
         if not self.complete(cascade=False):
@@ -659,6 +671,8 @@ class TaskExcelPandas(TaskData):
             c = 'y'
         if c == 'y':
             self.output().invalidate()
+            # this task's outputs changed: an open traversal's completeness answers are stale
+            core.traversal_memo_clear()
         return True
 
 
@@ -728,7 +742,8 @@ class TaskAggregator(core.Task):
         return True
 
     def complete(self, cascade=True):
-        return all(t.complete(cascade) for t in self.deps())
+        return core.complete_cached(
+            self, cascade, lambda: all(t.complete(cascade) for t in self.deps()))
 
     def output(self):
         return [t.output() for t in self.deps()]
