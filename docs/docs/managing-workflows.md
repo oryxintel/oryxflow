@@ -194,6 +194,42 @@ Contrast the three reset scopes you'll actually use:
 
 This is the core discipline: **reset at the level you changed, not above it.** Scoped that precisely, a refresh is something you'll actually do — every time, on the spot — instead of postponing it because it means hours of re-fetching. Cheap to refresh is what keeps a pipeline honest.
 
+## See what depends on a task — before you reset it
+
+`reset_downstream` and `reset_upstream` *act* on a band of the graph. Often you want to *see* that band first — **"what would recompute if I touch this?"** — without hand-tracing `requires()` or grepping for a class name (which can't tell a real dependency from a passing mention, or whether the task is even reachable from this flow's root).
+
+```python
+flow = oryxflow.Workflow(Tune)
+flow.dependents(TrainModel)              # every task from the flow's final task down to
+                                         # TrainModel: the band that recomputes if it changes
+flow.dependencies(Tune)                  # the reverse — everything Tune is built on (its upstream cone)
+flow.dependents(TrainModel, paths=True)  # the individual routes, so you can see HOW MANY
+                                         # distinct paths reach it, not just that one does
+```
+
+`dependents(X)` answers *"what depends on X"* — the exact band `reset_downstream(X)` would invalidate, so you can look before you leap. `dependencies(X)` is the forward view: *"what X is built on."* Both accept the task **class**, its **family name as a string**, or an instance — and the class/string forms don't need the task's parameters, so they work even for a fanned-out task buried mid-DAG that you couldn't construct by hand. On a `WorkflowMulti`, pass `flow='name'` for one experiment or omit it for a per-flow dict.
+
+Reach for these the moment you catch yourself asking "why does this drag *that* into the build?" — which is exactly what the next section is about.
+
+## A dependency you declared but never read still costs you
+
+A task lists its inputs with `@oryxflow.requires(...)` and reads them in `run()`. Delete the last use of one input but leave its `@requires` argument behind, and oryxflow **still builds that upstream task on every cold build** — the declaration is honored, not the usage — only to hand `run()` a frame it drops on the floor. Caching hides the bill: after the first build it's a cache hit and costs nothing visible; the wait returns only on a cold build, a parameter change, or a reset, long after anyone would connect it to a stray decorator argument.
+
+No dependency query catches this — the edge is *real*, so `dependents()` correctly reports it. Only reading `run()` reveals that the loaded data is never used. `preview()` does that reading for you:
+
+```python
+flow.preview()          # prints the execution tree, then an UNUSED INPUTS block listing any
+                        # dependency whose data run() loads and never reads
+```
+
+For a fail-the-build check in CI:
+
+```python
+flow.check_inputs(raise_on_unused=True)   # raises, naming each offending task; silent when clean
+```
+
+The fix is two deletions — the `@requires` argument and its unpack binding — and **no reset is needed**: a task's identity is its class and parameters, not its dependency list, so dropping a dead input leaves its cached output valid (it was provably never read). Declaring an input purely for ordering or a side effect is legitimate — mark it with a `# oryxflow: input-unused` comment to silence the warning. `run()` itself skips this check to keep the execution path lean, so make `preview()` a habit before a cold build, or wire `check_inputs()` into CI.
+
 ## The event stream: what ran, when, and why
 
 Every run appends structured events to a plain-text JSONL stream — always on, written asynchronously (microseconds), so the record exists even when your script discards the run result. The file layout is a contract you can script against:
