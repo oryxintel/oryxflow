@@ -42,6 +42,7 @@ def set_dir(dir=None):
         oryxflow.settings.dir = dir
         oryxflow.settings.dirpath = dirpath
 
+    oryxflow.utils.warn_if_nested_data_dir(dirpath)
     oryxflow.settings.isinit = True
     return dirpath
 

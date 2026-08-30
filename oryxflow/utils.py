@@ -252,3 +252,60 @@ def hash_files(*patterns, root=None):
         h.update(f.read_bytes())
         h.update(b'\0')
     return h.hexdigest()
+
+
+# resolved output directories already reported, so a re-entrant flow (a task's run()
+# calling oryxflow.run()) warns once per process, not once per nested build
+_warned_nested_dirs = set()
+
+
+def _dir_has_content(path):
+    '''
+    True when path is a directory that holds at least one entry
+    '''
+    try:
+        return path.is_dir() and any(path.iterdir())
+    except OSError:
+        return False
+
+
+def warn_if_nested_data_dir(dirpath):
+    '''
+    Warn once when this run would build a second output directory below an existing one.
+
+    The output directory resolves against the current working directory, so running a flow
+    from a subdirectory finds an empty directory beside it, reports every task incomplete
+    and recomputes everything -- paying again for any metered API call. Only advisory: the
+    directory that was resolved is never changed. Silent when the local directory already
+    holds output (a deliberate second project), when a .git directory bounds the walk, or
+    when settings.warn_nested_dir is False.
+    '''
+    from oryxflow import settings
+    from oryxflow.log import logger
+
+    if not settings.warn_nested_dir:
+        return
+    try:
+        here = pathlib.Path(dirpath).resolve()
+    except OSError:
+        return
+    if here in _warned_nested_dirs or _dir_has_content(here):
+        return
+
+    start = here.parent
+    if (start / '.git').exists():
+        return
+    for parent in start.parents:
+        candidate = parent / here.name
+        if _dir_has_content(candidate):
+            _warned_nested_dirs.add(here)
+            logger.warning(
+                "an oryxflow output directory already exists at {}, and this run will build a "
+                "second one at {}. Tasks completed there will be rebuilt from scratch, and any "
+                "paid call they make will be paid for again. Run from {}, or set "
+                "oryxflow.settings.warn_nested_dir = False if two separate caches are "
+                "intended.".format(candidate, here, parent)
+            )
+            return
+        if (parent / '.git').exists():
+            return

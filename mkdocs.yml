@@ -171,6 +171,7 @@ plugins:
         LLM evals:
           - docs/llm-evals-quickstart.md
           - docs/llm-evals.md
+          - docs/llm-evals-prompts.md
           - docs/llm-evals-api.md
           - docs/llm-evals-checklist.md
           - docs/claude-plugin/evals.md
@@ -240,6 +241,7 @@ nav:
       - LLM evals:
           - Quickstart: docs/llm-evals-quickstart.md
           - Guide: docs/llm-evals.md
+          - Prompt files: docs/llm-evals-prompts.md
           - Classes and functions: docs/llm-evals-api.md
           - What a plan must contain: docs/llm-evals-checklist.md
           - Scaffold with Claude Code: docs/claude-plugin/evals.md

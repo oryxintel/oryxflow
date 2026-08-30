@@ -14,6 +14,17 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 
 ## [Unreleased]
 ### Added
+- `settings.warn_nested_dir` (default `True`) — a one-time warning when the output directory
+  resolved for a run is empty but a directory of the same name already exists in a parent. The
+  output directory has always resolved against the current working directory, so running a flow
+  from a subdirectory finds an empty `data/` beside it, reports every task incomplete and
+  recomputes everything — re-paying for any metered API call those tasks make, with no signal
+  that it happened. The warning names both directories and the fix; resolution is unchanged and
+  nothing is relocated (searching upward for an existing cache and silently using it was
+  rejected: a flow quietly reading a *different* cache is worse than one quietly rebuilding).
+  Emitted from `set_dir()` only, never inside the execution loop, and suppressed when the local
+  directory already holds output (a deliberate second project) or by
+  `oryxflow.settings.warn_nested_dir = False`.
 - `code_version` may now be declared as a **method** instead of a constant token: whatever it
   returns is folded into that task's code identity, so a task can invalidate on bytes that are not
   Python — a `.sql` file it executes, a prompt template it renders, a `.yaml` config it loads, a

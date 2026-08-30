@@ -30,6 +30,13 @@ eventspath = Path('.oryxflow')
 
 check_dependencies = True
 check_crc = False
+
+# advisory: warn once when the output directory resolved for this run is empty but a
+# directory of the same name already exists in a parent -- running from a subdirectory
+# builds a second cache and rebuilds everything. Set False for a monorepo with
+# genuinely separate projects at several depths.
+warn_nested_dir = True
+
 log_level = 'INFO'  # default level used by oryxflow.enable_logging(); see oryxflow/log.py
 execution_summary = True
 

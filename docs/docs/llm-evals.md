@@ -167,6 +167,14 @@ use `load_cases` when you want a spreadsheet, `@file` references, or `holdout` a
   reported *beside* the headline number and never inside it. A synthetic set written by the same
   mind that wrote the prompt flatters it. That is arithmetic, not a label: mark **every** case
   synthetic and the headline has nothing left to average, and the rate reads `n/a`.
+
+    The flag tracks where the **content** came from, not whether a model touched it. An LLM that
+    picks, trims or reformats real material — pulling ten threads out of a support log, cutting a
+    document down to the section you need — hands you real cases: `synthetic=0`. An LLM that
+    *writes* the material — inventing a support thread nobody sent — hands you synthetic ones:
+    `synthetic=1`. Ask what the words are, not who typed them. Read it the other way and every
+    harvested case gets marked `synthetic=1`, which is the empty headline above.
+
 - **`holdout`** — a truthy value withholds the case from **every** arm, and the verdict states
   how many were withheld. Use it for any case whose text you have embedded in a prompt: scoring
   it would be scoring against your own answer key.
@@ -256,6 +264,165 @@ observations.
 The two are different measurements, not two spellings of one. A single document with thirty bad
 findings barely moves the first and dominates the second. Choose before you run, not after you
 see which looks better.
+
+### When the output is a list, not a score
+
+Your extractor returns eight sections. Your notes-to-todos step returns five items. Nothing in
+either output says *good*, there is no score to average, and no obvious column to put in a
+metric. What do you measure?
+
+Decompose it into binary checks, and score the free ones first. Do not invent a 1-5 quality
+scale on the way: adjacent points on a scale mean different things to two raters, and different
+things to the same judge an hour later, so separating them needs a far bigger case set than
+separating yes from no.
+
+**The deterministic checks are free — spend them first.** No judge, no reference answer, no
+tokens, and on a structured output there are more of them than people expect.
+
+A document split into ordered sections:
+
+- every section's text is a verbatim span of the source
+- no two sections overlap
+- the sections come in source order
+- the fraction of the document that landed in some section at all
+
+Meeting notes turned into todo items:
+
+- the item parses into the schema at all
+- the assignee is one of the meeting's attendees
+- the due date resolves to a real date
+- no two items are the same item
+
+Return the counts, and each of those becomes a column:
+
+```python
+async def run_case(inputs, arm):
+    sections = await split(inputs.document, arm=arm)
+    verbatim = [s for s in sections if s.text in inputs.document]
+    return {'n_sections': len(sections),
+            'n_verbatim': len(verbatim),
+            'verbatim_rate': len(verbatim) / len(sections),
+            'covered': covered_fraction(sections, inputs.document),
+            'in_order': is_ordered(sections, inputs.document),
+            'all_verbatim': len(verbatim) == len(sections)}
+```
+
+Now the metric almost everyone writes first, because `verbatim_rate` is the number they want:
+
+```python
+ev.Metric('sections verbatim', 'verbatim_rate')
+```
+
+```
+TypeError: Need to pass bool-like values
+```
+
+That message names neither the metric nor the column, so: `verbatim_rate` holds a *fraction per
+case*, and a metric column is averaged as a **boolean**. Two fixes, and they answer different
+questions — pick before you run:
+
+```python
+# one verdict per case: did this document come back entirely clean?
+ev.Metric('every section verbatim', 'all_verbatim')
+
+# one verdict per section: pooled across every section in the set
+ev.Metric('sections verbatim', lambda d: d['n_verbatim'].sum() / d['n_sections'].sum())
+```
+
+`covered` is a fraction as well, and gets the same treatment: pool it with
+`lambda d: d['covered'].mean()`, or decide up front what counts as covered
+(`'well_covered': covered > 0.95`) and average that boolean.
+
+#### One giant section passes every check
+
+Read that deterministic list back against an arm that returns the whole document as a single
+section. Its text is a verbatim span of the source. It overlaps nothing. It is trivially in
+order. It covers 100% of the document. It scores four out of four, beats every arm that did the
+work, and has done none of it.
+
+That is the clearest demonstration on this page of why a guardrail can never be a rearrangement
+of the metric — "sections verbatim ≥ 95%" and "sections not verbatim ≤ 5%" are the same gate
+twice, and the giant section walks through both. The guardrail here has to be **granularity**,
+measured on the same cases in the opposite direction:
+
+```python
+guardrail = ev.Metric('wrong granularity', 'granularity_off',
+                      higher_is_better=False, budget=0.20)
+```
+
+...where `granularity_off` is per case, and true when the split came back far coarser or far
+finer than the document's own structure implies. Write the degenerate strategy down as a
+sentence first — *"returning one section scores 100%"* — and read the proposed guardrail back
+against that sentence. If the sentence still wins, the guardrail is not one.
+
+#### Then match, then judge what is left
+
+Where you have a reference — someone wrote down the items the output should contain — align each
+predicted item to a reference item and count three things:
+
+- **recall**: reference items that some predicted item matched
+- **precision**: predicted items that matched a reference item
+- **field accuracy, conditional on a match**: of the items that matched, how many got the
+  assignee and the date right
+
+Conditional matters. An invented item with the wrong assignee is one precision failure; scoring
+its fields too counts the same mistake twice and makes both numbers worse than the system is.
+
+```python
+metric = ev.Metric('items recalled',
+                   lambda d: d['n_matched'].sum() / d['n_reference'].sum())
+
+guardrail = ev.Metric('items with no support in the source',
+                      lambda d: d['n_unsupported'].sum() / d['n_items'].sum(),
+                      higher_is_better=False, budget=0.05)
+```
+
+The guardrail is doing real work in that pair. **"Emit everything" wins recall outright** — a
+prompt that lists every sentence of the notes as a todo item recalls 100% — and dies on the
+fabrication rate. Recall alone is not a measure of anything.
+
+Where you have no reference, a judge answers **one binary question per item**: *is this item
+supported by the source?* Each verdict is a column, and the pooled rate is precision under
+another name.
+
+**Recall is unmeasurable without a reference, and no judge fixes that.** The judge sees the
+source and the items you extracted. It can tell you an item is unsupported. It can never tell
+you what was missed, because the missing item is not in front of it — nothing in the run
+contains it. So a judge-only eval measures precision and quietly calls it quality. That sentence
+is what decides whether hand-labelling a reference set is in scope, and it belongs in your
+plan's data section rather than arriving as a surprise three weeks in.
+
+### Judging two candidates head to head
+
+With no reference answer and no absolute scale, the judged question that holds up is not "score
+this out of five" but **"which of these two is better"**. Show the judge both outputs, ask for
+one winner.
+
+The catch is position bias: the same pair, presented the other way round, gets a different
+answer often enough to invent a winner on its own. So make presentation order an arm and let the
+sweep run both:
+
+```python
+async def compare(inputs, order):
+    base, cand = baseline_output(inputs), candidate_output(inputs)
+    first, second = (base, cand) if order == 'ab' else (cand, base)
+    winner = await judge_pick(inputs.document, first, second)
+    return {'prefers_candidate': winner == ('second' if order == 'ab' else 'first')}
+
+r = ev.sweep(compare, cases=cases, order=['ab', 'ba'],
+             metric=ev.Metric('candidate preferred', 'prefers_candidate'))
+```
+
+Two arms, two numbers, and both are worth having:
+
+- The candidate winning at **both** orders is a real preference.
+- The **gap between the orders is your judge's position bias** — measured, in points, rather
+  than assumed. A candidate that wins by 30 points in one order and loses in the other has told
+  you about your judge, not about your prompt.
+
+Nothing special is happening here: `order` is an ordinary arm axis, so the `Δ` line between `ab`
+and `ba` arrives with its interval like any other, and a bias inside the noise is one you do not
+have to act on yet.
 
 ### What the per-case table already holds
 
@@ -433,7 +600,57 @@ VERDICT  prod improves the primary metric (+32pp, outside noise) but breaks the 
 Weakest slices for prod:  phrasing=vague 62% (15/24)  phrasing=plain 100% (42/42)
 ```
 
-Read it in this order.
+**Read it in this order** — it prints in that order too, because the checks that can invalidate
+everything below them come first.
+
+1. **Any `!!` line above the tables.** A dead metric, or a saturated eval. If one fired, stop
+   reading and go look at what feeds the metric.
+2. **The coverage rate**, when the primary metric has a `coverage=` companion. A quality rate
+   over a shrinking subset improves as the subset shrinks.
+3. **The rate itself, with its `n`** — `86% (57/66)`, never `86%` on its own.
+4. **The `Δ` line and its interval** — the gap between the two arms, and whether it is *outside
+   noise*. That word is the decision.
+
+Then the slices, when you want to know where the next batch of cases comes from.
+
+**Any `!!` line, first.** If a metric sits at exactly 0% or exactly 100% in *every* arm, the
+verdict says so above every table:
+
+```
+!! PAIRING: identically 0% in all arms -- this usually measures the harness, not the model. Check the metric's inputs before reading anything else.
+```
+
+Nothing below that line is worth reading until you have checked what feeds the metric. It is the
+cheapest bug detector on this page: it catches a broken metric column in minutes, rather than
+after a whole sweep has been believed. (A guardrail that is identical and comfortably inside its
+budget in every arm is *not* flagged — that is the control doing its job, and warning about it
+would only teach you to skip the warning.)
+
+A single arm gets the other half of the same check:
+
+```
+!! ACCURACY is perfect on all 22 cases. A saturated eval has stopped discriminating -- it cannot show a regression or an improvement from here. Add harder cases rather than reading this as a result.
+```
+
+**Coverage, before any quality rate.** Give a quality metric a `coverage=` companion and the
+coverage number is rendered **first**, above it, with a reminder that a quality rate is never
+read alone:
+
+```python
+ev.Metric('quality', 'good', where='answered',
+          coverage=ev.Metric('answered', 'answered'))
+```
+
+And when a metric's denominator differs materially between arms — the same trap arriving without
+a coverage metric to catch it — you are told:
+
+```
+  denominator moved (n=20 vs n=10) -- this rate is not directly comparable across arms; read the coverage metric first.
+```
+
+**The `n` beside every rate.** `(57/66)` is the numerator and the denominator, always. A rate
+over a filtered subset gets better as the subset shrinks — a prompt that answers half as often
+can post a spectacular quality score.
 
 **"outside noise" / "inside noise".** The `Δ` line is the gap between the two arms, followed by
 the range that gap could plausibly be. When that range includes zero, the verdict names no
@@ -448,34 +665,6 @@ This is the line that saves you from shipping a coin flip. Real harnesses have m
 *same* prompt at 69% and then at 64% an hour later; at three runs per case a single flip is
 worth 33 points. The lever for a narrower band is `repeats=`.
 
-**The `n` beside every rate.** `(57/66)` is the numerator and the denominator, always. A rate
-over a filtered subset gets better as the subset shrinks — a prompt that answers half as often
-can post a spectacular quality score — so when a metric's denominator differs materially between
-arms, you are told:
-
-```
-  denominator moved (n=20 vs n=10) -- this rate is not directly comparable across arms; read the coverage metric first.
-```
-
-Give a quality metric a `coverage=` companion and the coverage number is rendered **first**,
-above it, with a reminder that a quality rate is never read alone:
-
-```python
-ev.Metric('quality', 'good', where='answered',
-          coverage=ev.Metric('answered', 'answered'))
-```
-
-**A metric that is identically dead.** If a metric sits at exactly 0% or exactly 100% in *every*
-arm, the verdict says so before it prints anything else:
-
-```
-!! PAIRING: identically 0% in all arms -- this usually measures the harness, not the model. Check the metric's inputs before reading anything else.
-```
-
-Nothing below that line is worth reading until you have checked what feeds the metric. It is the
-cheapest bug detector on this page: it catches a broken metric column in minutes, rather than
-after a whole sweep has been believed.
-
 **Wide intervals on a perfect score.** When every case agrees, `100% (66/66)` still comes back
 with a wide interval and a note saying the numbers left nothing to vary. That is not a defect:
 22 cases cannot demonstrate 100%, and reporting `[100%, 100%]` would claim a certainty you did
@@ -487,7 +676,8 @@ cases comes from.
 
 ## Never truncate a field your metric reads
 
-This is the one rule about **your own code**, and it is worth more than the rest of this page.
+This is the first of two rules about **your own code**, and it is worth more than the rest
+of this page.
 
 A real harness capped its output model's `message` field at 2000 characters, so that a CSV row
 would not be a wall of text. Its metric compared the last line of that field against a generated
@@ -506,6 +696,40 @@ class Reply(BaseModel):
 The eval table already does this on the way out: a long text column arrives twice, as `message`
 in full and as `message_preview` shortened for reading. Skim the `_preview` column; never let a
 shortened value be the one a metric sees.
+
+## Measure the field the way production reads it
+
+The other way a harness quietly becomes the thing being measured, and it is harder to spot than
+truncation because nothing about it looks wrong.
+
+A style reviewer returns a quoted passage with every finding, and the eval scored how often that
+quote could be located in the document. The shipping client locates the quote too — and it
+normalizes whitespace and case before it looks. The eval compared raw strings. Every finding
+whose quote differed by a double space scored as a failure the product does not have. Push it
+the other way — the eval normalizing more than production does — and the sweep reports a pass
+rate the user never gets. Both directions produce a fiction, and neither raises anything.
+
+**When production applies a tolerance, a threshold or a normalisation before it acts on a field,
+the metric applies the identical one.** Not an equivalent one: the same function, imported from
+the same place.
+
+```python
+from myapp.review import locate_quote           # the function the client itself calls
+
+async def run_case(inputs, arm):
+    findings = await review(inputs.document, arm=arm)
+    located = [f for f in findings if locate_quote(f.quote, inputs.document)]
+    return {'n_findings': len(findings), 'n_located': len(located)}
+```
+
+When it cannot be imported — it lives in a client, another service, another language — write
+down **where that definition lives** before you restate it, and put the pointer in a comment
+beside the copy. A restated rule drifts; an undocumented restated rule has already drifted and
+nobody can tell.
+
+The same applies to every threshold your product acts on. If it acts at confidence ≥ 0.7, the
+metric scores at 0.7 — not at "reasonably confident", and not at the 0.5 that seemed natural
+while writing the eval.
 
 ## Keeping the baseline runnable
 
@@ -702,6 +926,8 @@ yourself and get the full verdict out of it.
 - **[LLM eval quickstart](llm-evals-quickstart.md)** — a complete eval in one file, line by line.
 - **[Classes and functions](llm-evals-api.md)** — everything `oryxflow.evals` exports, grouped by
   when you meet it.
+- **[Prompts as files](llm-evals-prompts.md)** — one file per prompt, git as the version
+  store, and how to get a prompt out of a Python string constant.
 - **[What an eval plan must contain](llm-evals-checklist.md)** — the six sections a plan needs
   before anyone can run it, and how many cases it takes to resolve the difference you care about.
 - **[Scaffold an LLM eval](claude-plugin/evals.md)** — the Claude Code plugin's four eval

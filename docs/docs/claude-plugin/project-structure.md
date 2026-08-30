@@ -30,11 +30,19 @@ project/
 ├── flow.py           # the workflow instance — defined once, imported everywhere
 ├── run.py            # execute the workflow: python run.py
 ├── visualize.py      # load outputs for analysis and reporting
+├── pyproject.toml    # makes the project a package, so imports work from anywhere
 └── docs/oryxflow-data.md   # a place to record what you learn about the data
 ```
 
 `python run.py` works from the first minute; you replace the placeholder tasks with your real
 pipeline. It never overwrites files you already have.
+
+The scaffold is also a package, installed once for you (`pip install -e .`) when
+`/oryxflow:init-project` runs. That's what makes `import tasks` mean the same thing everywhere:
+from a notebook under `eda/`, from a test in a subdirectory, from an eval under `evals/`. Skip
+it and everything works while you run from the project root — then the first time something
+imports your code from somewhere else it fails with `ModuleNotFoundError`, for a reason that has
+nothing to do with what you were doing.
 
 ## Why the structure is load-bearing, not decorative
 

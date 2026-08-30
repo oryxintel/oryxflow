@@ -103,12 +103,30 @@ evals/my-eval/
 
 Two files carry all the thinking: `agent.py` says **what runs**, `eval.py` says **what counts**.
 
+Run it from its own directory. Every path in there is relative, so a run from anywhere else stops
+immediately on `cases.csv` instead of quietly building a second cache and re-billing you for cells
+you already paid for.
+
 ## `agent.py` — the function under test
 
-One rule holds this file together: **it imports the live implementation, it never carries a copy
-of it.** A second copy of the prompt inside `evals/` drifts from the shipping one the first time
-either is edited, and an eval scoring the copy measures nothing. If something has to change to
-make the entry point callable from here, change it in production.
+One rule holds this file together: **it imports the live implementation.** If something has to
+change to make the entry point callable from here, change it in production — because the moment
+`evals/` holds its own copy of the prompt, the two drift and the eval scores the copy.
+
+That rule is about **direction of travel**, not about where a file happens to sit:
+
+| A prompt moving | Is | Because |
+| --- | --- | --- |
+| production → the eval | the drift bug | the baseline stops being the baseline the first time either side is edited |
+| the eval → production | the point of the eval | a candidate that hasn't shipped has to live somewhere while you measure it |
+
+So the baseline arm always reads production, and a candidate arm may own its prompt inside the
+eval until it wins — then it's promoted, byte-exact, and the arm is repointed at production. See
+[Prompts as files](../llm-evals-prompts.md) for the promotion step and why it needs a re-run.
+
+Because this file imports your project, **your project has to be importable**: installed once with
+`pip install -e .`, which is what `/oryxflow:init-project` sets up. `eval-init` checks it before
+the smoke run rather than letting it surface as an `ImportError` mid-eval.
 
 | What you write | What it is |
 | --- | --- |
@@ -269,6 +287,8 @@ right order, before the first API call.
 - **[LLM evals](../llm-evals.md)** — the guide: `ev.sweep`, `ev.TaskEval`, metrics, guardrails,
   intervals, and the verdict.
 - **[Classes and functions](../llm-evals-api.md)** — everything `oryxflow.evals` exports.
+- **[Prompts as files](../llm-evals-prompts.md)** — getting a prompt out of a Python string, and
+  why versions are commits rather than filenames.
 - **[What an eval plan must contain](../llm-evals-checklist.md)** — the six sections behind the
   file `eval-plan` writes.
 - **[Plugin commands](commands.md)** — the other five commands.

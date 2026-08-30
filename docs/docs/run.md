@@ -105,6 +105,20 @@ flow.preview()
 oryxflow.settings.check_dependencies=True # set to default
 ```
 
+### Everything is pending after you change directory
+
+Task output is written to `data/` next to wherever you ran from. Run the same flow from a subdirectory and it finds an empty `data/`, reports every task pending and recomputes the lot — and if a task calls a metered API or a paid data vendor, you pay for it a second time. So when there is already output one level up and none here, oryxflow says so before you spend anything:
+
+    an oryxflow output directory already exists at C:\project\data, and this run will
+    build a second one at C:\project\evals\data. Tasks completed there will be rebuilt
+    from scratch, and any paid call they make will be paid for again. Run from
+    C:\project, or set oryxflow.settings.warn_nested_dir = False if two separate caches
+    are intended.
+
+Two ways to answer it: run from the directory that already holds the results, or keep two separate caches on purpose and turn the notice off with `oryxflow.settings.warn_nested_dir = False`.
+
+It is advice only — nothing moved. `data/` still resolves against the directory you ran from, exactly as before.
+
 ## Debugging Failures
 
 If a task fails, oryxflow raises a `RuntimeError` chained to the original error that caused the failure (`... the direct cause of the following exception ...`). Read the FIRST traceback -- the line in your task's `run()` is the real cause. Example:

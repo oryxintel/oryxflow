@@ -192,7 +192,7 @@ guardrail = ev.Metric('false action rate', 'acted', where='control',
 
 ### The mechanics — where each number lives
 
-Four checks that turn the section above into something that runs.
+Five checks that turn the section above into something that runs.
 
 **State the table's unit and list its columns.** One line, and it pre-empts more execution-time
 confusion than anything else in the plan:
@@ -218,6 +218,14 @@ ev.Metric('quotes that locate', lambda d: d['n_quote_locates'].sum() / d['n_quot
 ```
 
 They are different measurements. Say which one the gate number means.
+
+**The metric must match production's own definition.** Wherever production applies a tolerance, a
+threshold or a normalisation before it acts on a field, the metric applies the identical one —
+imported from the same place where that is possible, and otherwise restated with the plan saying
+**where the real definition lives**. An eval that compares raw strings while the shipping client
+normalizes whitespace and case reports failures the product does not have; an eval that
+normalizes more than production does reports a pass rate the user never gets. Both are fictions,
+and neither raises an error.
 
 **Budget the slots.** The verdict renders three numbers — coverage, metric, guardrail — plus
 `slices=` breakdowns. A gate table with five rows must say which three take the slots and where
