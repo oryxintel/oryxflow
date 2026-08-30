@@ -128,3 +128,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# local dogfooding harness: re-implements a private project's evals against oryxflow.evals
+utest/

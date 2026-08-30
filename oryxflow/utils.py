@@ -2,6 +2,7 @@ from oryxflow.core import flatten
 import os
 import warnings
 import pathlib
+import hashlib
 
 
 class bcolors:
@@ -208,3 +209,46 @@ def apply_noise(dfg, cfg_cols, seed=123):
         assert (dfc.loc[idxSel,col] != dfg.loc[idxSel,col]).all(), f'column {col} not all different'
 
     return dfg
+
+
+def hash_files(*patterns, root=None):
+    """Stable digest of the CONTENT of every file matching these glob patterns.
+
+    For use inside a task's ``code_version()`` when the bytes that determine its
+    result are files -- SQL, templates, config -- rather than Python. Paths are
+    resolved relative to ``root`` (default: the current working directory) and
+    sorted, so the digest does not depend on filesystem enumeration order.
+
+    Raises FileNotFoundError when a pattern matches nothing: a typo'd path that
+    silently hashed to "no files" would report every run as unchanged, which is
+    the failure this exists to prevent.
+    """
+    base = pathlib.Path(root or '.')
+    files = set()
+    for pattern in patterns:
+        pat = pathlib.Path(pattern)
+        if pat.is_absolute():
+            # an absolute pattern globs from its own anchor; root does not apply
+            found = pathlib.Path(pat.anchor).glob(pat.relative_to(pat.anchor).as_posix())
+        else:
+            found = base.glob(pattern)
+        found = [f for f in found if f.is_file()]  # a glob may also match directories
+        if not found:
+            raise FileNotFoundError("hash_files: pattern '{}' matched no files (root '{}')".format(pattern, base))
+        files.update(found)
+
+    keyed = []
+    for f in files:
+        try:
+            key = f.relative_to(base).as_posix()
+        except ValueError:
+            key = f.as_posix()
+        keyed.append((key, f))
+
+    h = hashlib.md5()
+    for key, f in sorted(keyed, key=lambda kv: kv[0]):
+        h.update(key.encode('utf-8'))  # the name is part of the digest: a rename is a change
+        h.update(b'\0')
+        h.update(f.read_bytes())
+        h.update(b'\0')
+    return h.hexdigest()

@@ -168,6 +168,12 @@ plugins:
           - docs/advtasksdyn.md
           - docs/advparam.md
           - docs/functional_tasks.md
+        LLM evals:
+          - docs/llm-evals-quickstart.md
+          - docs/llm-evals.md
+          - docs/llm-evals-api.md
+          - docs/llm-evals-checklist.md
+          - docs/claude-plugin/evals.md
         Build with Claude Code:
           - docs/claude-code-for-data-science.md
           - docs/ai-ready.md
@@ -231,6 +237,12 @@ nav:
           - Dynamic workflow generation: docs/advtasksdyn.md
           - Parameters: docs/advparam.md
           - Functional API: docs/functional_tasks.md
+      - LLM evals:
+          - Quickstart: docs/llm-evals-quickstart.md
+          - Guide: docs/llm-evals.md
+          - Classes and functions: docs/llm-evals-api.md
+          - What a plan must contain: docs/llm-evals-checklist.md
+          - Scaffold with Claude Code: docs/claude-plugin/evals.md
       - Example (ML): docs/example-ml.md
       - Glossary: docs/glossary.md
       - Security & supply chain: docs/supply-chain.md

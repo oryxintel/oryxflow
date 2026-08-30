@@ -8,7 +8,7 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 setup(
     name='oryxflow',
     version='26.8.2',
-    packages=['oryxflow','oryxflow.targets','oryxflow.tasks'],
+    packages=['oryxflow','oryxflow.targets','oryxflow.tasks','oryxflow.evals'],
     url='https://github.com/oryxintel/oryxflow',
     project_urls={
         'Documentation': 'https://docs.oryxflow.dev/',
@@ -28,7 +28,8 @@ setup(
         'cloud-base': ['universal_pathlib'],
         'gcs': ['gcsfs','universal_pathlib'],
         's3': ['s3fs','universal_pathlib'],
-        'export': ['jinja2']},
+        'export': ['jinja2'],
+        'evals': ['pydantic-evals', 'scipy', 'typer', 'tenacity']},
 include_package_data=True,
     python_requires='>=3.9',
     keywords=['oryxflow', 'data workflow', 'data pipelines'],

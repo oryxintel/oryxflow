@@ -85,8 +85,9 @@ def make_record(task, hashes, output_id, duration=None):
     # fold) recorded on every write regardless of mode, plus the live fingerprint
     # (informational), the last materialization cost (drives the
     # expensive-recompute guard) and the schema/interpreter tags
+    from oryxflow.core import _resolve_code_version
     return {'fingerprint': task._code_fingerprint,
-            'code_version': task.code_version,
+            'code_version': _resolve_code_version(task),
             'source_hashes': hashes, 'output_id': output_id,
             'dep_state': task._dep_state() if hasattr(task, '_dep_state') else None,
             'duration_s': duration,
@@ -112,6 +113,7 @@ class Advisor:
         # for the build (tooling reads len(result.warnings) as "how many pending
         # conditions", so parameterized instances of one family must not inflate it);
         # only the event stream records every occurrence.
+        from oryxflow.core import _resolve_code_version
         if msg not in self.warned:
             self.warned.append(msg)
         # message-level: parameterized instances of one family share the exact text
@@ -127,7 +129,8 @@ class Advisor:
                 pass
         self.emit('code_warning',
                   {'task_id': task.task_id, 'family': task.task_family,
-                   'changed_files': changed_files, 'code_version': task.code_version},
+                   'changed_files': changed_files,
+                   'code_version': _resolve_code_version(task)},
                   msg=msg if fresh else None, level='warning')
 
     def advise(self, task):
@@ -137,7 +140,7 @@ class Advisor:
         # schema/interpreter migrations (preserving output_id so nothing ripples
         # downstream), and warn when a pinned task's code changed without a bump
         from oryxflow import settings
-        from oryxflow.core import flatten
+        from oryxflow.core import flatten, _resolve_code_version
         tid = task.task_id
         if tid in self.advised:
             return
@@ -187,6 +190,7 @@ class Advisor:
             return
         stored = rec.get('source_hashes') or {}
         current = hashes_of(task)
+        own = _resolve_code_version(task)
         if stored and current and stored != current:
             # code changed but the task is (deliberately) still complete: pinned by an
             # explicit code_version, or held by the expensive-recompute guard. Warn at
@@ -194,7 +198,19 @@ class Advisor:
             # the change) -- accept_code is the explicit blessing.
             changed = sorted(k for k in set(stored) | set(current)
                              if stored.get(k) != current.get(k))
-            if task.code_version is not None:
+            if callable(task.code_version):
+                # computed token: "bump code_version" is not the action -- the token
+                # only moves when what the method reads or returns moves
+                self.warn(task, (
+                    "task {}: {} changed since cached run; code_version() still "
+                    "computes {} -- reusing cached output. It reruns when what "
+                    "code_version() returns changes; otherwise oryxflow.accept_code({}) "
+                    "only if certain the output is equivalent (best-effort check: "
+                    "can't see data files or dynamic calls).").format(
+                        task.task_family, ', '.join(changed),
+                        own, task.task_family),
+                    changed)
+            elif own is not None:
                 self.warn(task, (
                     "task {}: {} changed since cached run; code_version still {} -- "
                     "reusing cached output. Bump code_version to recompute, or "
@@ -202,7 +218,7 @@ class Advisor:
                     "equivalent -- when unsure, bump (best-effort check: can't "
                     "see data files or dynamic calls).").format(
                         task.task_family, ', '.join(changed),
-                        task.code_version, task.task_family),
+                        own, task.task_family),
                     changed)
             else:
                 self.warn(task, (
@@ -217,7 +233,7 @@ class Advisor:
                         task.task_family),
                     changed)
         elif (rec.get('fingerprint') != fp
-                or rec.get('code_version') != task.code_version):
+                or rec.get('code_version') != own):
             # hashes match but the record predates a mode flip (pin added/removed with
             # unchanged code) or an upstream toggle -- converge silently, preserving
             # output_id and run cost
@@ -229,7 +245,7 @@ class Advisor:
     def reason_for(self, task, ran, reasons):
         # why is this (incomplete) task about to run? deps were processed first, so a
         # rerun upstream is already in `ran`.
-        from oryxflow.core import flatten
+        from oryxflow.core import flatten, _resolve_code_version
         try:
             outputs = flatten(task.output())
             if not outputs or not all(o.exists() for o in outputs):
@@ -240,12 +256,13 @@ class Advisor:
         if fp is not None:
             rec = state.get_record(dirpath, task.task_id)
             if rec is not None:
-                if rec.get('code_version') != task.code_version:
+                own = _resolve_code_version(task)
+                if rec.get('code_version') != own:
                     return 'code change ({} -> {})'.format(
                         rec.get('code_version') if rec.get('code_version') is not None
                         else 'auto',
-                        task.code_version if task.code_version is not None else 'auto')
-                if task.code_version is None:
+                        own if own is not None else 'auto')
+                if own is None:
                     # own dimension moved (auto): name the changed symbols
                     stored = rec.get('source_hashes') or {}
                     current = hashes_of(task)
@@ -365,7 +382,8 @@ def accept_code(task=None):
                 if not outputs or not all(o.exists() for o in outputs):
                     return
                 rec = {'output_id': uuid.uuid4().hex[:16],
-                       'code_version': t.code_version, 'duration_s': None}
+                       'code_version': core._resolve_code_version(t),
+                       'duration_s': None}
             _restamp(dirpath, t.task_id, rec, codehash.task_hashes(type(t)),
                      t.task_family, fingerprint=fp, dep_state=dep_state)
         except Exception:

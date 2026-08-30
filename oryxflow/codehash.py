@@ -8,10 +8,12 @@ so editing one task never invalidates unrelated siblings in the same file. Refer
 subclasses are excluded (that is dependency *wiring*, tracked via output identity, and
 including their bodies would break pin orthogonality); project-local base classes ARE
 included via the MRO. Each symbol is hashed after AST normalization (parse -> strip
-docstrings and class-body ``code_version`` pin lines -> ``ast.dump``), so comments,
-docstrings, formatting edits and adding/removing/bumping a ``code_version`` pin produce no
-hash change (the pin is a token, compared as its own record dimension -- never a source
-edit). What symbol analysis can't carve up degrades conservatively: module side-effect
+docstrings and the class-body ``code_version`` declaration -> ``ast.dump``), so comments,
+docstrings, formatting edits and adding/removing/bumping a ``code_version`` produce no hash
+change (it is a token, compared as its own record dimension -- never a source edit). That
+covers both forms: a ``code_version = '3'`` pin line and a ``def code_version(self)`` whose
+return value is hashed as the token, so editing the method's body moves the token alone.
+What symbol analysis can't carve up degrades conservatively: module side-effect
 statements share one ``<relpath>::<module>`` bucket, unresolvable/star-imported modules and
 non-top-level classes fall back to whole-file hashes (``<relpath>::*`` /
 ``module_hashes``) -- never finer-grained than correct.
@@ -157,7 +159,10 @@ def _project_root(start=None):
 
 
 def _is_code_version_stmt(stmt):
-    # a class-body `code_version = ...` pin (plain or annotated assignment)
+    # a class-body `code_version = ...` pin (plain or annotated assignment), or a
+    # `def code_version(self)` computing one -- both are the token, not the logic
+    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return stmt.name == 'code_version'
     if isinstance(stmt, ast.Assign):
         return (len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name)
                 and stmt.targets[0].id == 'code_version')
@@ -646,7 +651,9 @@ def task_hashes(task_or_cls):
                     else:
                         queue.append((fr, orig, tmod))
 
-    for path, mname in files_seen.items():
+    # snapshot: resolving a star target below can discover a new file and record it in
+    # files_seen, and the hash describes the module set as the traversal found it
+    for path, mname in list(files_seen.items()):
         idx = _symbol_index(path)
         if idx is None:
             continue

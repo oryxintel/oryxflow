@@ -92,8 +92,13 @@ than a data connector or a notebook runner, is the piece that carries this disci
 
 -   :material-console: **[Commands](commands.md)**
 
-    The five slash commands — scaffold a project, migrate an existing analysis, check standards,
-    and put data under Git LFS.
+    The nine slash commands — scaffold a project, migrate an existing analysis, check standards,
+    put data under Git LFS, and build an LLM eval.
+
+-   :material-scale-balance: **[Scaffold an LLM eval](evals.md)**
+
+    Four commands that turn "is this prompt better?" into a number you can defend — a plan, a
+    scaffold wired to it, a real case set, and a run that prints its bill before it spends.
 
 -   :material-file-tree: **[Data-science project structure](project-structure.md)**
 

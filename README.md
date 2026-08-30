@@ -58,9 +58,9 @@ they get worse, not better, as projects grow in complexity and an AI agent write
   from minutes to seconds, and an AI agent stops paying — in time and tokens — to redo expensive
   work it already did.
 - **AI-agent reliability.** The same lineage log and cache become an agent's memory across
-  sessions. The companion [Claude Code plugin](claude-plugin/index.md) ships these disciplines
-  as an auto-activating skill, so the agent checks that record instead of trusting stale
-  state.
+  sessions. The companion [Claude Code plugin](https://github.com/oryxintel/oryxflow-claude-plugin)
+  ships these disciplines as an auto-activating skill, so the agent checks that record instead
+  of trusting stale state.
 
 **Trust and reproducibility are the product. Caching is just how you get them for free.**
 

@@ -105,6 +105,8 @@ That's the scoring layer, complete. It knows nothing about models, caching, or w
 
 ## Wiring the matrix
 
+*This post shows the pattern hand-written. It now ships as [`oryxflow.evals`](../../docs/llm-evals.md) — the same cached-per-arm matrix, plus confidence intervals, guardrails and a verdict, in six lines.*
+
 Now the sweep. One task, parameterized by the things you vary, saving one row per case:
 
 ```python

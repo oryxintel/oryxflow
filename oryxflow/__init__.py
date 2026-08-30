@@ -19,6 +19,7 @@ from pathlib import Path
 
 import oryxflow.targets, oryxflow.tasks, oryxflow.settings
 import oryxflow.utils
+from oryxflow.utils import hash_files
 import oryxflow.events as events
 import oryxflow.state
 import oryxflow.codehash

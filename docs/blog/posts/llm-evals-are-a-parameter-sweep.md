@@ -86,6 +86,8 @@ dataset = Dataset(
 
 ## The sweep
 
+*This post shows the pattern hand-written. It now ships as [`oryxflow.evals`](../../docs/llm-evals.md) — the same cached-per-arm matrix, plus confidence intervals, guardrails and a verdict, in six lines.*
+
 Everything you vary becomes a task parameter. oryxflow keys the cached output on those values, so each combination gets its own stored result — no filenames to invent, no `results_sonnet_v3_final2.json` graveyard.
 
 ```python

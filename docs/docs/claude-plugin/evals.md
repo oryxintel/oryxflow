@@ -1,0 +1,274 @@
+---
+title: Scaffold an LLM eval
+description: Four slash commands turn "is this prompt better?" into a kept eval — a plan, a scaffold wired to it, a real case set, and a run that prints its bill before it spends. The files it writes, and what goes in each.
+---
+
+# Scaffold an LLM eval
+
+You changed a prompt. Is it better?
+
+The library answers that in six lines — see [LLM evals](../llm-evals.md). That form is right when
+you want the answer **today** and you don't expect to ask again.
+
+The plugin is for the other case: an eval you **keep**. One you re-run after every prompt change,
+hand to a teammate, and cite in a review six months from now. Then the six lines want a home, a
+case file worth reviewing, a baseline that stays honest, and a guardrail nobody can forget to
+add. Four commands build exactly that.
+
+```text
+/oryxflow:eval-plan     # 1. decide what is measured — writes the plan, no code
+/oryxflow:eval-init     # 2. scaffold the eval from that plan, ending in a smoke run
+/oryxflow:eval-cases    # 3. grow 3 placeholder cases into a real 15-25
+/oryxflow:eval-run      # 4. run it, print the verdict, interpret the result
+```
+
+They are **one pipeline, in that order** — each command reads what the one before it wrote. You
+can stop after any of them and pick up later. Nothing runs on its own: two of them write files
+and `eval-run` bills you for API calls, so you invoke each one deliberately.
+
+Evals need the extra:
+
+```text
+pip install "oryxflow[evals]"
+```
+
+## 1. `/oryxflow:eval-plan` — decide what is measured
+
+The command that saves you the most money is the one that spends none. It settles six questions
+before any code exists:
+
+- **What is this for?** The decision the number informs, and what a bad output costs today.
+- **Which models?** The one under test and the one judging it, both pinned — and whoever owns the
+  prompt gets asked whether they are the right two.
+- **What is being compared?** The current prompt and the proposed one, by path, plus which commit
+  the baseline arm reads.
+- **What counts as better?** One number, the bar it has to clear, and whether your case count can
+  actually resolve a difference that size.
+- **What must not get worse?** The guardrail — the thing a prompt can win on your headline metric
+  by breaking.
+- **Which cases, from where?** The source of the real examples, which of them are controls, and
+  where the credentials live.
+
+The answers go in `evals/<name>/README.md`, along with the judgement calls and the known gaps. It
+is the file to read before changing anything else, and the one that tells a teammate — or you,
+next quarter — what the number actually claims.
+
+The file it writes follows [what an eval plan must contain](../llm-evals-checklist.md) — goal,
+models, prompts, measure, data, credentials — and the command checks its own answers against that
+list before saving, recording anything it cannot answer as a known gap. That check is why the plan
+hands over as something a fresh session can execute, rather than a description of an eval somebody
+still has to design.
+
+## 2. `/oryxflow:eval-init` — scaffold it
+
+Copies the eval template into `evals/<name>/` and wires it to the plan. It never overwrites a
+file you already have, so re-running it on an existing eval is safe.
+
+It finishes with a **three-call smoke run** — enough to prove the wiring end to end without a
+bill. Anything still unfilled raises an error at that point, which is deliberate: a half-wired
+eval that returned an empty result would otherwise cache as a measurement.
+
+## 3. `/oryxflow:eval-cases` — grow the case set
+
+The scaffold ships three placeholder rows. This command replaces them with 15-25 cases harvested
+from real material — your tickets, transcripts, logs — rather than invented ones, and it works
+the axes the plan named (hard/easy, long/short, in-scope/control) instead of producing a flat
+list of whatever came to mind first.
+
+Invented cases aren't banned, they're **marked**: `synthetic=1`. The headline number is harvested
+cases only, with the invented ones reported beside it.
+
+## 4. `/oryxflow:eval-run` — run it and read the verdict
+
+Prints the projected bill — how many calls, how many are already cached, what it will cost — and
+waits for you before spending anything. Then it runs and interprets the result: which arm won,
+whether the gap is bigger than the run-to-run noise, and whether the winner broke the guardrail.
+
+Every cell is cached, so a re-run of an unchanged arm costs nothing. Edit a prompt and only the
+arms that read it recompute.
+
+## What lands in `evals/<name>/`
+
+```text
+evals/my-eval/
+├── README.md      # what this measures and why — written by eval-plan
+├── agent.py       # the function under test, called the way production calls it
+├── eval.py        # the measurement: arms, metric, guardrail, caching
+├── run_eval.py    # the command line
+├── cases.csv      # the case set
+├── fixtures/      # anything a case needs on disk
+├── results/       # saved reports
+└── data/          # the cache (gitignore this)
+```
+
+Two files carry all the thinking: `agent.py` says **what runs**, `eval.py` says **what counts**.
+
+## `agent.py` — the function under test
+
+One rule holds this file together: **it imports the live implementation, it never carries a copy
+of it.** A second copy of the prompt inside `evals/` drifts from the shipping one the first time
+either is edited, and an eval scoring the copy measures nothing. If something has to change to
+make the entry point callable from here, change it in production.
+
+| What you write | What it is |
+| --- | --- |
+| `Inputs(BaseModel)` | One field per input column in `cases.csv`. A misspelled column lands in metadata instead, and pydantic then raises naming the field it never got — which is what makes keeping cases in a spreadsheet safe. |
+| `Output(BaseModel)` | What one case produced. **Nothing here is capped or trimmed** — see [never truncate a field your metric reads](../llm-evals.md#never-truncate-a-field-your-metric-reads). |
+| `prompt_root(arm)` | Where this arm reads its prompts: the working tree, or `ev.git_tree(ref, paths)` for a baseline. A baseline is **checked out**, never rebuilt by string replacement. |
+| `async def run_case(inputs, **arm)` | Runs one case through production and returns an `Output`. |
+| `BASELINE_REF`, `PROMPT_PATHS`, `PROMPT_GLOBS` | The commit the baseline arm reads, and the files the live arm hashes to decide when to recompute. |
+
+Two things about `run_case` that are easy to get wrong and expensive to discover later:
+
+- **Write it `async`.** Cases are scheduled as coroutines, so a plain `def` returns the same
+  numbers but blocks the loop — the concurrency you asked for silently does nothing. Eight
+  half-second cases at `concurrency=8`: 1.0s async, 4.9s sync.
+- **Let exceptions raise.** Catching one and returning it in a field makes the runner record a
+  *successful* case: the failure list comes back empty, the failure rate reads zero, and the
+  metric scores an error string as if it were an answer. Raising is what puts the case in the
+  failure list and keeps it out of every rate.
+
+## `eval.py` — the measurement
+
+```python
+class PromptEval(ev.TaskEval):
+    """One line: the question this eval answers."""
+
+    prompt_version = oryxflow.ChoiceParameter(default='live',
+                                              choices=['live', 'baseline'])
+
+    dataset = Dataset(name='cases', cases=CASES, evaluators=[OutputOk()])
+
+    metric = ev.Metric('quality', 'OutputOk', where='acted',
+                       coverage=ev.Metric('action rate', 'acted', where='~control'))
+
+    guardrail = ev.Metric('false action rate', 'acted', where='control',
+                          higher_is_better=False, budget=0.05)
+
+    slices = ('kind', 'synthetic')
+
+    async def case(self, inputs):
+        return await agent.run_case(inputs, prompt_version=self.prompt_version)
+
+    def code_version(self):
+        if self.prompt_version == 'baseline':
+            return ev.git_sha(agent.BASELINE_REF, repo=agent.ROOT)
+        return oryxflow.hash_files(*agent.PROMPT_GLOBS, root=agent.ROOT)
+```
+
+What each part is for:
+
+| Part | What it buys you |
+| --- | --- |
+| **One `Parameter` per arm axis** | Each becomes a repeatable command-line flag (`--prompt-version`) and each value is one cached cell. Two axes give you the full grid. |
+| **`dataset`** | A pydantic-evals `Dataset`. `CASES` comes from `ev.load_cases('cases.csv', inputs=agent.Inputs)`. |
+| **`metric`** | The headline number. **`coverage=` is not optional** — a rate over a filtered subset improves as the subset shrinks, so a prompt can score well on quality by staying silent on a third of the cases. Coverage is read first, quality second. |
+| **`guardrail`** | Mandatory. Without one, a prompt that acts on *everything* scores 100% on "did it act" and ships a regression. Set `budget=` and the verdict refuses to call a win *clean* when it is broken. |
+| **`slices`** | Metadata columns to break the metric down by — where a flat number hides that one kind of case got worse. |
+| **`case()`** | Calls `agent.run_case` with this arm's parameters. That is all it does. |
+| **`code_version()`** | The bytes that decide this arm's result. This is the whole caching trick: edit a prompt, and the arms that read it recompute while the rest are served from disk. A baseline arm returns the **resolved sha**, never the ref string — `HEAD~1` names different content after every commit. |
+
+Three more knobs, commented out in the scaffold until you want them:
+
+```python
+preview_chars = 200     # display cap for `<field>_preview`; `<field>` is never cut
+max_failure_rate = 0.2  # above this the run saves nothing
+preflight = None        # default runs case() once - what `--check` costs
+```
+
+### Scoring one case
+
+The class name of your evaluator is the column your metric reads:
+
+```python
+class OutputOk(Evaluator):
+    def evaluate(self, ctx: EvaluatorContext) -> bool:
+        return ctx.output.message.startswith(ctx.metadata['expected'])
+```
+
+Be deterministic wherever you can — when the output is one of a fixed set of labels, scoring it
+is a comparison, not a judging job. For **one** yes/no quality question don't write the class at
+all; pydantic-evals ships the judge:
+
+```python
+dataset = Dataset(name='cases', cases=CASES,
+                  evaluators=[LLMJudge(rubric='...', model=a_different_family,
+                                       include_input=True)])
+metric = ev.Metric('quality', 'LLMJudge')
+```
+
+Keep a custom `Evaluator` for several fields per case, or a verdict per item inside the output.
+Either way the judge belongs **here**, not inside `run_case` — then a judge failure is a scoring
+failure rather than a lost case. Judge from a *different* model family than the one under test;
+self-preference is real and avoiding it is free. Return `{}` for a case there is nothing to
+judge: those rows read as **not measured**, which is not a failure. And before you believe a
+judge at all, [check it against human labels](../llm-evals.md#check-the-judge-before-you-believe-it).
+
+## `run_eval.py` — the command line
+
+```python
+import oryxflow.evals as ev
+from eval import PromptEval
+
+if __name__ == '__main__':
+    ev.cli(PromptEval)
+```
+
+The flags are **derived from the task's Parameters**, so adding an arm axis adds its flag and
+there is no second place to keep in sync:
+
+```text
+python run_eval.py --check                    # preflight only: one call
+python run_eval.py --prompt-version live --prompt-version baseline --repeats 3
+```
+
+On top of the derived flags: `--repeats`, `--concurrency`, `--reset`, `--check`, `--csv`,
+`--yes`. The projected calls, the cached/new split and the cost estimate print before anything is
+billed; `--yes` answers that confirmation in advance.
+
+## `cases.csv` — the case set
+
+One row per case. Columns matching a field on `Inputs` are inputs; everything else is metadata
+you can filter and slice on.
+
+| Column | What it does |
+| --- | --- |
+| `name` | Identifies the case in the per-case table and in failures. |
+| *your input columns* | Routed to `Inputs` by name. |
+| `control` | Cases where doing **nothing** is correct. Keep at least one; the guardrail reads them. |
+| `synthetic` | `1` marks an invented case. The headline is harvested cases only. |
+| `holdout` | `1` withholds a case whose text is embedded in the prompt — scoring it against its own answer key measures memorisation, in every arm. |
+| *anything else* | Available to `where=` and to `slices`. |
+
+A spreadsheet is the point: the person with the real examples is usually a domain expert who
+doesn't edit Python, and a case set stops being reviewable as a diff long before it stops growing.
+
+## The placeholder markers
+
+Every spot the scaffold cannot fill for you carries a marker:
+
+```python
+# PLACEHOLDER SCAFFOLD - the plan's scoring rule; delete this line when filled.
+```
+
+`eval-init` fills the ones it can from the plan and deletes their markers; `eval-cases` deletes
+the case-set one. Any left over are the checklist of what still needs your judgement — search for
+`PLACEHOLDER SCAFFOLD` before you trust a number.
+
+## Doing it by hand
+
+You don't need the plugin. The whole scaffold is `ev.TaskEval` plus `ev.cli`, both documented in
+[LLM evals](../llm-evals.md) — the commands write the files, decide nothing you couldn't decide
+yourself, and leave behind plain Python you own. What they buy is the six questions asked in the
+right order, before the first API call.
+
+## Read next
+
+- **[LLM eval quickstart](../llm-evals-quickstart.md)** — the same thing without the scaffold: a
+  complete eval in one file.
+- **[LLM evals](../llm-evals.md)** — the guide: `ev.sweep`, `ev.TaskEval`, metrics, guardrails,
+  intervals, and the verdict.
+- **[Classes and functions](../llm-evals-api.md)** — everything `oryxflow.evals` exports.
+- **[What an eval plan must contain](../llm-evals-checklist.md)** — the six sections behind the
+  file `eval-plan` writes.
+- **[Plugin commands](commands.md)** — the other five commands.

@@ -23,7 +23,8 @@ from pathlib import Path, PurePosixPath
 # v2: code_version_auto (fingerprint may fold the AST auto token).
 # v3: symbol-level source_hashes ('<relpath>::<symbol>' keys, codehash.task_hashes) --
 #     v2 file-level records converge silently via the mismatch path above.
-RECORD_V = 3
+# v4: code_version may be a method; records store the RESOLVED token.
+RECORD_V = 4
 
 # str(store path) -> dict of records, invalidated on write
 _cache = {}

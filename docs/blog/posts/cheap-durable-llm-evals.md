@@ -124,6 +124,8 @@ That's the scoring layer, complete. It knows nothing about caching, matrices, or
 
 ## Step 2: one cell of the matrix, cached
 
+*This post shows the pattern hand-written. It now ships as [`oryxflow.evals`](../../docs/llm-evals.md) — the same cached-per-arm matrix, plus confidence intervals, guardrails and a verdict, in six lines.*
+
 An oryxflow task is a class with parameters, a `run()`, and a `save()`. The engine keys the cached output on the parameter values, so each `(model, prompt_version)` pair gets its own stored result automatically — no filenames to invent, no collisions.
 
 ```python

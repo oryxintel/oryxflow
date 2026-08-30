@@ -169,8 +169,11 @@ class TaskData(core.Task):
         # a task in the same change that edits its code forces a rerun instead of
         # blessing the stale output.
         from oryxflow import codehash
-        if self.code_version is not None:
-            if rec.get('code_version') == self.code_version:
+        # the RESOLVED token: a `def code_version` is a bound method, which would never
+        # equal the 'fn:<hash>' the record stores (so the task could never be complete)
+        own = core._resolve_code_version(self)
+        if own is not None:
+            if rec.get('code_version') == own:
                 return True
             if rec.get('code_version') is None and settings.code_version_auto:
                 # opting in: free iff the code really is what produced the output
@@ -219,9 +222,13 @@ class TaskData(core.Task):
 
         # Get Path
         tidroot = getattr(self, 'target_dir', self.task_id.split('_')[0])
-        if getattr(self, 'keep_versions', False) and self.code_version is not None:
-            tidroot = '{}/v{}'.format(
-                tidroot, core.TASK_ID_INVALID_CHAR_REGEX.sub('_', str(self.code_version)))
+        if getattr(self, 'keep_versions', False):
+            # resolved, not raw: str(<bound method>) carries a memory address, so a
+            # computed code_version would name a different directory every process
+            cv = core._resolve_code_version(self)
+            if cv is not None:
+                tidroot = '{}/v{}'.format(
+                    tidroot, core.TASK_ID_INVALID_CHAR_REGEX.sub('_', str(cv)))
         fname = '{}-{}'.format(self.task_id, k) if (settings.save_with_param and getattr(
             self, 'save_attrib', True)) else '{}'.format(k)
         fname += '.{}'.format(self.target_ext)

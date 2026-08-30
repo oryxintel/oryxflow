@@ -606,7 +606,7 @@ class Task(metaclass=Register):
 
     def _code_fingerprint_compute(self):
         dep_fps = [d._code_fingerprint for d in self.deps()]
-        own = self.code_version
+        own = _resolve_code_version(self)
         if own is None:
             from oryxflow import settings as _settings_
             if _settings_.code_version_auto:
@@ -621,6 +621,19 @@ class Task(metaclass=Register):
     def run(self):
         """The task computation, to be overridden in a subclass."""
         pass
+
+
+def _resolve_code_version(task):
+    """The task's own code-identity token. A `code_version` declared as a method is
+    CALLED and its return value hashed, so a task can fold bytes outside the Python
+    import graph -- a rendered prompt, a .sql file, a resolved model snapshot -- into
+    its own identity. Runs on every completeness check (memoized per traversal), so
+    the body must be local and cheap: never a network call."""
+    cv = task.code_version
+    if cv is None or not callable(cv):
+        return cv
+    payload = json.dumps(cv(), sort_keys=True, default=str)
+    return 'fn:{}'.format(hashlib.md5(payload.encode('utf-8')).hexdigest()[:16])
 
 
 class Target:
@@ -1363,7 +1376,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         _emit('task_ran',
               {'task_id': tid, 'family': task.task_family,
                'params': task.to_str_params(only_significant=False),
-               'code_version': task.code_version, 'fingerprint': fp,
+               'code_version': _resolve_code_version(task), 'fingerprint': fp,
                'auto': task.code_version is None and _settings.code_version_auto,
                'source_hashes': hashes, 'reason': reason, 'duration_s': duration,
                'git_sha': git_sha, 'git_dirty': git_dirty,

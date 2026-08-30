@@ -126,6 +126,37 @@ Pinned and automatic tasks mix freely in one pipeline, and a pinned task still r
 
     **One first-time trap.** Bringing an output under tracking for the *first* time — a pre-upgrade artifact, or the first pin in a `code_version_auto = False` project — in the *same edit* that changes its logic can bless the stale output, because there is no prior record to compare against. oryxflow warns when it can detect this (`output predates current code`); answer it with `reset()` to recompute, or `flow.accept_code()` if the outputs really are current. Once a task has one record on disk, the trap is closed for good — the stored hashes expose any edit no matter how you toggle the pin.
 
+## When your task depends on something that isn't Python
+
+Automatic tracking follows your Python, so it can't see the `.sql` file you execute, the prompt template you render, or the `.yaml` config you load — change one of those and the task happily serves its old output. Rather than remembering to `reset()` every time, **declare `code_version` as a method** and return whatever actually determines the result. Whatever it returns becomes part of that task's code identity: when the value changes, the task and everything downstream recompute on the next run, exactly as a logic edit would.
+
+When the thing that changes is a set of files, `oryxflow.hash_files()` gives you a value that follows their contents:
+
+```python
+@oryxflow.requires(LoadData)
+class RunQuery(oryxflow.tasks.TaskCachePandas):
+    def code_version(self):
+        return oryxflow.hash_files('queries/*.sql')
+
+    def run(self):
+        sql = open('queries/monthly.sql').read()
+        ...
+```
+
+Edit `queries/monthly.sql` and `RunQuery` reruns on the next `flow.run()` — no reset, no version string to bump, and the rerun cascades downstream like any other code change. Re-saving the file without changing a byte does nothing, because the value follows the content, not the timestamp. `hash_files` takes any number of glob patterns, and raises if a pattern matches no files at all — a typo'd path that quietly reported "nothing changed" forever is the one outcome worse than no check.
+
+Files are just the common case; return anything the result depends on. A rendered template is often the better value, because one string carries the whole include chain, the helper that assembled it, *and* the parameter that chose the branch:
+
+```python
+class RenderReport(oryxflow.tasks.TaskCachePandas):
+    template = oryxflow.Parameter()
+
+    def code_version(self):
+        return render_template(self.template)
+```
+
+Two things to keep in mind. **Keep the body cheap and local** — it runs every time oryxflow checks whether the task is up to date, so reading a file or rendering a string is fine, but never put a network call in it (resolve remote values such as a model snapshot id once, outside the flow, and pass them in as a `Parameter` instead). **And return the same value for the same inputs** — a `code_version()` that returns a timestamp reruns the task on every single run, which is the consequence of what you declared, not a bug.
+
 ## The three exits for any code change
 
 Every code change — whether it auto-recomputed or a pin warned — has the same three exits, and they are **not** equal in risk:
