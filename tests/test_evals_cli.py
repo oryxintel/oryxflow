@@ -14,6 +14,7 @@ The load-bearing pair:
   never even imported. A wiring failure otherwise reads as a measurement: every case
   raises, the sweep completes, and an empty result is cached as if it were a result.
 """
+import pathlib
 import re
 
 import pytest
@@ -437,3 +438,15 @@ def test_launching_from_another_directory_warns(tmp_path):
 def test_rescore_is_a_builtin_flag():
     from oryxflow.evals.cli import RESERVED_FLAGS
     assert 'rescore' in RESERVED_FLAGS
+
+
+def test_side_by_side_path_sits_beside_the_eval_module():
+    from oryxflow.evals.cli import _side_by_side_path
+
+    class Fake:
+        pass
+
+    path = _side_by_side_path(Fake, {'prompt_version': ['live', 'baseline']})
+    assert path.parent.name == 'results'
+    assert path.parent.parent == pathlib.Path(__file__).resolve().parent
+    assert path.name.endswith('-live-vs-baseline-side-by-side.md')

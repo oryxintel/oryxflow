@@ -76,10 +76,18 @@ def load_cases(path, inputs=None, expected=None, name_col='name'):
     it labels each cell of the matrix, so a column of that name is refused up front
     rather than shadowed (name yours ``surface``, ``write_arm``, ``variant``...).
 
+    ``path`` may also be a list of row dicts -- the same routing, for a probe that keeps
+    its handful of cases inline. ``@file`` references then resolve against the working
+    directory.
+
     Returns a ``CaseList`` -- a list of ``Case`` carrying that count.
     """
-    path = Path(path)
-    rows = _read(path)
+    if isinstance(path, (list, tuple)):
+        rows = [dict(r) if isinstance(r, dict) else r for r in path]
+        path = Path.cwd() / '<inline cases>'
+    else:
+        path = Path(path)
+        rows = _read(path)
     field_names = _model_field_names(inputs) if inputs is not None else None
 
     cases = CaseList()

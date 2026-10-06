@@ -44,7 +44,8 @@ BUILTIN_PARAMS = ('repeats', 'concurrency')
 # Flag names the built-ins own. A declared Parameter that would collide is a hard
 # error here rather than a flag that silently shadows another one.
 RESERVED_FLAGS = {
-    'repeats', 'concurrency', 'reset', 'rescore', 'check', 'csv', 'yes', 'help'}
+    'repeats', 'concurrency', 'reset', 'rescore', 'check', 'csv', 'side_by_side',
+    'yes', 'help'}
 
 
 def _load_sweep():
@@ -168,7 +169,7 @@ def check(task, arms=None, repeats=None, concurrency=None):
 
 
 def _execute(cls, arms, repeats, concurrency, reset, do_check, csv_path, yes,
-             rescore=False):
+             rescore=False, side_by_side=False):
     """The command body, kept out of the generated signature so it stays readable."""
     if do_check:
         # --check short-circuits BEFORE `sweep` is imported: the probe must not
@@ -204,7 +205,21 @@ def _execute(cls, arms, repeats, concurrency, reset, do_check, csv_path, yes,
     verdict = getattr(result, 'verdict', None)
     if callable(verdict):
         verdict()
+    if side_by_side and callable(getattr(result, 'side_by_side', None)):
+        typer.echo('wrote {}'.format(result.side_by_side(_side_by_side_path(cls, arms))))
     return result
+
+
+def _side_by_side_path(cls, arms):
+    """``<eval module dir>/results/<date>-<arms>-side-by-side.md``: next to the eval's
+    own files, wherever the run was launched from."""
+    try:
+        home = pathlib.Path(inspect.getfile(cls)).resolve().parent
+    except (TypeError, OSError):
+        home = pathlib.Path('.')
+    label = '-vs-'.join(str(v) for values in arms.values() for v in values) or 'run'
+    return home / 'results' / '{}-{}-side-by-side.md'.format(
+        datetime.date.today().isoformat(), label)
 
 
 def build_app(task):
@@ -250,6 +265,9 @@ def build_app(task):
                 're-run only the scorers over the stored outputs: no model calls'),
         builtin('check', '--check', bool, False,
                 'run preflight() only and exit: one call, to prove credentials work'),
+        builtin('side_by_side', '--side-by-side', bool, False,
+                "write every arm's output for the cases where the arms disagree to "
+                "<eval dir>/results/ (reads stored outputs: no model calls)"),
         builtin('csv', '--csv', Optional[pathlib.Path], None,
                 'write the resulting per-case frame to this path'),
         builtin('yes', '--yes', bool, False,
@@ -267,7 +285,7 @@ def build_app(task):
             repeats=kwargs['opt_repeats'], concurrency=kwargs['opt_concurrency'],
             reset=kwargs['opt_reset'], do_check=kwargs['opt_check'],
             csv_path=kwargs['opt_csv'], yes=kwargs['opt_yes'],
-            rescore=kwargs['opt_rescore'])
+            rescore=kwargs['opt_rescore'], side_by_side=kwargs['opt_side_by_side'])
 
     doc = (cls.__doc__ or '').strip().splitlines()
     main.__doc__ = doc[0] if doc else 'Run the {} eval.'.format(cls.__name__)
@@ -287,7 +305,7 @@ def cli(task, argv=None):
 
     Each declared Parameter becomes a repeatable option (``--model-id`` for
     ``model_id``), so adding a parameter adds a flag and the two cannot drift.
-    Built-ins: --repeats --concurrency --reset --rescore --check --csv --yes.
+    Built-ins: --repeats --concurrency --reset --rescore --check --csv --side-by-side --yes.
 
     ``--check`` runs ``preflight()`` only and exits. ``--yes`` answers the cost
     confirmation in advance; without it the projected call count and cost are

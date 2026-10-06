@@ -37,6 +37,10 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   output per case as markdown, by default only the cases where the arms disagree on a column the
   verdict reads, plus failures. Rendered with Jinja from the stored outputs (no model call);
   `template=` takes a path or a string.
+- `oryxflow.evals`: `load_cases()` also takes a list of row dicts, routed exactly like a file's
+  rows -- for a probe that keeps a handful of cases inline.
+- `oryxflow.evals`: `ev.cli --side-by-side` writes `EvalResult.side_by_side()` to the eval module's
+  own `results/<date>-<arms>-side-by-side.md`, wherever the run was launched from.
 - `oryxflow.evals`: `ev.cli` warns when launched from a directory other than the eval script's own
   -- the cache and relative paths resolve against the working directory, so such a run reads and
   writes a different cache.

@@ -925,7 +925,7 @@ python turn_eval.py --prompt-version prod --prompt-version preship --repeats 3
 ```
 
 Built in on top of your own: `--repeats`, `--concurrency`, `--reset`, `--rescore`, `--check`,
-`--csv`, `--yes`.
+`--csv`, `--side-by-side` (writes the side-by-side file into the eval's own `results/`), `--yes`.
 
 ### Two stages: the model calls, then the scoring
 

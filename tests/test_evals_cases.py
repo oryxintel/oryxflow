@@ -266,3 +266,17 @@ def test_unsupported_suffix_is_refused(tmp_path):
     other = write(tmp_path / 'cases.txt', 'name,question\nc1,a?\n')
     with pytest.raises(ValueError, match=r'\.csv, \.yaml or \.jsonl'):
         load_cases(other, inputs=Turn)
+
+
+def test_inline_rows_route_like_a_file():
+    from pydantic import BaseModel as _BM
+
+    class _In(_BM):
+        request: str
+
+    cases = load_cases([{'name': 'a', 'request': 'hi', 'control': True},
+                        {'name': 'b', 'request': 'yo', 'holdout': 1}], inputs=_In)
+    assert [c.name for c in cases] == ['a']
+    assert cases[0].inputs.request == 'hi'
+    assert cases[0].metadata['control'] is True
+    assert cases.excluded == 1

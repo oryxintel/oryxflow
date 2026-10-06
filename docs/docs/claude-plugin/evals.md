@@ -26,10 +26,14 @@ They are **one pipeline, in that order** — each command reads what the one bef
 can stop after any of them and pick up later. Nothing runs on its own: two of them write files
 and `eval-run` bills you for API calls, so you invoke each one deliberately.
 
-Evals need the extra:
+They work in **any Python repo** — a web app's backend is the usual home — not only in an oryxflow
+data project. The plugin's `oryxflow-evals` skill activates on its own when an agent plans or edits
+an LLM prompt, and suggests the commands; it never runs one.
+
+Evals need the library, with its extra, in the environment that runs your production code:
 
 ```text
-pip install "oryxflow[evals]"
+pip install "oryxflow[evals]>=26.10.6"
 ```
 
 ## 1. `/oryxflow:eval-plan` — decide what is measured
@@ -61,8 +65,9 @@ still has to design.
 
 ## 2. `/oryxflow:eval-init` — scaffold it
 
-Copies the eval template into `evals/<name>/` and wires it to the plan. It never overwrites a
-file you already have, so re-running it on an existing eval is safe.
+Copies the eval template into `evals/` and wires it to the plan. The first eval in a repo also
+gets `evals/_env.py`, which records once how this repo loads credentials and imports production
+code. It never overwrites a file you already have, so re-running it on an existing eval is safe.
 
 It finishes with a **three-call smoke run** — enough to prove the wiring end to end without a
 bill. Anything still unfilled raises an error at that point, which is deliberate: a half-wired
@@ -87,25 +92,33 @@ whether the gap is bigger than the run-to-run noise, and whether the winner brok
 Every cell is cached, so a re-run of an unchanged arm costs nothing. Edit a prompt and only the
 arms that read it recompute.
 
-## What lands in `evals/<name>/`
+## What lands in `evals/`
+
+`evals/` is **one oryxflow project**, and each eval is a folder inside it:
 
 ```text
-evals/my-eval/
-├── README.md      # what this measures and why — written by eval-plan
-├── agent.py       # the function under test, called the way production calls it
-├── eval.py        # the measurement: arms, metric, guardrail, caching
-├── run_eval.py    # the command line
-├── cases.csv      # the case set
-├── fixtures/      # anything a case needs on disk
-├── results/       # saved reports
-└── data/          # the cache (gitignore this)
+evals/
+├── _env.py               # once per repo: credentials + where production code is imported from
+├── data/                 # one cache for every eval (gitignore it, or put it under LFS)
+├── run_eval_my_eval.py   # the command line for one eval
+└── my_eval/              # one eval - a Python package, so underscores, not dashes
+    ├── README.md         # what this measures and why — written by eval-plan
+    ├── agent.py          # the function under test, called the way production calls it
+    ├── eval.py           # the measurement: arms, metric, guardrail, baseline
+    ├── cases.csv         # the case set
+    ├── fixtures/         # anything a case needs on disk
+    └── results/          # verdicts and side-by-side outputs — commit these
 ```
 
 Two files carry all the thinking: `agent.py` says **what runs**, `eval.py` says **what counts**.
+`_env.py` carries the setup, once, so five evals do not re-derive it five ways.
 
-Run it from its own directory. Every path in there is relative, so a run from anywhere else stops
-immediately on `cases.csv` instead of quietly building a second cache and re-billing you for cells
-you already paid for.
+**Run every eval from `evals/`.** The cache and relative paths resolve against the working
+directory, so a run from anywhere else builds a second cache and re-bills you for cells you already
+paid for; the command line warns when that happens. Credentials load by absolute path in
+`_env.py` for the same reason — a loader that resolves relative to the working directory finds
+nothing from here. Eval classes share the cache, so each needs its own name (`ReplyEval`, not
+`PromptEval`).
 
 ## `agent.py` — the function under test
 
@@ -124,9 +137,10 @@ So the baseline arm always reads production, and a candidate arm may own its pro
 eval until it wins — then it's promoted, byte-exact, and the arm is repointed at production. See
 [Prompts as files](../llm-evals-prompts.md) for the promotion step and why it needs a re-run.
 
-Because this file imports your project, **your project has to be importable**: installed once with
-`pip install -e .`, which is what `/oryxflow:init-project` sets up. `eval-init` checks it before
-the smoke run rather than letting it surface as an `ImportError` mid-eval.
+Because this file imports your project, **your project has to be importable from `evals/`**:
+installed once with `pip install -e <the directory holding its pyproject.toml>` (often not the repo
+root), or put on the path by `_env.py`. `eval-init` checks it before the smoke run rather than
+letting it surface as an `ImportError` mid-eval.
 
 | What you write | What it is |
 | --- | --- |
@@ -222,26 +236,32 @@ self-preference is real and avoiding it is free. Return `{}` for a case there is
 judge: those rows read as **not measured**, which is not a failure. And before you believe a
 judge at all, [check it against human labels](../llm-evals.md#check-the-judge-before-you-believe-it).
 
-## `run_eval.py` — the command line
+## `run_eval_<name>.py` — the command line
 
 ```python
 import oryxflow.evals as ev
-from eval import PromptEval
+from my_eval.eval import MyEval
 
 if __name__ == '__main__':
-    ev.cli(PromptEval)
+    ev.cli(MyEval)
 ```
 
 The flags are **derived from the task's Parameters**, so adding an arm axis adds its flag and
 there is no second place to keep in sync:
 
 ```text
-python run_eval.py --check                    # preflight only: one call
-python run_eval.py --prompt-version live --prompt-version baseline --repeats 3
+cd evals
+python run_eval_my_eval.py --check                    # preflight only: one call
+python run_eval_my_eval.py --prompt-version live --prompt-version baseline --repeats 3
 ```
 
-On top of the derived flags: `--repeats`, `--concurrency`, `--reset`, `--check`, `--csv`,
-`--yes`. The projected calls, the cached/new split and the cost estimate print before anything is
+On top of the derived flags: `--repeats`, `--concurrency`, `--reset`, `--rescore`, `--check`,
+`--csv`, `--side-by-side`, `--yes`.
+
+A one-off question does not need the folder: a **probe** is a single committed
+`evals/run_eval_<name>.py` with its cases inline and `ev.sweep`, cached like the rest and still
+there the next time the surface changes. It graduates to a folder when the cases are worth
+keeping. The projected calls, the cached/new split and the cost estimate print before anything is
 billed; `--yes` answers that confirmation in advance.
 
 ## `cases.csv` — the case set
