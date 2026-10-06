@@ -13,6 +13,8 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   prose. Agents grep this file for the symbol in their traceback.
 
 ## [Unreleased]
+
+## [26.10.5] - 2026-10-05
 ### Added
 - `oryxflow.evals`: **a cell is now two cached stages -- the model calls, then the scoring.**
   `TaskEval` generates an `<Eval>Outputs` task (`TaskJson`, one record per case x repeat: output,

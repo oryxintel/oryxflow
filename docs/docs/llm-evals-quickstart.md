@@ -13,7 +13,7 @@ looking at is real. Nothing is hidden in a base class you have to go read — ev
 decides the number is on this page.
 
 ```text
-pip install "oryxflow[evals]>=26.10.6"
+pip install "oryxflow[evals]>=26.10.5"
 ```
 
 That pulls pydantic-evals 2.x, the case runner and scorers this is built on.

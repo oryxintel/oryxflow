@@ -7,7 +7,7 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='oryxflow',
-    version='26.8.2',
+    version='26.10.5',
     packages=['oryxflow','oryxflow.targets','oryxflow.tasks','oryxflow.evals'],
     url='https://github.com/oryxintel/oryxflow',
     project_urls={

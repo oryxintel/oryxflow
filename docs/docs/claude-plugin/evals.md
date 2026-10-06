@@ -33,7 +33,7 @@ an LLM prompt, and suggests the commands; it never runs one.
 Evals need the library, with its extra, in the environment that runs your production code:
 
 ```text
-pip install "oryxflow[evals]>=26.10.6"
+pip install "oryxflow[evals]>=26.10.5"
 ```
 
 ## 1. `/oryxflow:eval-plan` — decide what is measured

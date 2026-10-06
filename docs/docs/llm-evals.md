@@ -20,7 +20,7 @@ cached separately, so rewriting a scorer or a judge rubric re-scores what you al
 without calling the model again.
 
 ```
-pip install "oryxflow[evals]>=26.10.6"
+pip install "oryxflow[evals]>=26.10.5"
 ```
 
 Read [What pydantic-evals already gives you](#what-pydantic-evals-already-gives-you) before writing
