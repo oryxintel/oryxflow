@@ -32,6 +32,7 @@ import os
 import sys
 import hashlib
 import importlib.util
+import textwrap
 from pathlib import Path
 
 # Overridable project root under which files are considered "project-local".
@@ -535,7 +536,6 @@ def task_hashes(task_or_cls):
     don't share fate. ``::<module>`` keys carry a module's import-time side effects,
     ``::*`` a whole-file fallback. Falls back to file-level ``module_hashes`` when the
     class isn't a top-level ClassDef in its module (dynamic/nested classes)."""
-    import inspect as _inspect
     cls = task_or_cls if isinstance(task_or_cls, type) else type(task_or_cls)
     start, root, modname = _class_source(cls)
     if start is None:
@@ -550,10 +550,70 @@ def task_hashes(task_or_cls):
     if cached is not None:
         return cached
 
+    hashes, files_seen = _closure_hashes(root, [(start, cls.__name__, modname)],
+                                         bases_of=cls)
+    _walk_cache_put(_task_hash_cache, cache_key, files_seen, hashes)
+    return hashes
+
+
+def callable_hashes(*fns):
+    """``{'<relpath>::<symbol>': md5}`` for FUNCTIONS -- each one's own normalized source
+    plus the transitive closure of the module-level symbols its body references.
+
+    The function-level sibling of :func:`task_hashes`. A method can't be a seed there:
+    the symbol index is top-level only, so a class's methods share one digest with
+    everything else in the class body. This hashes just the bodies you name, which is
+    what lets two stages of one class own disjoint code identities (an eval's model
+    calls vs. its scorers). ``{}`` when no function has project-local source.
+    """
+    import inspect as _inspect
+    hashes, roots = {}, {}
+    for fn in fns:
+        fn = _inspect.unwrap(getattr(fn, '__func__', fn))
+        mod = sys.modules.get(getattr(fn, '__module__', None) or '')
+        start = getattr(mod, '__file__', None)
+        if not start or not str(start).endswith('.py'):
+            continue
+        root = _project_root(start)
+        if not _is_local(start, root):
+            continue
+        try:
+            src = textwrap.dedent(_inspect.getsource(fn))
+            tree = _strip_docstrings(ast.parse(src))
+        except Exception:
+            continue
+        rel = os.path.relpath(str(Path(start).resolve()), root).replace(os.sep, '/')
+        hashes['{}::{}()'.format(rel, fn.__qualname__)] = hashlib.md5(
+            ast.dump(tree).encode('utf-8')).hexdigest()
+        roots.setdefault(root, []).append(
+            (str(Path(start).resolve()), mod.__name__, frozenset(_collect_refs(tree))))
+    for root, seeds in roots.items():
+        closure, _files = _closure_hashes(root, [], ref_seeds=seeds)
+        hashes.update(closure)
+    return hashes
+
+
+def callable_code_hash(*fns):
+    """Single md5 over :func:`callable_hashes`; None when nothing is hashable."""
+    hashes = callable_hashes(*fns)
+    if not hashes:
+        return None
+    blob = '|'.join('{}={}'.format(k, hashes[k]) for k in sorted(hashes))
+    return hashlib.md5(blob.encode('utf-8')).hexdigest()[:16]
+
+
+def _closure_hashes(root, queue, bases_of=None, ref_seeds=()):
+    """The shared reference walk behind :func:`task_hashes` / :func:`callable_hashes`.
+
+    ``queue`` seeds whole top-level symbols ``(path, symbol, modname)``; ``ref_seeds``
+    seeds raw reference sets ``(path, modname, refs)`` already extracted from a body
+    that is not itself a top-level symbol (a method). Returns ``(hashes, files_seen)``.
+    """
+    import inspect as _inspect
     hashes = {}
     files_seen = {}                    # abspath -> modname (for star-import context)
     seen = set()
-    queue = [(start, cls.__name__, modname)]
+    queue = list(queue)
 
     def _rel(path):
         return os.path.relpath(path, root).replace(os.sep, '/')
@@ -600,33 +660,10 @@ def task_hashes(task_or_cls):
             return True
         return False                   # plain data: caller falls back to AST lookup
 
-    _enqueue_bases(cls)
-    while queue:
-        path, sym, mname = queue.pop()
-        if (path, sym) in seen:
-            continue
-        seen.add((path, sym))
-        idx = _symbol_index(path)
-        if idx is None:
-            _add_file(path)
-            continue
-        files_seen[path] = mname
-        digest = idx['symbols'].get(sym)
-        if digest is None:
-            # not defined here -- follow a re-export (`from .impl import helper` in an
-            # __init__.py) before giving up to the whole-file fallback
-            imp = idx['imports'].get(sym)
-            if imp is not None:
-                tmod, orig, level = imp
-                f = _module_file(tmod, package=_package_of(mname, path), level=level)
-                if f is not None and _is_local(f, root):
-                    queue.append((str(Path(f).resolve()), orig or sym, tmod))
-                    continue
-            _add_file(path)            # can't locate the symbol: whole file
-            continue
-        hashes['{}::{}'.format(_rel(path), sym)] = digest
+    def _follow(path, mname, idx, refs):
+        # route every reference in `refs`, read in the namespace of `mname`
         ns = vars(sys.modules[mname]) if mname in sys.modules else {}
-        for name, chain in idx['refs'].get(sym, ()):
+        for name, chain in refs:
             obj = ns.get(name, _MISSING)
             if obj is not _MISSING and _resolve_obj(obj, chain):
                 continue
@@ -651,6 +688,41 @@ def task_hashes(task_or_cls):
                     else:
                         queue.append((fr, orig, tmod))
 
+    if bases_of is not None:
+        _enqueue_bases(bases_of)
+    for path, mname, refs in ref_seeds:
+        idx = _symbol_index(path)
+        if idx is None:
+            _add_file(path)
+            continue
+        files_seen[path] = mname
+        _follow(path, mname, idx, refs)
+    while queue:
+        path, sym, mname = queue.pop()
+        if (path, sym) in seen:
+            continue
+        seen.add((path, sym))
+        idx = _symbol_index(path)
+        if idx is None:
+            _add_file(path)
+            continue
+        files_seen[path] = mname
+        digest = idx['symbols'].get(sym)
+        if digest is None:
+            # not defined here -- follow a re-export (`from .impl import helper` in an
+            # __init__.py) before giving up to the whole-file fallback
+            imp = idx['imports'].get(sym)
+            if imp is not None:
+                tmod, orig, level = imp
+                f = _module_file(tmod, package=_package_of(mname, path), level=level)
+                if f is not None and _is_local(f, root):
+                    queue.append((str(Path(f).resolve()), orig or sym, tmod))
+                    continue
+            _add_file(path)            # can't locate the symbol: whole file
+            continue
+        hashes['{}::{}'.format(_rel(path), sym)] = digest
+        _follow(path, mname, idx, idx['refs'].get(sym, ()))
+
     # snapshot: resolving a star target below can discover a new file and record it in
     # files_seen, and the hash describes the module set as the traversal found it
     for path, mname in list(files_seen.items()):
@@ -663,9 +735,7 @@ def task_hashes(task_or_cls):
             f = _module_file(tmod, package=_package_of(mname or '', path), level=level)
             if f is not None and _is_local(f, root):
                 _add_file(f)
-
-    _walk_cache_put(_task_hash_cache, cache_key, files_seen, hashes)
-    return hashes
+    return hashes, files_seen
 
 
 def current_hash_for_key(root, key):

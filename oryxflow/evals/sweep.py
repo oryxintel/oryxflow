@@ -15,12 +15,9 @@ share a denominator.
 
 from __future__ import annotations
 
-import ast
 import datetime
-import hashlib
 import inspect
 import itertools
-import json
 import re
 import sys
 import textwrap
@@ -31,7 +28,7 @@ import oryxflow.codehash
 
 from oryxflow.evals.stats import (RateCI, corrected_rate, delta_ci,
                                   judge_alignment, rate_ci)
-from oryxflow.evals.task import TaskEval
+from oryxflow.evals.task import TaskEval, _case_digest, _source_hash
 
 NAN = float('nan')
 
@@ -48,7 +45,8 @@ _SLUG = re.compile(r'[^A-Za-z0-9.\-]+')
 
 def sweep(target, *, cases=None, dataset=None, metric=None, guardrail=None,
           slices=(), repeats=1, concurrency=4, reset=False, confirm=None,
-          name=None, cost_per_call=None, watch=None, evaluators=(), **arms):
+          name=None, cost_per_call=None, watch=None, evaluators=(), baseline=None,
+          rescore=False, **arms):
     """Run an eval across a grid of arms, cached one cell per arm.
 
     ``target`` is either a ``TaskEval`` subclass, or a plain async function taking
@@ -110,6 +108,15 @@ def sweep(target, *, cases=None, dataset=None, metric=None, guardrail=None,
     already uses one of those names is refused before anything is spent, rather than
     shadowed -- see ``_check_metadata``.
 
+    ``baseline`` names the arm every other arm is read against (default: the arm
+    named ``baseline``, or a ``baseline`` attribute on the class form). The verdict
+    then reports each arm's paired difference from it, with its interval -- and names
+    no winner: a mixed result needs a written judgement, not a pass/fail.
+
+    ``reset=True`` discards both stages and calls the model again. ``rescore=True``
+    re-runs only the scorers over the stored outputs -- after a judge failed
+    transiently, say -- and calls no model under test.
+
     Returns an :py:class:`EvalResult`.
     """
     axes, fixed = _split_arms(arms, repeats)
@@ -126,23 +133,48 @@ def sweep(target, *, cases=None, dataset=None, metric=None, guardrail=None,
     label = name or task_cls.task_family
     _check_metadata(dataset, axes)
 
-    flow, cached_flows = _split_cached(task_cls, params, reset)
+    flow, cached_flows, called_flows = _split_cached(task_cls, params, reset, rescore)
     calls = {f: n_cases * int(p.get('repeats', 1)) for f, p in params.items()}
-    cached_calls = sum(v for f, v in calls.items() if f in cached_flows)
+    # a cell is paid for by its MODEL calls: one whose outputs are stored costs nothing
+    # to re-score, however its scorers changed
+    cached_calls = sum(v for f, v in calls.items() if f in called_flows)
     new_calls = sum(calls.values()) - cached_calls
+    rescored = [f for f in params if f in called_flows and f not in cached_flows]
 
     _print_bill(label, n_cases, params, calls, cached_calls, new_calls,
-                cost_per_call, task_cls)
+                cost_per_call, task_cls, rescored)
     _ask(label, new_calls, confirm, task_cls, params, cached_flows)
 
-    df = oryxflow.runIterConcat(task_cls, params, reset=reset,
-                                concat_fn=_tagger(list(axes)))
+    # reset discards BOTH stages (the model calls too); rescore only the scoring stage
+    if reset or rescore:
+        stages = [task_cls]
+        if reset and hasattr(task_cls, '_outputs_cls'):
+            stages.insert(0, task_cls._outputs_cls())
+        for fname in params:
+            for stage in stages:
+                flow.get_flow(fname).reset(stage, confirm=False)
+    df = oryxflow.runIterConcat(task_cls, params, concat_fn=_tagger(list(axes)))
+    if baseline is None:
+        baseline = getattr(task_cls, 'baseline', None)
     return EvalResult(df, metric=metric, guardrail=guardrail, slices=slices,
                       arm_col='arm', name=label, n_cases=n_cases,
                       repeats=_common_repeats(params),
                       calls=sum(calls.values()), cached_calls=cached_calls,
                       new_calls=new_calls, excluded=getattr(cases, 'excluded', 0),
-                      flow=flow, billed=True)
+                      flow=flow, billed=True, baseline=baseline,
+                      outputs=_outputs_loader(flow, task_cls, params))
+
+
+def _outputs_loader(flow, task_cls, params):
+    """Load each arm's stored outputs on demand -- only side_by_side() reads them."""
+    if not hasattr(task_cls, '_outputs_cls'):
+        return None
+    outputs_cls = task_cls._outputs_cls()
+
+    def load():
+        return {f: flow.get_flow(f).outputLoad(task=outputs_cls, keys='outputs')
+                for f in params}
+    return load
 
 
 def _check_metadata(dataset, axes):
@@ -371,7 +403,10 @@ def _synthesize(target, dataset, axes, fixed, metric, guardrail, slices, arm_nam
     for key, value in fixed.items():
         body[key] = _param_for(value)
 
-    digest = {'target': _source_hash(target), 'cases': _case_digest(dataset)}
+    # The arm's identity (it keys the model-call stage). `refs` follows what target
+    # CALLS -- a project-local helper or prompt loader -- not only its own body.
+    digest = {'target': _source_hash(target), 'cases': _case_digest(dataset),
+              'refs': oryxflow.codehash.callable_code_hash(target)}
     if watch is not None:
         digest['watch'] = _watch_digest(watch)
     body['code_version'] = lambda self: digest
@@ -430,77 +465,36 @@ def _watch_digest(watch):
     return oryxflow.hash_files(*patterns)
 
 
-def _source_hash(fn):
-    """md5 over the function's normalized source -- what makes an edit invalidate."""
-    fn = inspect.unwrap(fn)
-    try:
-        src = textwrap.dedent(inspect.getsource(fn))
-    except (OSError, TypeError):
-        return 'nosource:{}.{}'.format(getattr(fn, '__module__', '?'),
-                                       getattr(fn, '__qualname__', repr(fn)))
-    try:
-        tree = ast.parse(src)
-        strip = getattr(oryxflow.codehash, '_strip_docstrings', None)
-        if strip is not None:
-            tree = strip(tree)
-        blob = ast.dump(tree)
-    except SyntaxError:
-        blob = src
-    return hashlib.md5(blob.encode('utf-8')).hexdigest()[:16]
-
-
-def _case_digest(dataset):
-    """Identity of the case set: add, remove or edit a case and the arms re-run.
-
-    A value that cannot be serialized stably contributes NOTHING rather than its repr --
-    a repr carrying a memory address would move the cache key every process, which costs
-    real money on a sweep that should have been free.
-    """
-    parts = []
-    for case in getattr(dataset, 'cases', None) or []:
-        parts.append(str(getattr(case, 'name', '')))
-        for attr in ('inputs', 'metadata', 'expected_output'):
-            parts.append(_stable(getattr(case, attr, None)))
-    return hashlib.md5('|'.join(parts).encode('utf-8')).hexdigest()[:16]
-
-
-def _stable(obj):
-    if obj is None:
-        return ''
-    dump = getattr(obj, 'model_dump_json', None)
-    if callable(dump):
-        try:
-            return dump()
-        except Exception:
-            pass
-    try:
-        return json.dumps(obj, sort_keys=True)
-    except (TypeError, ValueError):
-        return ''
-
-
 # ------------------------------------------------------------------------ the bill
 
-def _split_cached(task_cls, params, reset):
-    """``(WorkflowMulti, {flow names already cached})``.
+def _split_cached(task_cls, params, reset, rescore=False):
+    """``(WorkflowMulti, {fully cached flows}, {flows whose MODEL CALLS are cached})``.
 
-    WorkflowMulti has no ``complete()``; the per-flow ``Workflow`` it hands back does.
+    The second set is what the bill charges by: a cell whose outputs are stored only
+    needs re-scoring, which calls no model. ``rescore`` re-scores every cell, so none
+    counts as fully cached. WorkflowMulti has no ``complete()``; the per-flow
+    ``Workflow`` it hands back does.
     """
     flow = oryxflow.WorkflowMulti(task_cls, params)
-    cached = set()
+    cached, called = set(), set()
     if reset:
-        return flow, cached
+        return flow, cached, called
+    outputs_cls = task_cls._outputs_cls() if hasattr(task_cls, '_outputs_cls') else None
     for fname in params:
         try:
-            if flow.get_flow(fname).complete(task_cls):
+            wf = flow.get_flow(fname)
+            if outputs_cls is not None and wf.complete(outputs_cls):
+                called.add(fname)
+            if not rescore and wf.complete(task_cls):
                 cached.add(fname)
+                called.add(fname)
         except Exception:
             pass
-    return flow, cached
+    return flow, cached, called
 
 
 def _print_bill(label, n_cases, params, calls, cached_calls, new_calls,
-                cost_per_call, task_cls):
+                cost_per_call, task_cls, rescored=()):
     sym = _symbols()
     reps = _common_repeats(params)
     shape = '{} {} {} arms'.format(_plural(n_cases, 'case'), sym['times'], len(params))
@@ -510,6 +504,9 @@ def _print_bill(label, n_cases, params, calls, cached_calls, new_calls,
              '  cached {}{}new {}'.format(cached_calls, sym['dot'], new_calls)]
     if new_calls and getattr(task_cls, 'preflight', None) is not None:
         lines[-1] += '   (+1 preflight call per new arm)'
+    if rescored:
+        lines.append('  re-scoring {} from stored outputs: no model calls{}'.format(
+            _plural(len(rescored), 'arm'), _judge_note(task_cls)))
     if cost_per_call is None:
         lines.append('  estimated cost: not estimated -- pass cost_per_call= for a crude '
                      'calls x cost_per_call figure')
@@ -517,6 +514,19 @@ def _print_bill(label, n_cases, params, calls, cached_calls, new_calls,
         lines.append('  estimated cost: ~{:.2f} (crude: {} new calls x {})'.format(
             new_calls * float(cost_per_call), new_calls, cost_per_call))
     _emit(lines + [''])
+
+
+def _judge_note(task_cls):
+    """Re-scoring calls no model under test, but an LLM judge still bills per case."""
+    try:
+        scorers = task_cls()._evaluators(trace=False)
+    except Exception:
+        return ''
+    judges = [e for e in scorers if type(e).__name__ in ('LLMJudge', 'GEval')]
+    if not judges:
+        return ''
+    return ' (but {} LLM judge evaluator(s) still call their model per case)'.format(
+        len(judges))
 
 
 def _ask(label, new_calls, confirm, task_cls=None, params=None, cached=()):
@@ -590,7 +600,8 @@ class EvalResult:
 
     def __init__(self, df, metric=None, guardrail=None, slices=(), arm_col=None,
                  name=None, n_cases=None, repeats=None, calls=None, cached_calls=None,
-                 new_calls=None, excluded=0, flow=None, billed=False):
+                 new_calls=None, excluded=0, flow=None, billed=False, baseline=None,
+                 outputs=None):
         self.df = df
         self.metric = metric
         self.guardrail = guardrail
@@ -608,6 +619,20 @@ class EvalResult:
         self.billed = billed
         self.arm_col = arm_col or ('arm' if 'arm' in list(df.columns) else None)
         self.arms = self._arms()
+        self.baseline = self._resolve_baseline(baseline)
+        # {arm: [stored output records]}, or a callable producing it lazily
+        self._outputs = outputs
+
+    def _resolve_baseline(self, baseline):
+        """The arm every other arm is read against, or None to compare best vs next."""
+        names = [str(a) for a in self.arms]
+        if baseline is not None:
+            for candidate in (str(baseline), _slug(baseline)):
+                if candidate in names:
+                    return self.arms[names.index(candidate)]
+            raise ValueError('baseline={!r} is not one of the arms: {}'.format(
+                baseline, ', '.join(names)))
+        return self.arms[names.index('baseline')] if 'baseline' in names else None
 
     # ---- frames
 
@@ -683,6 +708,23 @@ class EvalResult:
             path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self._markdown(), encoding='utf-8')
         return path
+
+    def side_by_side(self, path=None, all=False, template=None):
+        """Write every arm's output per case as markdown; returns the path.
+
+        By default only the cases where the arms DISAGREE on a column the verdict reads,
+        plus failures -- the ones worth a person's attention. ``all=True`` for every
+        case. Rendered with Jinja from the stored outputs (no model call); ``template``
+        overrides the layout with a path or a template string. Default path:
+        ``results/<date>-<name>-side-by-side.md``.
+        """
+        from oryxflow.evals import sidebyside
+        records = self._outputs() if callable(self._outputs) else self._outputs
+        if records is None:
+            raise ValueError('this result carries no stored outputs -- side_by_side() '
+                             'needs a result from sweep(), or outputs={arm: records}')
+        return sidebyside.render(self, records, path=path, show_all=all,
+                                 template=template)
 
     # ---- rendering
 
@@ -965,6 +1007,8 @@ class EvalResult:
                     max(ns), min(ns))]
 
     def _delta_line(self, metric, values, sym):
+        if self.baseline is not None:
+            return self._baseline_deltas(metric, values, sym)
         pair = self._pair(values)
         if pair is None:
             return []
@@ -975,6 +1019,21 @@ class EvalResult:
         return ['  {}  {} {} {}  = {}  [{}, {}]   {}'.format(
             sym['delta'], pair[0], sym['minus'], pair[1], _pp(delta.value),
             _pp(delta.low), _pp(delta.high), tail)]
+
+    def _baseline_deltas(self, metric, values, sym):
+        """Every arm against the baseline -- the comparison a decision is made on."""
+        out = []
+        for arm in self.arms:
+            if arm == self.baseline:
+                continue
+            delta = self._delta(metric, arm, self.baseline)
+            if delta is None:
+                continue
+            out.append('  {}  {} {} {}  = {}  [{}, {}]   {}'.format(
+                sym['delta'], arm, sym['minus'], self.baseline, _pp(delta.value),
+                _pp(delta.low), _pp(delta.high),
+                'inside noise' if delta.spans_zero else 'outside noise'))
+        return out
 
     def _synthetic_line(self, metric):
         synth = self._synthetic()
@@ -989,6 +1048,8 @@ class EvalResult:
         arm = self._best_arm(values)
         if arm is None:
             return ['VERDICT  no arm produced a usable rate.']
+        if self.baseline is not None and len(self.arms) >= 2:
+            return self._baseline_verdict(values)
         if len(self.arms) < 2:
             return ['VERDICT  single arm: {} at {} -- nothing to compare it with.'.format(
                 arm, _pct(values[arm][0]))]
@@ -1017,6 +1078,34 @@ class EvalResult:
             body = '{} wins the primary metric ({}, outside noise).'.format(
                 arm, _pp(delta.value))
         return _wrap('VERDICT  ', body)
+
+    def _baseline_verdict(self, values):
+        """Per arm, against the baseline: the difference, whether it clears the noise,
+        and any guardrail it breaks. No winner is named -- several numbers moving in
+        different directions is a judgement for whoever reads this, not for a rule."""
+        out = []
+        for arm in self.arms:
+            if arm == self.baseline:
+                continue
+            delta = self._delta(self.metric, arm, self.baseline)
+            if delta is None:
+                body = '{} vs {}: no shared cases, nothing to compare.'.format(
+                    arm, self.baseline)
+            else:
+                body = '{} vs {} on {}: {} [{}, {}], {}'.format(
+                    arm, self.baseline, self.metric.label, _pp(delta.value),
+                    _pp(delta.low), _pp(delta.high),
+                    'inside noise at {}'.format(
+                        _plural(self.repeats, 'rep') if self.repeats else '? reps')
+                    if delta.spans_zero else 'outside noise')
+                if self._guardrail_broken(arm):
+                    body += '; breaks the {} guardrail ({} > {})'.format(
+                        self.guardrail.label,
+                        _pct(self._values(self.guardrail)[arm][0]),
+                        _pct(self.guardrail.budget))
+                body += '.'
+            out += _wrap('VERDICT  ' if not out else '         ', body)
+        return out
 
     def _slice_lines(self):
         if not self.slices:

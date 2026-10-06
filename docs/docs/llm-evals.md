@@ -15,11 +15,17 @@ broke a guardrail.
 The scoring is [pydantic-evals](https://pydantic.dev/docs/ai/evals/) — cases, evaluators,
 repeats, concurrency, retries. What oryxflow adds is the matrix and the memory: **a second run
 of an unchanged arm costs nothing, and editing your function or your case file re-runs only the
-cells that read it.** There is no `--reset` to remember.
+cells that read it.** There is no `--reset` to remember. The model's outputs and their scores are
+cached separately, so rewriting a scorer or a judge rubric re-scores what you already paid for
+without calling the model again.
 
 ```
-pip install oryxflow[evals]
+pip install "oryxflow[evals]>=26.10.6"
 ```
+
+Read [What pydantic-evals already gives you](#what-pydantic-evals-already-gives-you) before writing
+a scorer of your own: judges, tool-call checks, confusion matrices and per-case setup all ship
+there.
 
 Nothing in `oryxflow.evals` is loaded by `import oryxflow`, so if you never run evals it costs
 you nothing. Import it on purpose:
@@ -674,6 +680,43 @@ not buy.
 file — and the winning arm is broken down by it, worst first. That is where your next batch of
 cases comes from.
 
+### Against a baseline
+
+When one arm is the thing you are comparing *against* -- what ships today -- name it. An arm
+called `baseline` is picked up automatically; otherwise pass `baseline='prod'` to `sweep()` or set
+`baseline = 'prod'` on the class. Every other arm is then reported as a difference from it:
+
+```
+ACCURACY (higher is better)
+  baseline   72%  (47/66)   95% CI [58%, 83%]
+  live       81%  (53/66)   95% CI [69%, 90%]
+  Δ  live − baseline  = +9pp  [-2pp, +20pp]   inside noise
+
+VERDICT  live vs baseline on accuracy: +9pp [-2pp, +20pp], inside noise at 3 reps.
+```
+
+No winner is named, on purpose. Real results are rarely one number moving: an intent prompt that
+lifted one label from 0% to 73% while another fell from 86% to 61% is *mixed*, and the useful
+output is a written judgement -- what moved, what is inside the noise, what you would ship and
+why -- not a pass/fail. Treat the bar in your plan as a reference point for that judgement.
+
+### Read the outputs, not only the rate
+
+A rate says how often. It never says what the outputs look like, and that is how a scorer that
+rewards the wrong thing survives. Write them out:
+
+```python
+r = ev.sweep(...)
+r.side_by_side()        # results/<date>-<name>-side-by-side.md
+```
+
+For each case where the arms **disagree** on a column the verdict reads -- plus any case that
+failed -- it writes the inputs and every arm's output under its own heading, with its scores.
+`all=True` includes every case; later repeats appear only where their outcome differs. It reads
+the stored outputs, so it calls nothing. The layout is a Jinja template: pass `template=` a path
+or a string to change it. Commit the file beside the verdict -- both are small, and both cost money
+to produce.
+
 ## Never truncate a field your metric reads
 
 This is the first of two rules about **your own code**, and it is worth more than the rest
@@ -881,8 +924,42 @@ repeating a flag is how you declare an axis:
 python turn_eval.py --prompt-version prod --prompt-version preship --repeats 3
 ```
 
-Built in on top of your own: `--repeats`, `--concurrency`, `--reset`, `--check`, `--csv`,
-`--yes`.
+Built in on top of your own: `--repeats`, `--concurrency`, `--reset`, `--rescore`, `--check`,
+`--csv`, `--yes`.
+
+### Two stages: the model calls, then the scoring
+
+Each arm is cached as two steps, so the expensive one is never repeated for the cheap one:
+
+| stage | stored as | re-runs when |
+| --- | --- | --- |
+| the model calls | `<Eval>Outputs`, one JSON per arm | `code_version()` changes (what the arm reads), the code `case()` runs changes, or the case set changes |
+| the scoring | `<Eval>`, the per-case table | the outputs changed, or `scorer_version()` changes -- by default the evaluators' code and configuration |
+
+So `code_version()` on your class names what the **arm** reads -- prompt files, a git ref, a model
+id -- and you never have to fold your scorers into it. Edit an evaluator, change a judge's rubric
+or swap its model, and only the scoring re-runs, over the stored outputs:
+
+```
+TurnEval · 22 cases × 2 arms × 3 reps = 132 calls
+  cached 132 · new 0
+  re-scoring 2 arms from stored outputs: no model calls
+```
+
+`--reset` discards both stages and calls the model again. `--rescore` re-runs only the scorers --
+for when a judge failed transiently and you want those cases judged again without paying for the
+outputs twice. Override `scorer_version()` when a scorer reads something that is not its own code
+or configuration, such as a rubric file.
+
+The stored outputs are plain JSON, readable without oryxflow: one record per case and repeat, with
+the output, its timing, and whatever the case recorded with `increment_eval_metric`.
+
+**Return what your scorers need, including the tool calls.** Outputs are stored; the trace of the
+run is not. Evaluators that read the trace -- pydantic-evals' `HasMatchingSpan`, `ToolCorrectness`,
+`TrajectoryMatch`, `ArgumentCorrectness`, `MaxToolCalls`, `MaxModelRequests`, or any evaluator with
+`needs_trace = True` -- therefore score in the model-call stage, while the trace still exists, and
+re-run only with it. If you want to change a tool-call check later for free, have `case()` put the
+tool calls it made in its output and score that instead.
 
 ## Where credentials come from
 
@@ -905,6 +982,38 @@ failure prints the traceback and exits non-zero. During a sweep the same probe r
 arm before anything else is billed, so a credential problem costs you one call instead of a
 matrix. Override `preflight()` to probe something else, or set `preflight = None` to skip it.
 
+## What pydantic-evals already gives you
+
+oryxflow does the matrix, the cache, the intervals and the verdict. Scoring is pydantic-evals,
+and most of what an eval needs per case already ships there -- check this list before writing it
+yourself:
+
+| you need | use |
+| --- | --- |
+| a yes/no judgement of fuzzy quality | `LLMJudge(rubric=..., model=...)` -- a different model family from the one under test |
+| a scored rubric with explicit steps | `GEval(criteria=..., evaluation_steps=...)` |
+| exact match against the expected answer | `EqualsExpected()`; `Equals`, `Contains`, `IsInstance` for fixed values |
+| did it call the right tools, with the right arguments | `ToolCorrectness`, `TrajectoryMatch`, `ArgumentCorrectness`, `HasMatchingSpan` |
+| a budget on tool calls or model requests | `MaxToolCalls`, `MaxModelRequests` |
+| a confusion matrix or precision/recall over a label | `ConfusionMatrixEvaluator`, `PrecisionRecallEvaluator` in the dataset's `report_evaluators` |
+| per-case setup and teardown (stubbing a search API, seeding a record) | `CaseLifecycle` |
+| a first draft of cases | `generate_dataset` -- then mark them `synthetic` |
+
+See the [pydantic-evals docs](https://pydantic.dev/docs/ai/evals/) for each. Three shapes that need
+no new API at all:
+
+- **Model as an axis.** A model id is just another parameter -- `model_id=['small', 'large']`
+  -- and belongs in `code_version()`, pinned to a snapshot, so a provider moving the alias
+  invalidates the cell instead of being served from it.
+- **A conversation, replayed.** One case is one episode: `case()` runs every turn, feeding each
+  turn the state the previous one returned, and returns per-turn columns (`turn1_ok`,
+  `turn2_ok`, ...) plus an episode-level one. Arms are then free to diverge mid-conversation, which
+  is the point.
+- **"Zero false negatives" as the rule for a flag.** A closed label set is scored by comparison,
+  not by a judge. Return the predicted flag, score it against `expected`, and read the false
+  negatives off the confusion matrix -- the numbers to quote are the per-class rates, not one
+  accuracy.
+
 ## Using a different eval runner
 
 The per-case table is the only thing the metrics, the intervals, the verdict and the report ever
@@ -913,7 +1022,8 @@ read. Nothing downstream of a run touches pydantic-evals.
 So if you want to run your cases some other way, there are exactly two methods to override on
 your `TaskEval` subclass:
 
-- **`_evaluate()`** — runs the cases and returns a report. Replace it to use a different runner.
+- **`_evaluate()`** — scores the stored outputs and returns a report. Replace it to use a
+  different runner.
 - **`_to_frame(report)`** — turns that report into the per-case table. Replace it to accept a
   different report shape.
 

@@ -421,3 +421,19 @@ def test_a_real_runtime_error_still_propagates(monkeypatch):
     monkeypatch.setattr(cli_module, '_load_sweep', lambda: boom)
     with pytest.raises(RuntimeError, match='provider exploded'):
         cli_module._execute(make_task('AbortEval'), {}, None, None, False, False, None, False)
+
+
+def test_launching_from_another_directory_warns(tmp_path):
+    from oryxflow.evals.cli import _warn_if_launched_elsewhere
+    script = tmp_path / 'evals' / 'run_eval_x.py'
+    script.parent.mkdir()
+    script.write_text('')
+    assert _warn_if_launched_elsewhere(str(script), cwd=script.parent) is None
+    message = _warn_if_launched_elsewhere(str(script), cwd=tmp_path)
+    assert message and 'not from its own directory' in message
+    assert _warn_if_launched_elsewhere('-c', cwd=tmp_path) is None
+
+
+def test_rescore_is_a_builtin_flag():
+    from oryxflow.evals.cli import RESERVED_FLAGS
+    assert 'rescore' in RESERVED_FLAGS

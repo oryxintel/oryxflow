@@ -29,7 +29,7 @@ setup(
         'gcs': ['gcsfs','universal_pathlib'],
         's3': ['s3fs','universal_pathlib'],
         'export': ['jinja2'],
-        'evals': ['pydantic-evals', 'scipy', 'typer', 'tenacity']},
+        'evals': ['pydantic-evals>=2', 'scipy', 'typer', 'tenacity', 'jinja2']},
 include_package_data=True,
     python_requires='>=3.9',
     keywords=['oryxflow', 'data workflow', 'data pipelines'],

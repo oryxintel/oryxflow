@@ -13,8 +13,10 @@ looking at is real. Nothing is hidden in a base class you have to go read — ev
 decides the number is on this page.
 
 ```text
-pip install "oryxflow[evals]"
+pip install "oryxflow[evals]>=26.10.6"
 ```
+
+That pulls pydantic-evals 2.x, the case runner and scorers this is built on.
 
 Nothing in `oryxflow.evals` is loaded by `import oryxflow`, so if you never run evals it costs
 you nothing. Import it on purpose:
@@ -47,8 +49,6 @@ from pydantic_evals.evaluators import LLMJudge
 
 MODEL = ...   # the model under test — anything pydantic-ai accepts
 JUDGE = ...   # the judge — a DIFFERENT model family from MODEL
-
-oryxflow.set_dir('evals/data')
 
 
 class Inputs(BaseModel):
@@ -107,11 +107,11 @@ answer · 4 cases × 2 arms × 1 rep = 8 calls
   cached 0 · new 8   (+1 preflight call per new arm)
   estimated cost: not estimated -- pass cost_per_call= for a crude calls x cost_per_call figure
 
-Run? [y/n/c]
+Run 8 new calls for answer? (y/n/c=check one call first)
 ```
 
-`c` runs the **preflight only** — one call per arm, enough to prove the wiring works before you
-pay for the rest. Then:
+`c` spends **one call** on the first uncached arm — enough to prove the credentials and the wiring
+work — prints the result, and asks again. Then:
 
 ```text
 NAMES A CITY (higher is better)
@@ -138,6 +138,19 @@ answer · 4 cases × 2 arms × 1 rep = 8 calls
 Each arm is one cached cell on disk. Add a third arm and you pay for the third arm. Edit `answer`
 and its arms re-run; everything you have already evaluated stays put. Nothing to remember, and no
 stale cell reported as a fresh number.
+
+The model's outputs and their scores are cached **separately**. Rewrite the judge's rubric and
+only the scoring re-runs, over the outputs you already paid for:
+
+```text
+answer · 4 cases × 2 arms × 1 rep = 8 calls
+  cached 8 · new 0
+  re-scoring 2 arms from stored outputs: no model calls (but 1 LLM judge evaluator(s) still call their model per case)
+```
+
+Run from the directory the script lives in. The cache (`data/`) is created relative to where you
+launch, and running from elsewhere quietly starts a second, empty one; the command line form warns
+when that happens.
 
 ## What to add next, in this order
 
@@ -173,8 +186,18 @@ The quickstart above is honest but thin. Four additions, each worth more than th
     metric=ev.Metric('names a city', 'LLMJudge', human='human_label')
     ```
 
-Then `slices=('kind', 'length')` breaks the winning arm down by any metadata column, worst first
+Then `slices=('kind', 'length')` breaks the best arm down by any metadata column, worst first
 — which is where your next batch of cases comes from.
+
+Two more once there is a version you are comparing *against*:
+
+- **Name the baseline.** `baseline='helpful'` (or an arm literally named `baseline`) reports every
+  other arm as a difference from it, with its interval. No winner is named: one arm up on one
+  label and down on another is a judgement for you to write down, not a pass/fail.
+- **Read the outputs.** `r.side_by_side()` writes every arm's output for each case where the arms
+  disagree to `results/<date>-<name>-side-by-side.md` — no model calls, just the stored outputs.
+  A rate tells you how often; only the outputs tell you whether the scorer rewards the right
+  thing.
 
 ## Three shapes, in order of how much you need
 

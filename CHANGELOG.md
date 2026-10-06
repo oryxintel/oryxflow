@@ -14,6 +14,35 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 
 ## [Unreleased]
 ### Added
+- `oryxflow.evals`: **a cell is now two cached stages -- the model calls, then the scoring.**
+  `TaskEval` generates an `<Eval>Outputs` task (`TaskJson`, one record per case x repeat: output,
+  inputs, timing, metrics, attributes) that the scoring task requires. Editing an evaluator,
+  changing a judge rubric or swapping the judge model re-scores the stored outputs with ZERO calls
+  to the model under test; editing what the arm reads re-runs both. Before, one `code_version()`
+  keyed both, so a scorer change either re-billed every call or served stale scores. A subclass's
+  `code_version()` keeps its meaning (what the ARM reads) and now keys the model-call stage only;
+  the new `TaskEval.scorer_version()` keys the scoring stage and defaults to every evaluator's code
+  and configuration (`as_spec()`). A typed output is rebuilt with `model_validate`, so
+  `ctx.output.attr` scorers are unchanged. Evaluators that read the run's span tree
+  (`HasMatchingSpan`, `ToolCorrectness`, `TrajectoryMatch`, `ArgumentCorrectness`, `MaxToolCalls`,
+  `MaxModelRequests`, or any with `needs_trace = True`) score in the model-call stage, because spans
+  are not stored.
+- `oryxflow.evals`: `sweep(rescore=True)` / `ev.cli --rescore` -- re-run only the scorers over the
+  stored outputs (after a transient judge failure, say). The bill prints `re-scoring N arms from
+  stored outputs: no model calls` and counts an LLM judge's calls separately.
+- `oryxflow.evals`: `baseline=` on `sweep()` (or a `baseline` attribute on a `TaskEval`; default:
+  an arm named `baseline`). The verdict then reports every arm's paired difference from it with its
+  interval, and names no winner -- mixed results need a written judgement, not a pass/fail.
+- `oryxflow.evals`: `EvalResult.side_by_side(path=None, all=False, template=None)` -- every arm's
+  output per case as markdown, by default only the cases where the arms disagree on a column the
+  verdict reads, plus failures. Rendered with Jinja from the stored outputs (no model call);
+  `template=` takes a path or a string.
+- `oryxflow.evals`: `ev.cli` warns when launched from a directory other than the eval script's own
+  -- the cache and relative paths resolve against the working directory, so such a run reads and
+  writes a different cache.
+- `oryxflow.codehash.callable_hashes(*fns)` / `callable_code_hash(*fns)` -- the function-level
+  sibling of `task_hashes`: a function's own source plus the closure of the module-level symbols it
+  references. What lets two stages of one class own disjoint code identities.
 - `settings.warn_nested_dir` (default `True`) — a one-time warning when the output directory
   resolved for a run is empty but a directory of the same name already exists in a parent. The
   output directory has always resolved against the current working directory, so running a flow
@@ -92,6 +121,17 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
     does not pay for Typer.
 
 ### Changed
+- `oryxflow.evals`: the `evals` extra now requires `pydantic-evals>=2` (for the tool-call
+  evaluators, `CaseLifecycle` and Windows-safe report output) and adds `jinja2` (for
+  `side_by_side()`).
+- `oryxflow.evals`: `reset=True` / `--reset` discards BOTH stages, model calls included. Use
+  `rescore` to re-run only the scorers.
+- `oryxflow.evals`: the function form's arm identity now also follows what the target CALLS
+  (`codehash.callable_code_hash`), not only the target's own body -- editing a project-local helper
+  or prompt loader re-runs the arms that use it.
+- `oryxflow.evals`: `rep` is read from pydantic-evals' own `"<name> [i/N]"` naming when outputs
+  are stored, instead of being re-derived from row order (`TaskEval._assign_reps` is now a no-op
+  kept as an override point).
 - `requires_each`: the "declares a parameter and also fans out over it" `TypeError` now names the
   legitimate case it used to steer wrong - a task that compares its own value with others
   (`sector` vs `sector_compare`) - and points to `self.requires_grid(...)` in `requires()` rather
@@ -150,6 +190,11 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   rate — a 100% slice under that heading reads as a warning about something that is fine.
 
 ### Fixed
+- `oryxflow.evals`: a `TaskEval` subclass now re-runs when its case set changes. Only the
+  function form folded the cases into its cache key, so editing `cases.csv` under the class form
+  served the previous cases' results.
+- `oryxflow.evals`: under pandas 3 the `<field>_preview` columns were never written, because text
+  columns get a `str` dtype instead of `object`.
 - `oryxflow.evals`: the per-case frame was discarding most of what the report carried.
   `_to_frame()` read only assertions, scores, metadata and the output, so **six** things
   went on the floor. Now columns: `case.metrics` (what `increment_eval_metric` recorded --

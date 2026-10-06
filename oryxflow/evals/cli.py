@@ -12,13 +12,15 @@ is how a sweep axis is declared::
     python my_eval.py --model-id sonnet --model-id haiku --repeats 3
 
 Built-in flags on top of the derived ones: ``--repeats``, ``--concurrency``,
-``--reset``, ``--check``, ``--csv``, ``--yes``.
+``--reset``, ``--rescore``, ``--check``, ``--csv``, ``--yes``.
 """
 
 import datetime
 import enum
 import inspect
+import os
 import pathlib
+import sys
 import traceback
 from typing import List, Optional
 
@@ -42,7 +44,7 @@ BUILTIN_PARAMS = ('repeats', 'concurrency')
 # Flag names the built-ins own. A declared Parameter that would collide is a hard
 # error here rather than a flag that silently shadows another one.
 RESERVED_FLAGS = {
-    'repeats', 'concurrency', 'reset', 'check', 'csv', 'yes', 'help'}
+    'repeats', 'concurrency', 'reset', 'rescore', 'check', 'csv', 'yes', 'help'}
 
 
 def _load_sweep():
@@ -165,7 +167,8 @@ def check(task, arms=None, repeats=None, concurrency=None):
     return instance
 
 
-def _execute(cls, arms, repeats, concurrency, reset, do_check, csv_path, yes):
+def _execute(cls, arms, repeats, concurrency, reset, do_check, csv_path, yes,
+             rescore=False):
     """The command body, kept out of the generated signature so it stays readable."""
     if do_check:
         # --check short-circuits BEFORE `sweep` is imported: the probe must not
@@ -183,7 +186,7 @@ def _execute(cls, arms, repeats, concurrency, reset, do_check, csv_path, yes):
     # --yes answers that question in advance; it never skips the print.
     try:
         result = sweep(cls, repeats=repeats, concurrency=concurrency, reset=reset,
-                       confirm=not yes, **arms)
+                       rescore=rescore, confirm=not yes, **arms)
     except RuntimeError as exc:
         # Declining the bill is a decision, not a failure: say so in one line and
         # exit clean. A traceback here reads as "something broke" for the one
@@ -241,7 +244,10 @@ def build_app(task):
                 _param_default(cls, 'concurrency', 4),
                 'cases in flight at once; affects speed only, never the result'),
         builtin('reset', '--reset', bool, False,
-                'discard the cached cells for these arms and re-run them'),
+                'discard the cached cells for these arms and re-run them, model calls '
+                'included'),
+        builtin('rescore', '--rescore', bool, False,
+                're-run only the scorers over the stored outputs: no model calls'),
         builtin('check', '--check', bool, False,
                 'run preflight() only and exit: one call, to prove credentials work'),
         builtin('csv', '--csv', Optional[pathlib.Path], None,
@@ -260,7 +266,8 @@ def build_app(task):
             cls, arms,
             repeats=kwargs['opt_repeats'], concurrency=kwargs['opt_concurrency'],
             reset=kwargs['opt_reset'], do_check=kwargs['opt_check'],
-            csv_path=kwargs['opt_csv'], yes=kwargs['opt_yes'])
+            csv_path=kwargs['opt_csv'], yes=kwargs['opt_yes'],
+            rescore=kwargs['opt_rescore'])
 
     doc = (cls.__doc__ or '').strip().splitlines()
     main.__doc__ = doc[0] if doc else 'Run the {} eval.'.format(cls.__name__)
@@ -280,7 +287,7 @@ def cli(task, argv=None):
 
     Each declared Parameter becomes a repeatable option (``--model-id`` for
     ``model_id``), so adding a parameter adds a flag and the two cannot drift.
-    Built-ins: --repeats --concurrency --reset --check --csv --yes.
+    Built-ins: --repeats --concurrency --reset --rescore --check --csv --yes.
 
     ``--check`` runs ``preflight()`` only and exits. ``--yes`` answers the cost
     confirmation in advance; without it the projected call count and cost are
@@ -293,5 +300,31 @@ def cli(task, argv=None):
         if __name__ == '__main__':
             ev.cli(MyEval)
     """
+    if argv is None:
+        _warn_if_launched_elsewhere()
     command = typer.main.get_command(build_app(task))
     return command(args=argv, standalone_mode=argv is None)
+
+
+def _warn_if_launched_elsewhere(script=None, cwd=None):
+    """Say so when the working directory is not the eval script's own directory.
+
+    The cache (`data/`) and every relative path resolve against the working
+    directory. Launched from anywhere else, a run builds a second cache beside the
+    real one -- or, where a credential loader also resolves relative to the working
+    directory, completes with no credentials and caches an empty result. Returns the
+    message (None when the directories match).
+    """
+    script = script if script is not None else (sys.argv[0] if sys.argv else '')
+    if not script or script in ('-c', '-m') or not script.endswith('.py'):
+        return None
+    home = pathlib.Path(script).resolve().parent
+    here = pathlib.Path(cwd if cwd is not None else os.getcwd()).resolve()
+    if home == here:
+        return None
+    message = ('warning: running {} from {}, not from its own directory {}. The cache '
+               'and relative paths resolve against the working directory, so this run '
+               'reads and writes a different cache. cd {} first.'.format(
+                   pathlib.Path(script).name, here, home, home))
+    typer.echo(message, err=True)
+    return message
