@@ -554,6 +554,18 @@ def requires_each(task_to_require, /, *extra, derive=None, **grid):
     list — `region=lambda self: REGIONS[self.sector]`. For anything the decorators still
     don't cover, write `requires()` yourself and call
     :py:meth:`~oryxflow.core.Task.requires_grid`, which is what this decorator uses.
+
+    One case the decorator refuses on purpose: a task that compares ITS OWN value with others
+    (`sector` vs `sector_compare`) fans out over a parameter it also carries. Keep the
+    parameter and use the method form — `inputLoadConcat()` works on it all the same:
+
+        ```python
+        def requires(self):
+            return self.requires_grid(GrowthPanel, sector=[self.sector, self.sector_compare])
+
+        def run(self):
+            self.save(self.inputLoadConcat(tagkeys=['sector']))
+        ```
     """
     return core.requires_each(task_to_require, *extra, derive=derive, **grid)
 

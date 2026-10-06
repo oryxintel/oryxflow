@@ -752,10 +752,13 @@ def _apply_spec(cls):
         if isinstance(cls.__dict__.get(name), Parameter) and name not in injected:
             what = "fans out over '{}'".format(name) if name in fanned \
                 else "derives '{}' per branch".format(name)
+            hint = (" If the task compares its OWN '{0}' with others ('{0}' vs '{0}_compare'), "
+                    "keep the parameter and write requires() with self.requires_grid(...) "
+                    "instead of the decorator.".format(name)) if name in fanned else ""
             raise TypeError(
                 "{}: declares a '{}' parameter and also {}. The task the branches converge "
                 "into must not carry it -- it would put one branch's value in the combining "
-                "task's task_id. Remove the declaration.".format(cls.__name__, name, what))
+                "task's task_id. Remove the declaration.{}".format(cls.__name__, name, what, hint))
 
     # (b) drop parameters a previous decorator injected that a later one fans out over
     for name in sorted(injected & excluded):

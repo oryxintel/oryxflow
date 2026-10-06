@@ -92,6 +92,11 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
     does not pay for Typer.
 
 ### Changed
+- `requires_each`: the "declares a parameter and also fans out over it" `TypeError` now names the
+  legitimate case it used to steer wrong - a task that compares its own value with others
+  (`sector` vs `sector_compare`) - and points to `self.requires_grid(...)` in `requires()` rather
+  than only "Remove the declaration". The `requires_each` docstring shows that form with
+  `inputLoadConcat(tagkeys=[...])`. Message and docs only; behavior unchanged.
 - `state.RECORD_V` is now `4`: the code fingerprint folds in the resolved `code_version` token, and
   freshness records store that **resolved** token rather than the raw attribute. Records written at
   `v3` are treated as unverifiable and silently re-stamped by `build()`'s advisory sweep — a
