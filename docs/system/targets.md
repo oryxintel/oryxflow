@@ -31,9 +31,11 @@ Invariants worth protecting:
   layout below, and `_getpath` ~line 100).
 - The hash input is `json.dumps(params, separators=(',', ':'), sort_keys=True)` then MD5,
   truncated to 10 hex chars. The tuning constants live at `core.py:26-29`
-  (`TASK_ID_INCLUDE_PARAMS=3`, `TASK_ID_TRUNCATE_PARAMS=16`, `TASK_ID_TRUNCATE_HASH=10`,
-  invalid-char regex `[^A-Za-z0-9_]`). `settings.set_parameter_len` (`settings.py:18-21`) mutates
-  the first two.
+  (`TASK_ID_INCLUDE_PARAMS`, `TASK_ID_TRUNCATE_PARAMS`, `TASK_ID_TRUNCATE_SUMMARY`,
+  `TASK_ID_TRUNCATE_HASH=10`, invalid-char regex `[^A-Za-z0-9_]`). `settings.set_parameter_len`
+  sets the first three (defaults 20 params, 64 chars each, 80 chars for the whole summary).
+  The summary cap keeps file paths under the Windows 260-char limit; uniqueness is unaffected
+  because the hash covers the full params.
 - Insignificant params (`significant=False`) are excluded from the hash, so two tasks differing
   only in such a param share a `task_id` (and thus a path) but remain distinct cached instances.
 

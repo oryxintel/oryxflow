@@ -41,9 +41,10 @@ log_level = 'INFO'  # default level used by oryxflow.enable_logging(); see oryxf
 execution_summary = True
 
 from oryxflow import core
-def set_parameter_len(nparams=20, len=64):
+def set_parameter_len(nparams=20, len=64, summary=80):
     core.TASK_ID_INCLUDE_PARAMS=nparams
     core.TASK_ID_TRUNCATE_PARAMS=len
+    core.TASK_ID_TRUNCATE_SUMMARY=summary
 set_parameter_len()
 
 uri = None

@@ -35,6 +35,8 @@ from oryxflow.codecheck import StalenessWarning, _code_warned
 TASK_ID_INCLUDE_PARAMS = 3
 TASK_ID_TRUNCATE_PARAMS = 16
 TASK_ID_TRUNCATE_HASH = 10
+# cap on the whole readable summary: without it many long/list params gave >260-char paths
+TASK_ID_TRUNCATE_SUMMARY = 80
 TASK_ID_INVALID_CHAR_REGEX = re.compile(r'[^A-Za-z0-9_]')
 
 
@@ -242,6 +244,8 @@ def task_id_str(task_family, params):
 
     The id is ``{family}_{param_summary}_{md5(sorted_json)[:10]}`` so that
     ``task_id.split('_')[0]`` yields the task family (the directory convention).
+    ``param_summary`` is only the readable part, capped at ``TASK_ID_TRUNCATE_SUMMARY``
+    chars; uniqueness comes from the hash, which covers the full params.
 
     :param task_family: the task family (class name)
     :param params: dict mapping parameter names to serialized (str) values
@@ -251,7 +255,7 @@ def task_id_str(task_family, params):
 
     param_summary = '_'.join(p[:TASK_ID_TRUNCATE_PARAMS]
                              for p in (params[p] for p in sorted(params)[:TASK_ID_INCLUDE_PARAMS]))
-    param_summary = TASK_ID_INVALID_CHAR_REGEX.sub('_', param_summary)
+    param_summary = TASK_ID_INVALID_CHAR_REGEX.sub('_', param_summary)[:TASK_ID_TRUNCATE_SUMMARY]
 
     return '{}_{}_{}'.format(task_family, param_summary, param_hash[:TASK_ID_TRUNCATE_HASH])
 

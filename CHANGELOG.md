@@ -14,6 +14,19 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 
 ## [Unreleased]
 
+## [26.10.8] - 2026-10-08
+### Changed
+- BREAKING: `core.task_id_str` caps the readable parameter summary in a `task_id` (and so in
+  every output file name) at 80 characters (`core.TASK_ID_TRUNCATE_SUMMARY`, set with
+  `settings.set_parameter_len(summary=...)`). Before, only each value was truncated (64 chars, up to
+  20 values, a `ListParameter` counting its whole list), so a task inheriting several long or list
+  parameters got a 269-character path -- past the Windows 260 limit, and past what the Excel
+  desktop app opens (about 218). Uniqueness is unchanged: the 10-char hash still covers the full
+  parameters. Tasks whose summary was already 80 characters or less keep their `task_id`.
+  Migration: none required -- tasks with a longer summary get a new `task_id`, so they recompute
+  once on the next run (their old output files and code-status records are left orphaned; delete
+  them by hand if you want the space back).
+
 ## [26.10.5] - 2026-10-05
 ### Added
 - `oryxflow.evals`: **a cell is now two cached stages -- the model calls, then the scoring.**
