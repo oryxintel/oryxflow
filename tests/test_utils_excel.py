@@ -246,3 +246,166 @@ def test_import_cost():
          'import sys, oryxflow; print("openpyxl" in sys.modules)'],
         capture_output=True, text=True, check=True)
     assert out.stdout.strip() == 'False'
+
+
+def make_df2():
+    df = make_df()
+    df['rating'] = ['Green', 'Red']
+    df['rank_chg'] = [3, -2]
+    df['fips'] = [39580, 6037]
+    df['note'] = ['long text ' * 20, 'short']
+    return df
+
+
+def rules(ws):
+    out = []
+    for cf in ws.conditional_formatting:
+        for r in cf.rules:
+            out.append((str(cf.sqref), r))
+    return out
+
+
+def test_title_and_notes_shift_header(tmp_path):
+    df = make_df2()
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, df, title='Report - 2026Q2', notes=['a', 'b'])
+    ws = sheet(p)
+    assert ws['A1'].value == 'Report - 2026Q2'
+    assert ws['A1'].font.b
+    assert ws['A2'].value == 'a'
+    assert ws['A3'].value == 'b'
+    assert ws['A5'].value == 'name'
+    assert ws['A6'].value == 'a'
+    assert ws.freeze_panes == 'A6'
+    assert ws.auto_filter.ref.startswith('A5')
+    assert 'A1:F1' in ws.merged_cells
+    plain = tmp_path / 'plain.xlsx'
+    df.to_excel(plain, index=False)
+    pd.testing.assert_frame_equal(pd.read_excel(p, skiprows=4), pd.read_excel(plain))
+    p2 = tmp_path / 'b.xlsx'
+    excel_write(p2, df, title='T', notes=['a', 'b'], freeze=2)
+    assert sheet(p2).freeze_panes == 'C6'
+
+
+def test_title_one_column_not_merged(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, pd.DataFrame({'a': [1]}), title='T')
+    assert not sheet(p).merged_cells.ranges
+
+
+def test_highlight_named_and_raw(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, make_df2(), highlight={
+        'rating': {'Green': 'green', 'Red': {'bg': '112233', 'font': 'FFFFFF'}}})
+    rs = [(s, r) for s, r in rules(sheet(p)) if r.type == 'cellIs']
+    assert len(rs) == 2
+    assert all(s == 'G2:G3' for s, _ in rs)
+    assert [r.formula for _, r in rs] == [['"Green"'], ['"Red"']]
+    assert rs[0][1].dxf.fill.bgColor.rgb.endswith('C6EFCE')
+    assert rs[0][1].dxf.font.color.rgb.endswith('006100')
+
+
+def test_highlight_bad_fill_raises(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    with pytest.raises(KeyError, match='green'):
+        excel_write(p, make_df2(), highlight={'rating': {'Green': 'grean'}})
+    assert not p.exists()
+
+
+def test_unknown_column_raises(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    with pytest.raises(KeyError, match='nope'):
+        excel_write(p, make_df2(), colorscale=['nope'])
+    assert not p.exists()
+
+
+def test_colorscale(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, make_df2(), colorscale=['rank_chg'])
+    rs = [(s, r) for s, r in rules(sheet(p)) if r.type == 'colorScale']
+    assert len(rs) == 1
+    s, r = rs[0]
+    assert s == 'H2:H3'
+    assert r.colorScale.cfvo[1].type == 'num'
+    assert float(r.colorScale.cfvo[1].val) == 0
+
+
+def test_banded_after_value_rules(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, make_df2(), banded=True, highlight={'rating': {'Green': 'green'}})
+    rs = rules(sheet(p))
+    band = [r for _, r in rs if r.type == 'expression']
+    hl = [r for _, r in rs if r.type == 'cellIs']
+    assert len(band) == 1 and hl
+    assert band[0].priority > max(r.priority for r in hl)
+    p2 = tmp_path / 'b.xlsx'
+    excel_write(p2, make_df2())
+    assert not [r for _, r in rules(sheet(p2)) if r.type == 'expression']
+
+
+def test_wrap_columns_top_align(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, make_df2(), wrap_columns=['note'], width_max=40)
+    ws = sheet(p)
+    assert ws['J2'].alignment.wrap_text
+    assert width(ws, 'J') == 40
+    assert ws['A2'].alignment.vertical == 'top'
+    p2 = tmp_path / 'b.xlsx'
+    excel_write(p2, make_df2())
+    assert sheet(p2)['A2'].alignment.vertical != 'top'
+
+
+def test_group_starts_border(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, make_df2(), group_starts=['value'])
+    ws = sheet(p)
+    assert ws['C1'].border.left.style == 'medium'
+    assert ws['C2'].border.left.style == 'medium'
+    assert ws['B2'].border.left.style is None
+
+
+def test_id_columns_text(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, make_df2(), id_columns=['fips'])
+    c = sheet(p)['I2']
+    assert c.data_type == 's'
+    assert c.value == '39580'
+    assert c.alignment.horizontal == 'right'
+    assert c.number_format == '@'
+
+
+def test_deliverable_end_to_end(tmp_path):
+    df = make_df2()
+    sheets = {
+        'Retail': {'df': df, 'title': 'Market Rankings - Retail - 2026Q2',
+                   'notes': ['Green = top quintile, Red = bottom quintile'],
+                   'formats': {'ret_*': 'pct', 'rank_chg': 'int_signed'},
+                   'highlight': {'rating': {'Green': 'green', 'Red': 'red'}},
+                   'colorscale': ['rank_chg'], 'id_columns': ['fips'],
+                   'group_starts': ['value'], 'freeze': 2, 'banded': True},
+        'Notes': {'df': pd.DataFrame({'item': ['Generated'], 'detail': ['2026-10-18']}),
+                  'title': 'Notes', 'filters': False, 'freeze': 1, 'wrap_columns': ['detail']},
+    }
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, sheets)
+    wb = openpyxl.load_workbook(p)
+    assert wb.sheetnames == ['Retail', 'Notes']
+    ws = wb['Retail']
+    assert ws['A4'].value == 'name'
+    assert ws.freeze_panes == 'C5'
+    assert ws['D5'].number_format == '0.0%'
+    assert ws['H5'].number_format == '+0;-0;0'
+    assert ws['I5'].data_type == 's'
+    types = [r.type for _, r in rules(ws)]
+    assert types.count('cellIs') == 2
+    assert 'colorScale' in types and 'expression' in types
+    assert not wb['Notes'].auto_filter.ref
+    assert wb['Notes'].freeze_panes == 'B4'
+    plain = tmp_path / 'plain.xlsx'
+    df.to_excel(plain, index=False)
+    got = pd.read_excel(p, sheet_name='Retail', skiprows=3)
+    want = pd.read_excel(plain)
+    pd.testing.assert_frame_equal(got.drop(columns='fips'), want.drop(columns='fips'))
+    # read_excel infers numbers from text cells unless told otherwise
+    got = pd.read_excel(p, sheet_name='Retail', skiprows=3, dtype={'fips': str})
+    assert list(got['fips']) == ['39580', '6037']
