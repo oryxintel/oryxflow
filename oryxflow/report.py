@@ -135,3 +135,51 @@ def resolve_formats(df, formats=None, defaults=True):
             nn = s.dropna()
             out[col] = 'date' if (nn.dt.normalize() == nn).all() else 'datetime'
     return out
+
+
+def format_frame(df, formats=None, na_rep=NA_REP):
+    """Return a copy of df as strings, formatted with the same ``formats`` dict as the Excel writer.
+
+    Columns without a format are shown with ``str()``; missing values give ``na_rep``. Needs no
+    jinja2, so it suits markdown and prose tables.
+    """
+    specs = resolve_formats(df, formats, defaults=False)
+    out = df.copy()
+    for col in df.columns:
+        spec = specs.get(col)
+        out[col] = [fmt(v, spec, na_rep) if spec is not None else
+                    (na_rep if (not isinstance(v, str) and pd.api.types.is_scalar(v) and pd.isna(v))
+                     else str(v)) for v in df[col]]
+    return out
+
+
+def table(df, formats=None, index='auto', rename=None, columns=None, caption=None, na_rep=NA_REP):
+    """Return a pandas Styler showing df with the same ``formats`` dict as the Excel writer.
+
+    columns selects and orders columns, then rename relabels them; formats are keyed by the
+    renamed labels. index='auto' hides a default RangeIndex and keeps a meaningful one;
+    True/False force it. Needs jinja2 (``oryxflow[notebook]``); ``format_frame`` does not.
+    """
+    try:
+        import jinja2  # noqa: F401
+    except ImportError:
+        raise ImportError('report.table needs jinja2: install oryxflow[notebook], '
+                          'or use report.format_frame, which works without it')
+    if columns is not None:
+        df = df[list(columns)]
+    if rename:
+        df = df.rename(columns=rename)
+    specs = resolve_formats(df, formats, defaults=False)
+    for spec in specs.values():
+        _py(spec)
+    formatter = {c: (lambda v, s=s: fmt(v, s, na_rep)) for c, s in specs.items()}
+    styler = df.style.format(formatter=formatter, na_rep=na_rep) if formatter else df.style.format(na_rep=na_rep)
+    if index is False or (index == 'auto' and isinstance(df.index, pd.RangeIndex) and df.index.name is None):
+        styler = styler.hide(axis='index')
+    if caption:
+        styler = styler.set_caption(caption)
+    styler = styler.set_table_styles([{'selector': 'th', 'props': [('font-weight', 'bold')]}])
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    if numeric:
+        styler = styler.set_properties(subset=numeric, **{'text-align': 'right'})
+    return styler

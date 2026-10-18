@@ -66,3 +66,53 @@ def test_empty_spec_rejected():
         report.excel_code('')
     with pytest.raises(KeyError):
         report.fmt(1, '')
+
+
+def test_format_frame():
+    df = pd.DataFrame({'r': [0.05, float('nan')], 'n': [1234, 5]})
+    before = df.copy()
+    out = rpt.format_frame(df, {'r': 'pct', 'n': 'int'})
+    assert out.values.tolist() == [['5.0%', '1,234'], ['-', '5']]
+    pd.testing.assert_frame_equal(df, before)
+
+
+def test_table_hides_range_index():
+    pytest.importorskip('jinja2')
+    df = pd.DataFrame({'r': [0.05, 0.1]})
+    assert 'row_heading' not in rpt.table(df).to_html()
+    df2 = pd.DataFrame({'r': [0.05, 0.1]}, index=['a', 'b']).rename_axis('sector')
+    assert 'row_heading' in rpt.table(df2).to_html()
+    assert 'row_heading' in rpt.table(df, index=True).to_html()
+
+
+def test_table_rename_then_format():
+    pytest.importorskip('jinja2')
+    df = pd.DataFrame({'r': [0.05]})
+    html = rpt.table(df, formats={'Return': 'pct'}, rename={'r': 'Return'}).to_html()
+    assert '5.0%' in html and 'Return' in html
+
+
+def test_table_glob_formats():
+    pytest.importorskip('jinja2')
+    df = pd.DataFrame({'ret_pct': [0.05]})
+    assert '5.0%' in rpt.table(df, formats={'*_pct': 'pct'}).to_html()
+
+
+def test_table_same_formats_as_excel():
+    pytest.importorskip('jinja2')
+    df = pd.DataFrame({'n': [1234000]})
+    assert '1,234k' in rpt.table(df, formats={'n': 'thousands'}).to_html()
+
+
+def test_table_mixed_types():
+    pytest.importorskip('jinja2')
+    df = pd.DataFrame({'r': [0.05, 'n/a']})
+    html = rpt.table(df, formats={'r': 'pct'}).to_html()
+    assert '5.0%' in html and 'n/a' in html
+
+
+def test_table_columns_caption_and_missing_jinja2():
+    pytest.importorskip('jinja2')
+    df = pd.DataFrame({'a': [1.0], 'b': [2.0]})
+    html = rpt.table(df, columns=['a'], caption='Cap').to_html()
+    assert 'Cap' in html and '>b<' not in html
