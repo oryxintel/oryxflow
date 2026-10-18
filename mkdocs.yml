@@ -160,6 +160,7 @@ plugins:
           - docs/workflow.md
           - docs/run.md
           - docs/targets.md
+          - docs/reports.md
           - docs/logging.md
           - docs/collaborate.md
           - docs/managing-workflows.md
@@ -230,6 +231,7 @@ nav:
           - Workflows: docs/workflow.md
           - Running workflows: docs/run.md
           - Task I/O formats: docs/targets.md
+          - Reports from notebooks: docs/reports.md
           - Logging: docs/logging.md
           - Collaborate & share flows: docs/collaborate.md
           - Managing complex workflows: docs/managing-workflows.md

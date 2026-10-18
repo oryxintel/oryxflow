@@ -19,14 +19,16 @@ oryxflow/
   core.py            # the engine: Task, Register metaclass, Target/LocalTarget, flatten,
                      #   getpaths, task_id_str, inherits/requires, find_deps, build()
   parameter.py       # Parameter, Int/Float/Bool/Date/Dict/List/Choice/Enum Parameter
+  tasks/notebook.py  # TaskNotebook: papermill-run report template (needs the `notebook` extra)
   tasks/__init__.py  # TaskData (+ TaskCache/Json/Pickle/CSV/Excel/Pq/Markdown...), TaskAggregator
                      #   (group node: members declared in requires(), empty run(), no output)
+  targets/notebook.py# NotebookTarget: executed .ipynb + code-free .html pair
   targets/__init__.py# CacheTarget, _LocalPathTarget, DataTarget + format targets, Target re-export
   settings.py        # global settings (dirpath, cached, check_dependencies, task-id lengths...)
   cache.py           # `data` = in-memory target cache (dict)
   utils.py           # print_tree (preview), traverse, param generators, bcolors,
                      #   excel_write (formatted Excel writer; _excel_* helpers, sheet specs)
-  report.py          # display-format presets: FORMATS, fmt, excel_code, resolve_formats (pandas only)
+  report.py          # display-format presets: FORMATS, fmt, excel_code, resolve_formats, format_frame, table, inputs_of, inputLoad
   functional.py      # decorator-based functional Workflow API (uses only oryxflow.requires)
 tests/               # pytest suite (see tests/setup.md)
 docs/                # examples + docs/todo/ design notes
@@ -63,6 +65,8 @@ instead of reinventing them.
 **Dependency queries** — `flow.dependents(X)` is the reverse lookup ("what depends on X" — the band from the flow root down to X's family; same walk `reset_downstream` uses), `flow.dependencies(X)` the forward one (X's upstream cone). `X` may be a **class, family string, or instance** — a class/string is *not* instantiated, so it works for fanned-out / DAG-internal families that `get_task()` can't build (that is the point — `find_deps` takes a family string precisely to sidestep `MissingParameterException` on a mid-DAG task). `paths=True` returns the ordered `root→X` routes (a list of task lists) instead of the deduped set — so you can see *how many* distinct routes reach X, not merely that it's reached. Reach for these instead of grep or a hand-rolled `requires()` walk: the module-level primitives are `core.find_deps` (set) / `core.find_paths` (ordered, re-exported as `oryxflow.find_paths`), both memoized (polynomial for the set; `find_paths` materializes every distinct path by nature). See `docs/todo/20260803-engine-dependency-queries.md`.
 
 **Unused-input lint** — a declared dependency whose data `run()` loads and never reads is invisible to every dependency query (the edge is *real*; only the data is dead) yet still forces its whole upstream band on every cold build. `flow.check_inputs()` (static AST, `oryxflow/inputcheck.py`) reports these; `preview()` surfaces them automatically in an `UNUSED INPUTS` block (deduped per family). **`run()`/`build()` deliberately do NOT lint** — the execution path stays free of advisory work — so a finding does **not** land in `RunResult.warnings`, emit an event, or raise `UnusedInputWarning` on the automatic path; call `check_inputs()` explicitly for CI. (The AST parse is memoized per class in `inputcheck`, so it was a one-time-per-process cost even in `run()`; it was still pulled out on the principle that `run()` carries no advisory work — see the divergence note in the plan.) Three verdicts, never two — `unused` / `clean` / `unanalyzed` (a shape it can't prove is `unanalyzed`, never silently `clean`); **outer** unpack elements are dependencies, **inner** are that dep's `persists` (an inner `_` is normal, a top-level `_` is a finding). Suppress a deliberate one with `# oryxflow: input-unused`. `dependents()` and `check_inputs()` answer *different* questions — the first "does anything depend on X", the second "is a declared edge actually used" — and neither substitutes for the other. See `docs/todo/20260803-engine-unused-input-lint.md`.
+
+**Report notebooks** — `TaskNotebook` (`oryxflow.tasks.notebook`, needs the `notebook` extra) executes a template with papermill, injects params + `oryxflow_inputs`, and saves `.ipynb` + code-free `.html`. The template's cells are part of code identity, and outputs are not. The notebook reads inputs with `oryxflow.report.inputLoad(oryxflow_inputs, task=...)`, never by importing the flow. See `docs/todo/20261018-output-notebook-reports.md`.
 
 **Config** — `set_dir(dir=None)` (init + set data dir), `enable_cloud_storage(protocol, bucket, prefix=None)` / `enable_gcs(bucket, prefix=None)` (fsspec-backed; needs the `gcs`/`s3`/`cloud-base` install extra), `enable_logging()` / `disable_logging()`, and the mutable `settings.*` (`dirpath`, `cached`, `check_dependencies`, `execution_summary`, task-id lengths).
 

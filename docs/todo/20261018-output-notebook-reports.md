@@ -679,3 +679,15 @@ Upstream is a `TaskPqPandas` returning `pd.DataFrame({'a': [1, 2]})`. Cases:
 7. **Plugin changes.** When `TaskNotebook` ships, should the plugin's scaffold `viz-template.ipynb`
    gain a `parameters` cell and the authoring guard, and should "render with nbconvert" become the
    fallback rather than the default? That is a decision for the plugin repo.
+
+## Implementation notes (divergences from the plan as built)
+
+- **Reconciliation with the Excel spec.** One preset table lives in `oryxflow/report.py` (`FORMATS` of `Format(py, excel)`); `utils.excel_write` reads `FORMATS[name].excel`. `resolve_formats(df, formats, defaults=True)` is in `report.py`; `table`/`format_frame` pass `defaults=False`, so glob keys such as `'*_pct'` and one `formats=` dict work for Excel and for notebook tables alike. A preset-looking name that does not exist raises `KeyError` on both sides, and a bad value falls back to `str(value)` instead of raising.
+- **`report.fmt` replaces `pct()`/`num()`.** Use `fmt(x, 'pct')`. The `formats(**by_preset)` helper and the `bp_signed` preset were cut.
+- **`inputs_of` stores absolute, resolved paths** (the spec said `str(target.path)`), so a notebook run from another working directory still finds its data.
+- **`execute_notebook` gets `language='python'`**, because papermill needs a language for templates without kernelspec metadata. Consistent with decision 7 (`kernel_name='python3'`).
+- **Failure handling.** A failed run renames the notebook to `.failed.ipynb` on any exception, not only `PapermillExecutionError`. The start of a run also removes a stale `.running.ipynb` (and an old `.failed.ipynb`).
+- **`report.inputLoad` with several dependencies and no `keys`** returns a dict, unlike `self.inputLoad`, which returns a list for a multi-output dependency.
+- **Task 6 test detail.** The hidden-index check asserts on `row_heading`, because the `<th id="T_` probe also matches column headers.
+- **Deferred (cut from the plan):** the published copy (`report_name`, `publish_dir`), the `_template_digest` memo cache, and `report.setup()` / `PALETTE` / `percent_axis` / `links=`. The docs therefore show `rpt.table`, `rpt.fmt` and `rpt.format_frame`, not `rpt.setup`.
+- **Plugin follow-up (not done here):** the plugin's "Render / publish a notebook" section and `viz-template.ipynb` should learn the `TaskNotebook` path.

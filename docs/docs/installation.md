@@ -42,6 +42,7 @@ The core install keeps dependencies light. Enable the pieces you need with pip *
 | Cloud storage (S3) | `pip install "oryxflow[s3]"` | Read/write task outputs on Amazon S3 |
 | Cloud storage (base) | `pip install "oryxflow[cloud-base]"` | fsspec/`universal_pathlib` backend without a specific provider |
 | Flow export | `pip install "oryxflow[export]"` | `FlowExport` / `FlowImport` standalone task files (needs Jinja2) |
+| Report notebooks | `pip install "oryxflow[notebook]"` | Run report notebooks as tasks (papermill + nbconvert) |
 | Dask | `pip install "oryxflow[dask]"` | Dask DataFrame task types |
 
 After installing a cloud extra, point the engine at remote storage with

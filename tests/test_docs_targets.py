@@ -4,7 +4,7 @@ import pytest
 from phmdoctest.fixture import managenamespace
 
 
-def test_code_53(managenamespace):
+def test_code_54(managenamespace):
     import oryxflow
 
     class GetConfig(oryxflow.tasks.TaskJson):
@@ -27,7 +27,7 @@ def test_code_53(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_76(managenamespace):
+def test_code_77(managenamespace):
     class ScoreModel(oryxflow.tasks.TaskJson):
         persists = ['metrics', 'warnings']
 
@@ -42,7 +42,7 @@ def test_code_76(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_93(managenamespace):
+def test_code_94(managenamespace):
     class TrainModel(oryxflow.tasks.TaskPickle):
 
         def run(self):
@@ -57,7 +57,7 @@ def test_code_93(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_112(managenamespace):
+def test_code_113(managenamespace):
     class WriteReport(oryxflow.tasks.TaskMarkdown):
 
         def run(self):
@@ -71,7 +71,7 @@ def test_code_112(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_128(managenamespace):
+def test_code_129(managenamespace):
     import pandas as pd
 
     df_perf = pd.DataFrame({
@@ -94,14 +94,14 @@ def test_code_128(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_151(managenamespace):
+def test_code_152(managenamespace):
     oryxflow.utils.excel_write('report.xlsx', {'summary': df_perf})
 
     # Caution- no assertions.
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_180(managenamespace):
+def test_code_181(managenamespace):
     df_rank = pd.DataFrame({
         'name': ['Alpha County', 'Beta County'],
         'rating': ['Green', 'Red'],
@@ -133,7 +133,7 @@ def test_code_180(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_212(managenamespace):
+def test_code_213(managenamespace):
     path_rank = flow_rank.outputPath()
     back = pd.read_excel(path_rank, sheet_name='retail', skiprows=3, dtype={'fips': str})
 

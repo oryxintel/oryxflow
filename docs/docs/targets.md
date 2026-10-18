@@ -36,6 +36,7 @@ Start from the object you want to save and read across:
 | A dict, list, or config | `TaskJson` | `.json` | the same dict/list |
 | A trained model or any python object | `TaskPickle` | `.pkl` | the same object |
 | A written report | `TaskMarkdown` | `.md` **and** `.html` | markdown string |
+| A parameterized report notebook | `TaskNotebook` ([guide](reports.md)) | `.ipynb` **and** `.html` | path of the `.html` |
 | Anything, but only for this session | `TaskCache` | memory | the same object |
 | A dataframe, only for this session | `TaskCachePandas` | memory | dataframe |
 | A dataframe to a database | `TaskSQLPandas` | SQL table | dataframe (premium, see below) |
