@@ -5,6 +5,7 @@ Needs the ``notebook`` extra (papermill, nbconvert, nbformat, ipykernel, jinja2)
 """
 import hashlib
 import json
+import logging
 import os
 import pathlib
 
@@ -42,6 +43,22 @@ def _template_digest(path):
     return hashlib.md5(blob.encode('utf-8')).hexdigest()[:16]
 
 
+def _json_default(v):
+    if hasattr(v, 'isoformat'):
+        return v.isoformat()
+    if hasattr(v, 'item'):
+        return v.item()
+    return str(v)
+
+
+class _DropOryxflowUnknown(logging.Filter):
+    """Drops papermill's "Passed unknown parameter" warning for oryxflow's own injected names,
+    which a template need not declare. Warnings about the user's names stay."""
+    def filter(self, record):
+        msg = record.getMessage()
+        return not (msg.startswith('Passed unknown parameter') and _RESERVED_PREFIX in msg)
+
+
 def _has_parameters_cell(path):
     nb = nbformat.read(str(path), as_version=4)
     return any('parameters' in (c.get('metadata', {}).get('tags') or []) for c in nb.cells)
@@ -73,19 +90,27 @@ class TaskNotebook(TaskData):
         """Extra values to inject into the template, merged over the task parameters."""
         return {}
 
-    def _template_path(self):
+    def _template_file(self):
         if self.notebook is None:
             raise TypeError('{} must set notebook = "<template>.ipynb"'.format(type(self).__name__))
         path = pathlib.Path(self.notebook)
         if not path.is_absolute():
             path = pathlib.Path.cwd() / path
+        return path
+
+    def _template_path(self):
+        path = self._template_file()
         if not path.exists():
             raise FileNotFoundError('template notebook not found: {}'.format(path))
         return path
 
     def code_version(self):
-        """Code identity: the template's cells plus the task's own Python (when auto hashing is on)."""
-        return {'template': _template_digest(self._template_path()),
+        """Code identity: the template's cells plus the task's own Python (when auto hashing is on).
+
+        A template that cannot be found counts as a change, so the task reports incomplete and
+        ``run()`` then raises the error naming the path."""
+        path = self._template_file()
+        return {'template': _template_digest(path) if path.exists() else 'missing',
                 'python': codehash.task_code_hash(self) if settings.code_version_auto else None}
 
     def _parameters(self):
@@ -94,8 +119,9 @@ class TaskNotebook(TaskData):
             v = getattr(self, name)
             if isinstance(param, EnumParameter) and v is not None:
                 v = v.name
-            params[name] = json.loads(json.dumps(v, default=str))
-        params.update(self.notebook_parameters() or {})
+            params[name] = json.loads(json.dumps(v, default=_json_default))
+        extra = json.loads(json.dumps(self.notebook_parameters() or {}, default=_json_default))
+        params.update(extra)
         clash = sorted(k for k in params if k.startswith(_RESERVED_PREFIX))
         if clash:
             raise ValueError('{}: parameter names starting with {!r} are reserved for oryxflow: {}'.format(
@@ -125,6 +151,9 @@ class TaskNotebook(TaskData):
 
         self.logger.info("notebook {} -> {}", template, target.html_path)
         self.logger.debug("notebook parameters: {}", sorted(parameters))
+        pm_logger = logging.getLogger('papermill')
+        drop = _DropOryxflowUnknown()
+        pm_logger.addFilter(drop)
         try:
             pm.execute_notebook(str(template), str(running), parameters=parameters,
                                 cwd=os.getcwd(), kernel_name=self.kernel_name, language='python',
@@ -134,4 +163,6 @@ class TaskNotebook(TaskData):
             if running.exists():
                 running.replace(failed)
             raise
+        finally:
+            pm_logger.removeFilter(drop)
         self.save(running, html_template=self.html_template, include_code=self.html_include_code)

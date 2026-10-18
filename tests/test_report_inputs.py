@@ -21,6 +21,21 @@ class RiB(TaskPqPandas):
         self.save({'train': pd.DataFrame({'t': [1]}), 'test': pd.DataFrame({'s': [2, 3]})})
 
 
+class RiXl(oryxflow.tasks.TaskExcelPandas):
+    persists = ['s1', 's2']
+
+    def run(self):
+        self.save({'s1': pd.DataFrame({'p': [1]}), 's2': pd.DataFrame({'q': [2, 3]})})
+
+
+class RiXlUser(TaskPqPandas):
+    def requires(self):
+        return {'xl': RiXl()}
+
+    def run(self):
+        self.save(pd.DataFrame({'x': [1]}))
+
+
 class RiC(TaskCache):
     def run(self):
         self.save(pd.DataFrame({'c': [1]}))
@@ -137,3 +152,14 @@ def test_inputs_of_paths_are_absolute(tmp_path, monkeypatch):
     finally:
         oryxflow.settings.dir = old_dir
         oryxflow.settings.dirpath = old_path
+
+
+def test_inputLoad_keys_for_excel_sheets(datadir):
+    t = RiXlUser()
+    oryxflow.run(t, abort=True)
+    spec = rpt.inputs_of(t)
+    one = rpt.inputLoad(spec, task='xl', keys='s2')
+    assert list(one.columns) == ['q']
+    many = rpt.inputLoad(spec, task='xl', keys=['s2'])
+    assert list(many) == ['s2']
+    assert set(rpt.inputLoad(spec, task='xl')) == {'s1', 's2'}

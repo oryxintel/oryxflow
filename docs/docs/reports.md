@@ -10,9 +10,11 @@ The code on this page is illustrative: it is not run by the docs test suite, bec
 pip install "oryxflow[notebook]"
 ```
 
+The report runs in the `python3` Jupyter kernel, so that kernel must be the environment where oryxflow and this extra are installed.
+
 ## 1. Write the template notebook
 
-Make a notebook, for example `reports/summary.ipynb`. It needs one cell tagged `parameters` (in Jupyter, View > Cell Toolbar > Tags). List each task parameter you want to use, with a default, and add `oryxflow_inputs = None`:
+Make a notebook, for example `reports/summary.ipynb`. It needs one cell tagged `parameters`. In classic Notebook, use View > Cell Toolbar > Tags. In JupyterLab, select the cell and open the property inspector (the gear icon in the right sidebar). List every name your notebook uses, with a default, and add `oryxflow_inputs = None`. A name that is not listed there is still passed in, but Jupyter and papermill warn about it:
 
 ```python
 # cell tagged "parameters"
@@ -39,12 +41,23 @@ rpt.table(sales, formats={'growth_pct': 'pct', 'revenue': 'int'}, caption=f'Sale
 
 ```python
 import oryxflow
+from oryxflow.tasks import TaskPqPandas
 from oryxflow.tasks.notebook import TaskNotebook
+
+class LoadSales(TaskPqPandas):
+    region = oryxflow.ChoiceParameter(choices=['north', 'south'])
+
+    def run(self):
+        ...   # build the sales table for self.region and self.save() it
 
 @oryxflow.requires({'a': LoadSales})
 class RegionReport(TaskNotebook):
     notebook = 'reports/summary.ipynb'
 ```
+
+`@oryxflow.requires` copies `region` from `LoadSales` onto `RegionReport`. The upstream task must save to disk, as `TaskPqPandas` does; an in-memory `TaskCache` output is not reachable from the notebook.
+
+The `notebook` path is relative to the folder you run the flow from (usually the project root), so run the flow from there. If the template cannot be found, the report counts as out of date and running it fails with an error naming the path.
 
 Every task parameter, here `region`, is passed to the notebook under its own name. To pass extra values, define `notebook_parameters(self)` returning a dict. Names starting with `oryxflow_` are reserved.
 
@@ -56,7 +69,7 @@ flow.run()
 html = flow.outputLoad()    # path of the HTML report
 ```
 
-Two files are saved next to your other task outputs: the executed notebook (`.ipynb`, with code, handy for debugging) and the report (`.html`, without code). `outputLoad()` returns the path of the `.html`. To keep the code in the report, set `html_include_code = True` on the task. If the notebook fails, the partly executed copy is kept as `.failed.ipynb` so you can see where it stopped.
+Two files are saved next to your other task outputs: the executed notebook (`.ipynb`, with code, handy for debugging) and the report (`.html`, without code). `outputLoad()` returns the path of the `.html`. To keep the code in the report, set `html_include_code = True` on the task; the cell that oryxflow fills in with your parameters is then shown too, including the local data paths of your inputs. If the notebook fails, the partly executed copy is kept as `.failed.ipynb` so you can see where it stopped.
 
 ## When does the report rerun?
 

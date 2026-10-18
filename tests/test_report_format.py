@@ -1,3 +1,4 @@
+import sys
 import pandas as pd, pytest
 import oryxflow.report as rpt
 
@@ -111,8 +112,14 @@ def test_table_mixed_types():
     assert '5.0%' in html and 'n/a' in html
 
 
-def test_table_columns_caption_and_missing_jinja2():
+def test_table_columns_and_caption():
     pytest.importorskip('jinja2')
     df = pd.DataFrame({'a': [1.0], 'b': [2.0]})
     html = rpt.table(df, columns=['a'], caption='Cap').to_html()
     assert 'Cap' in html and '>b<' not in html
+
+
+def test_table_missing_jinja2(monkeypatch):
+    monkeypatch.setitem(sys.modules, 'jinja2', None)
+    with pytest.raises(ImportError, match='format_frame'):
+        rpt.table(pd.DataFrame({'a': [1.0]}))

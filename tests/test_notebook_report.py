@@ -1,7 +1,9 @@
 import datetime
 import enum
 import html
+import logging
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -68,6 +70,24 @@ class NbReportTypes(TaskNotebook):
     d = oryxflow.DateParameter(default=datetime.date(2026, 1, 2))
     l = oryxflow.ListParameter(default=[1, 2])
     e = oryxflow.EnumParameter(enum=NbColour, default=NbColour.blue)
+
+
+class NbReportHookTypes(NbReport):
+    notebook = 'hook.ipynb'
+
+    def notebook_parameters(self):
+        return {'label': np.int64(7), 'when': pd.Timestamp('2026-01-02')}
+
+
+@oryxflow.requires({'up': NbUp})
+class NbReportDec(TaskNotebook):
+    notebook = 'template.ipynb'
+    x = oryxflow.IntParameter(default=1)
+
+
+class NbReportUndeclared(NbReport):
+    def notebook_parameters(self):
+        return {'zzz': 1}
 
 
 class NbReportPersists(NbReport):
@@ -205,9 +225,71 @@ def test_guards(env):
 
 
 def test_check_inputs_quiet(env):
+    flow = oryxflow.Workflow(NbReportDec)
+    findings = flow.check_inputs(print_it=False, include_clean=True)
+    assert not [f for f in findings if f.task_family == 'NbReportDec' and f.verdict == 'unused']
+
+
+def test_notebook_parameters_hook_values_are_json_safe(env):
+    nb = nbformat.v4.new_notebook()
+    p = nbformat.v4.new_code_cell('label = None\nwhen = None\noryxflow_inputs = None')
+    p.metadata['tags'] = ['parameters']
+    nb.cells = [p, nbformat.v4.new_code_cell('print("L=" + str(label) + " W=" + str(when))')]
+    nbformat.write(nb, str(env / 'hook.ipynb'))
+    task = NbReportHookTypes()
+    oryxflow.run(task)
+    text = html.unescape(_html(task))
+    assert 'L=7' in text
+    assert '2026-01-02' in text
+
+
+def test_template_deleted_after_run(env):
     flow = oryxflow.Workflow(NbReport)
-    findings = flow.check_inputs(print_it=False)
-    assert not [f for f in findings if f.task_family == 'NbReport' and f.verdict == 'unused']
+    flow.run()
+    assert flow.complete()
+    (env / 'template.ipynb').rename(env / 'moved.ipynb')
+    assert flow.complete() is False
+    flow.preview(print_it=False)
+    with pytest.raises(RuntimeError) as e:
+        oryxflow.run(NbReport())
+    assert isinstance(e.value.__cause__, FileNotFoundError)
+    assert 'template.ipynb' in str(e.value.__cause__)
+
+
+class _Capture(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.DEBUG)
+        self.messages = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
+def test_no_unknown_parameter_warning_for_oryxflow_names(env):
+    capture = _Capture()
+    logger = logging.getLogger('papermill')
+    logger.addHandler(capture)
+    try:
+        oryxflow.run(NbReport())
+        unknown = [m for m in capture.messages if 'Passed unknown parameter' in m]
+        assert not [m for m in unknown if 'oryxflow_' in m]
+        class_filters = list(logger.filters)
+    finally:
+        logger.removeHandler(capture)
+    assert not [f for f in class_filters if type(f).__name__ == '_DropOryxflowUnknown']
+
+
+def test_unknown_user_parameter_still_warns(env):
+    capture = _Capture()
+    logger = logging.getLogger('papermill')
+    logger.addHandler(capture)
+    try:
+        oryxflow.run(NbReportUndeclared())
+    finally:
+        logger.removeHandler(capture)
+    unknown = [m for m in capture.messages if 'Passed unknown parameter' in m]
+    assert any('zzz' in m for m in unknown)
+    assert not [m for m in unknown if 'oryxflow_' in m]
 
 
 def test_parameter_types_reach_notebook(env):

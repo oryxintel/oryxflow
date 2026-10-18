@@ -235,17 +235,21 @@ def _injected_inputs():
     return ns.get('oryxflow_inputs')
 
 
-def _load_entry(entry):
+def _load_entry(entry, keys=None):
     import importlib
+    import inspect
     import pathlib
     mod, _, name = entry['target'].rpartition('.')
     cls = getattr(importlib.import_module(mod), name)
-    return cls(pathlib.Path(entry['path'])).load()
+    target = cls(pathlib.Path(entry['path']))
+    if keys is not None and 'keys' in inspect.signature(target.load).parameters:
+        return target.load(keys=keys)
+    return target.load()
 
 
 def _load_dep(entry, keys):
     if 'persists' not in entry:
-        return _load_entry(entry)
+        return _load_entry(entry, keys)
     persists = entry['persists']
     if keys is None:
         return {k: _load_entry(v) for k, v in persists.items()}
@@ -261,7 +265,8 @@ def inputLoad(spec=None, task=None, keys=None):
     dependency by name (or position); with none, one dependency is loaded directly and several
     come back as ``{name: data}``. keys picks outputs of a multi-output dependency: a string gives
     one value, a list gives a list in that order, None gives a dict (unlike ``self.inputLoad``,
-    which returns a list for a multi-output dependency). task takes a name or an index, not a class.
+    which returns a list for a multi-output dependency). A single-file target that selects by key
+    itself, such as the sheets of a ``TaskExcelPandas`` file, gets ``keys`` passed through. task takes a name or an index, not a class.
     """
     if spec is None:
         spec = _injected_inputs()

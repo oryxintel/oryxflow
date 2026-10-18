@@ -17,7 +17,6 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - `oryxflow.utils.excel_write(path, data, **options)` writes finished-looking Excel files: styled header, filter arrows, frozen header, number formats and auto-sized columns. A sheet can also be a spec dict with `title`, `notes`, `highlight`, `colorscale`, `banded`, `wrap_columns`, `group_starts`, `id_columns` and `freeze`.
 - `ExcelPandasTarget.save(..., formatted=True)` and `ExcelPandasSheetsTarget.save(..., formatted=True)` (so `self.save(..., formatted=True, formats={'*_pct': 'pct'})` in `TaskExcelPandas` and `TaskExcelPandasSingle`) write through `excel_write`. The default `formatted=False` is unchanged.
 - `oryxflow.report`: the format presets `FORMATS` (`'pct'`, `'int'`, `'thousands'`, `'date'`, ...), `fmt(value, spec)` and `excel_code(spec)`. A misspelled preset name raises `KeyError` listing the valid names.
-
 - `oryxflow.tasks.notebook.TaskNotebook` runs a parameterized template notebook with papermill and saves the executed `.ipynb` plus a code-free `.html` report (via `oryxflow.targets.notebook.NotebookTarget`). It reruns when its upstream data, parameters, task code or the template's cells change, not when the template's saved outputs change. Needs the new `notebook` extra: `pip install "oryxflow[notebook]"`.
 - `oryxflow.report.table(df, formats=...)` (a pandas Styler), `format_frame(df, formats)`, `inputs_of(task)` and `inputLoad(spec=None, task=None, keys=None)` for report notebooks. `table` takes the same `formats=` dict as the Excel writer.
 
