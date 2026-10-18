@@ -183,3 +183,93 @@ def table(df, formats=None, index='auto', rename=None, columns=None, caption=Non
     if numeric:
         styler = styler.set_properties(subset=numeric, **{'text-align': 'right'})
     return styler
+
+
+def _target_entry(target, key):
+    from oryxflow.targets import CacheTarget
+    if isinstance(target, CacheTarget):
+        raise TypeError('input {!r} is an in-memory (cache) target, which a report notebook '
+                        'cannot reach; use a persisted task type such as TaskPqPandas'.format(key))
+    cls = type(target)
+    return {'target': '{}.{}'.format(cls.__module__, cls.__qualname__), 'path': str(target.path)}
+
+
+def _dep_entry(dep, key):
+    if isinstance(dep, dict):
+        return {'persists': {str(k): _target_entry(v, '{}.{}'.format(key, k)) for k, v in dep.items()}}
+    return _target_entry(dep, key)
+
+
+def inputs_of(task):
+    """Describe a task's upstream inputs as a JSON-safe dict for a report notebook.
+
+    Returns ``{name: {'target': 'module.Class', 'path': str}}``, with ``{'persists': {...}}`` for a
+    dependency that saves several outputs. A single unnamed dependency is keyed ``'0'`` and list
+    dependencies ``'0'``, ``'1'``, ... ``TaskNotebook`` injects this as ``oryxflow_inputs``, and
+    ``inputLoad`` reads it back without any Task objects.
+    """
+    import oryxflow.settings
+    if oryxflow.settings.cloud_fs_enabled:
+        raise NotImplementedError('report.inputs_of does not support cloud storage yet')
+    inp = task.input()
+    requires = task.requires()
+    if isinstance(requires, dict):
+        items = [(str(k), v) for k, v in inp.items()]
+    elif isinstance(requires, (list, tuple)):
+        items = [(str(i), v) for i, v in enumerate(inp)]
+    else:
+        items = [('0', inp)]
+    return {k: _dep_entry(v, k) for k, v in items}
+
+
+def _injected_inputs():
+    import sys
+    try:
+        from IPython import get_ipython
+        shell = get_ipython()
+    except ImportError:
+        shell = None
+    ns = shell.user_ns if shell is not None else vars(sys.modules['__main__'])
+    return ns.get('oryxflow_inputs')
+
+
+def _load_entry(entry):
+    import importlib
+    import pathlib
+    mod, _, name = entry['target'].rpartition('.')
+    cls = getattr(importlib.import_module(mod), name)
+    return cls(pathlib.Path(entry['path'])).load()
+
+
+def _load_dep(entry, keys):
+    if 'persists' not in entry:
+        return _load_entry(entry)
+    persists = entry['persists']
+    if keys is None:
+        return {k: _load_entry(v) for k, v in persists.items()}
+    if isinstance(keys, str):
+        return _load_entry(persists[keys])
+    return [_load_entry(persists[k]) for k in keys]
+
+
+def inputLoad(spec=None, task=None, keys=None):
+    """Load a dependency's data from an ``inputs_of`` spec, like ``self.inputLoad`` in a task.
+
+    spec defaults to the ``oryxflow_inputs`` variable injected into the notebook. task picks one
+    dependency by name (or position); with none, one dependency is loaded directly and several
+    come back as ``{name: data}``. keys picks outputs of a multi-output dependency: a string gives
+    one value, a list gives a list in that order, None gives a dict.
+    """
+    if spec is None:
+        spec = _injected_inputs()
+    if spec is None:
+        raise ValueError(
+            'no inputs available: a report notebook run by TaskNotebook gets oryxflow_inputs '
+            'injected; when running by hand, set\n'
+            '    oryxflow_inputs = rpt.inputs_of(MyReportTask(...))\n'
+            'or pass the spec: rpt.inputLoad(spec, task=...)')
+    if task is not None:
+        return _load_dep(spec[str(task)], keys)
+    if len(spec) == 1:
+        return _load_dep(next(iter(spec.values())), keys)
+    return {k: _load_dep(v, keys) for k, v in spec.items()}
