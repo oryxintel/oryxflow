@@ -309,3 +309,195 @@ def warn_if_nested_data_dir(dirpath):
             return
         if (parent / '.git').exists():
             return
+
+
+# ---------------------------------------------------------------------------
+# Excel output
+# ---------------------------------------------------------------------------
+
+_EXCEL_DEFAULTS = dict(formats=None, index=False, filters=True, freeze=True, widths='auto',
+                       width_min=8, width_max=60, header_style=True)
+_EXCEL_WIDTH_SAMPLE = 1000
+_EXCEL_FILTER_ARROW = 3
+_EXCEL_SHEET_BAD_CHARS = '[]:*?/\\'
+
+
+def _excel_check_sheet_names(names):
+    '''
+    Raise ValueError for a sheet name Excel rejects, or for names equal when lower-cased
+    (Excel treats them as one sheet).
+    '''
+    seen = {}
+    for name in names:
+        s = str(name)
+        if not s or len(s) > 31 or any(c in s for c in _EXCEL_SHEET_BAD_CHARS):
+            raise ValueError(
+                "invalid Excel sheet name {!r}: must be 1-31 characters without any of "
+                "{}".format(name, _EXCEL_SHEET_BAD_CHARS))
+        key = s.lower()
+        if key in seen:
+            raise ValueError(
+                "Excel sheet names are case-insensitive: {!r} and {!r} clash".format(seen[key], s))
+        seen[key] = s
+
+
+def _excel_flatten_columns(df):
+    '''
+    Flatten MultiIndex columns to 'a / b' labels. Returns a copy when it changes anything.
+    '''
+    import pandas as pd
+    if not isinstance(df.columns, pd.MultiIndex):
+        return df
+    df = df.copy()
+    df.columns = [' / '.join(str(x) for x in t if str(x) != '') for t in df.columns]
+    return df
+
+
+def _excel_specs(df, index, formats):
+    '''
+    Resolved format spec of each written column as [(header, values, spec)], index levels first.
+    Raises KeyError for a mistyped preset name.
+    '''
+    from oryxflow import report
+    out = []
+    if index:
+        idx = df.index.to_frame()
+        res = report.resolve_formats(idx, formats)
+        for i, col in enumerate(idx.columns):
+            name = df.index.names[i]
+            out.append(('' if name is None else str(name), idx.iloc[:, i], res.get(col)))
+    res = report.resolve_formats(df, formats)
+    for j, col in enumerate(df.columns):
+        out.append((str(col), df.iloc[:, j], res.get(col)))
+    for _, _, spec in out:
+        if spec is not None:
+            report.excel_code(spec)
+    return out
+
+
+def _excel_widths(cols, filters, widths, width_min, width_max):
+    '''
+    Column widths in sheet order for cols = [(header, values, spec)].
+    Sized from the header (plus the filter arrow) and the displayed text of the first
+    _EXCEL_WIDTH_SAMPLE values, then clamped to [width_min, width_max].
+    '''
+    import pandas as pd
+    from oryxflow import report
+    out = []
+    for header, values, spec in cols:
+        if isinstance(widths, (int, float)) and not isinstance(widths, bool):
+            out.append(widths)
+            continue
+        if isinstance(widths, dict) and header in widths:
+            out.append(widths[header])
+            continue
+        use_fmt = spec is not None and report._py(spec) is not None
+        longest = 0
+        for v in values.iloc[:_EXCEL_WIDTH_SAMPLE]:
+            if not isinstance(v, str) and pd.api.types.is_scalar(v) and pd.isna(v):
+                continue
+            longest = max(longest, len(report.fmt(v, spec) if use_fmt else str(v)))
+        head = len(header) + (_EXCEL_FILTER_ARROW if filters else 0)
+        out.append(max(width_min, min(width_max, max(longest, head) + 2)))
+    return out
+
+
+def _excel_format_sheet(ws, df, row_header, index=False, formats=None, filters=True, freeze=True,
+                        widths='auto', width_min=8, width_max=60, header_style=True, **styling):
+    '''
+    Style a worksheet written from df (as written, columns already flattened).
+    row_header is the 1-based sheet row holding the column headers.
+    '''
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from oryxflow import report
+
+    cols = _excel_specs(df, index, formats)
+    nidx = df.index.nlevels if index else 0
+    ncols = len(cols)
+    nrows = df.shape[0]
+    if ncols == 0:
+        return
+    first, last_row = row_header + 1, row_header + nrows
+
+    if header_style:
+        for c in range(1, ncols + 1):
+            cell = ws.cell(row=row_header, column=c)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
+            cell.fill = PatternFill('solid', fgColor='D3D9E3')
+            cell.border = Border(bottom=Side(style='thin'))
+
+    for c, (_, _, spec) in enumerate(cols, start=1):
+        code = report.excel_code(spec) if spec is not None else None
+        if code is None:
+            continue
+        for r in range(first, last_row + 1):
+            ws.cell(row=r, column=c).number_format = code
+
+    if freeze is True:
+        ws.freeze_panes = ws.cell(row=first, column=nidx + 1).coordinate
+    elif freeze is not False and freeze is not None:
+        ws.freeze_panes = ws.cell(row=first, column=int(freeze) + 1).coordinate
+
+    if filters:
+        ws.auto_filter.ref = 'A{}:{}{}'.format(row_header, get_column_letter(ncols), last_row)
+
+    if widths is not None and widths is not False:
+        for c, w in enumerate(_excel_widths(cols, filters, widths, width_min, width_max), start=1):
+            ws.column_dimensions[get_column_letter(c)].width = w
+
+
+def _excel_sheet_specs(data, options):
+    '''
+    Normalise data to [(sheet_name, df, opts)]. data is a DataFrame or {name: df_or_spec},
+    a spec being {'df': df, **per_sheet_options}. Unknown option names raise TypeError.
+    '''
+    import pandas as pd
+    unknown = set(options) - set(_EXCEL_DEFAULTS)
+    if unknown:
+        raise TypeError('excel_write() got unexpected options {}'.format(sorted(unknown)))
+    if isinstance(data, pd.DataFrame):
+        data = {'Sheet1': data}
+    out = []
+    for name, item in data.items():
+        own = {}
+        if isinstance(item, dict):
+            if 'df' not in item:
+                raise TypeError("sheet spec for {!r} needs a 'df' key".format(name))
+            own = {k: v for k, v in item.items() if k != 'df'}
+            unknown = set(own) - set(_EXCEL_DEFAULTS)
+            if unknown:
+                raise TypeError('sheet {!r} got unexpected options {}'.format(name, sorted(unknown)))
+            item = item['df']
+        out.append((name, item, dict(_EXCEL_DEFAULTS, **options, **own)))
+    return out
+
+
+def excel_write(path, data, **options):
+    '''
+    Write one or more dataframes to a formatted Excel file and return path.
+
+    data: DataFrame (sheet 'Sheet1') or {sheet_name: df_or_spec}; a spec is
+        {'df': df, **per_sheet_options}, overriding the options below for that sheet.
+    options: formats, index, filters, freeze, widths, width_min, width_max, header_style.
+        formats maps column names or globs to a preset name, str.format spec or Excel code;
+        formats=False writes no number formats. Formats are display-only: values are unchanged.
+    '''
+    import pandas as pd
+    sheets = _excel_sheet_specs(data, options)
+    _excel_check_sheet_names([n for n, _, _ in sheets])
+    prepared = []
+    for name, df, opts in sheets:
+        df = _excel_flatten_columns(df)
+        _excel_specs(df, opts['index'], opts['formats'])  # fail on a bad format before any write
+        prepared.append((name, df, opts))
+    if isinstance(path, str):
+        path = pathlib.Path(path)
+    if isinstance(path, pathlib.Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with pd.ExcelWriter(path, engine='openpyxl') as writer:
+        for name, df, opts in prepared:
+            df.to_excel(writer, sheet_name=str(name), index=opts['index'])
+            _excel_format_sheet(writer.sheets[str(name)], df, 1, **opts)
+    return path
