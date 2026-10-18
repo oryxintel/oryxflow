@@ -119,6 +119,104 @@ flow_report.run()
 flow_report.outputPath()   # data/WriteReport/...-data.md (plus the .html alongside)
 ```
 
+## Excel files people will open
+
+An Excel file that goes to a colleague should look finished: a styled header with filter arrows, percentages that read `5.3%`, dates without a time stamp, columns wide enough to read. Pass `formatted=True` when you save and oryxflow does that for you. The numbers underneath are untouched, so loading the file back gives the same data as an unformatted save.
+
+<!--phmdoctest-share-names-->
+```python
+import pandas as pd
+
+df_perf = pd.DataFrame({
+    'name': ['Alpha', 'Beta'],
+    'revenue': [1234567.891, 98765.4],
+    'growth_pct': [0.053, -0.021],
+    'as_of': pd.to_datetime(['2026-01-01', '2026-01-01']),
+})
+
+class WritePerformance(oryxflow.tasks.TaskExcelPandas):
+    persists = ['summary']
+
+    def run(self):
+        self.save({'summary': df_perf}, formatted=True, formats={'*_pct': 'pct'})
+
+flow_perf = oryxflow.Workflow(WritePerformance)
+flow_perf.run()
+```
+
+Number columns get thousands separators and two decimals, and date columns show as dates, unless you say otherwise with `formats`. Its keys are column names or patterns such as `'*_pct'`, and its values are one of the names below. Outside a task, write a file directly with `oryxflow.utils.excel_write`:
+
+<!--phmdoctest-share-names-->
+```python
+oryxflow.utils.excel_write('report.xlsx', {'summary': df_perf})
+```
+
+| Name | Shows `1234.56` (or `0.053` for the percent names) as |
+| --- | --- |
+| `int` | `1,235` |
+| `int_plain` | `1235` |
+| `int_signed` | `+1235` (with a sign) |
+| `float`, `num2` | `1,234.56` |
+| `float4` | `1234.5600` |
+| `num1` | `1,234.6` |
+| `pct` | `5.3%` |
+| `pct0` | `5%` |
+| `pct2` | `5.30%` |
+| `pct_signed` | `+5.3%` |
+| `multiple` | `1234.56x` |
+| `thousands` | `1k` |
+| `date` | `2026-01-01` |
+| `datetime` | `2026-01-01 09:30` |
+| `text` | shown as typed |
+
+You can also pass a Python format such as `'{:,.0f}'` or an Excel number format such as `'0.000'`. A misspelled name (`'pctt'`) raises an error that lists the valid names, instead of writing a file Excel would offer to "repair".
+
+### A finished deliverable
+
+For a file that goes straight to a client or manager, give each sheet a spec: the dataframe plus a title, notes and highlighting.
+
+<!--phmdoctest-share-names-->
+```python
+df_rank = pd.DataFrame({
+    'name': ['Alpha County', 'Beta County'],
+    'rating': ['Green', 'Red'],
+    'ret_1y': [0.081, -0.034],
+    'rank_chg': [3, -2],
+    'fips': ['01001', '06037'],
+})
+
+class WriteRankings(oryxflow.tasks.TaskExcelPandas):
+    persists = ['retail']
+
+    def run(self):
+        sheets = {'retail': {
+            'df': df_rank,
+            'title': 'Market Rankings - Retail',
+            'notes': ['Green = top quintile, Red = bottom quintile'],
+            'formats': {'ret_*': 'pct', 'rank_chg': 'int_signed'},
+            'highlight': {'rating': {'Green': 'green', 'Red': 'red'}},
+            'colorscale': ['rank_chg'],
+            'id_columns': ['fips'],
+            'freeze': 2,
+        }}
+        self.save(sheets, formatted=True)
+
+flow_rank = oryxflow.Workflow(WriteRankings)
+flow_rank.run()
+```
+
+The title and notes sit above the table, so the header row moves down. Read the data back by skipping those rows; ID columns are stored as text so codes like `01001` keep their leading zeros, and `dtype=` makes pandas keep them too:
+
+<!--phmdoctest-share-names-->
+```python
+path_rank = flow_rank.outputPath()
+back = pd.read_excel(path_rank, sheet_name='retail', skiprows=3, dtype={'fips': str})
+```
+
+Other sheet options: `colorscale` shades a column from low to high, `banded=True` stripes alternate rows, `wrap_columns` wraps long text, `group_starts` draws a divider before a column, `freeze=2` keeps the first two columns in view while scrolling, and `filters=False` turns the filter arrows off. Highlight colours are `'green'`, `'yellow'`, `'red'` and `'grey'`.
+
+Formatting styles each cell, so very large frames (hundreds of thousands of rows) write noticeably slower than an unformatted save; column widths are sized from the first 1,000 rows. Excel may show a small green "number stored as text" marker on ID columns; that is expected and harmless.
+
 ## Premium Targets (Dask, SQL, Pyspark)
 
 ### Database Targets

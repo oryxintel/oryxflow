@@ -24,7 +24,9 @@ oryxflow/
   targets/__init__.py# CacheTarget, _LocalPathTarget, DataTarget + format targets, Target re-export
   settings.py        # global settings (dirpath, cached, check_dependencies, task-id lengths...)
   cache.py           # `data` = in-memory target cache (dict)
-  utils.py           # print_tree (preview), traverse, param generators, bcolors
+  utils.py           # print_tree (preview), traverse, param generators, bcolors,
+                     #   excel_write (formatted Excel writer; _excel_* helpers, sheet specs)
+  report.py          # display-format presets: FORMATS, fmt, excel_code, resolve_formats (pandas only)
   functional.py      # decorator-based functional Workflow API (uses only oryxflow.requires)
 tests/               # pytest suite (see tests/setup.md)
 docs/                # examples + docs/todo/ design notes

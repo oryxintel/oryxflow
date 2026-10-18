@@ -69,3 +69,73 @@ def test_code_112(managenamespace):
 
     # Caution- no assertions.
     managenamespace(operation="update", additions=locals())
+
+
+def test_code_128(managenamespace):
+    import pandas as pd
+
+    df_perf = pd.DataFrame({
+        'name': ['Alpha', 'Beta'],
+        'revenue': [1234567.891, 98765.4],
+        'growth_pct': [0.053, -0.021],
+        'as_of': pd.to_datetime(['2026-01-01', '2026-01-01']),
+    })
+
+    class WritePerformance(oryxflow.tasks.TaskExcelPandas):
+        persists = ['summary']
+
+        def run(self):
+            self.save({'summary': df_perf}, formatted=True, formats={'*_pct': 'pct'})
+
+    flow_perf = oryxflow.Workflow(WritePerformance)
+    flow_perf.run()
+
+    # Caution- no assertions.
+    managenamespace(operation="update", additions=locals())
+
+
+def test_code_151(managenamespace):
+    oryxflow.utils.excel_write('report.xlsx', {'summary': df_perf})
+
+    # Caution- no assertions.
+    managenamespace(operation="update", additions=locals())
+
+
+def test_code_180(managenamespace):
+    df_rank = pd.DataFrame({
+        'name': ['Alpha County', 'Beta County'],
+        'rating': ['Green', 'Red'],
+        'ret_1y': [0.081, -0.034],
+        'rank_chg': [3, -2],
+        'fips': ['01001', '06037'],
+    })
+
+    class WriteRankings(oryxflow.tasks.TaskExcelPandas):
+        persists = ['retail']
+
+        def run(self):
+            sheets = {'retail': {
+                'df': df_rank,
+                'title': 'Market Rankings - Retail',
+                'notes': ['Green = top quintile, Red = bottom quintile'],
+                'formats': {'ret_*': 'pct', 'rank_chg': 'int_signed'},
+                'highlight': {'rating': {'Green': 'green', 'Red': 'red'}},
+                'colorscale': ['rank_chg'],
+                'id_columns': ['fips'],
+                'freeze': 2,
+            }}
+            self.save(sheets, formatted=True)
+
+    flow_rank = oryxflow.Workflow(WriteRankings)
+    flow_rank.run()
+
+    # Caution- no assertions.
+    managenamespace(operation="update", additions=locals())
+
+
+def test_code_212(managenamespace):
+    path_rank = flow_rank.outputPath()
+    back = pd.read_excel(path_rank, sheet_name='retail', skiprows=3, dtype={'fips': str})
+
+    # Caution- no assertions.
+    managenamespace(operation="update", additions=locals())

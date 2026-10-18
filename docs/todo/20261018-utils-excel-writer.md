@@ -426,3 +426,30 @@ No change to `setup.py` (openpyxl is already required) or `oryxflow/tasks/__init
   notebook formatter before either ships, since they become the shared vocabulary.
 - **Final home:** `oryxflow/output.py` vs a `oryxflow/report/` package, decided when the notebook
   formatter is planned.
+
+## Implementation notes (divergences from the plan as built)
+
+Built from `20261018-output-formats-impl-plan.md` (Part A). Where this file and the plan differed, the plan won. What changed:
+
+**Spec reconciliation**
+1. One preset table, in `oryxflow/report.py`: `Format(py, excel)` with the union of both alias sets, minus `bp_signed`. `utils.excel_write` reads `FORMATS[name].excel` and does not re-export `FORMATS`. (The spec's `(excel, py)` tuple in `utils` is gone.)
+2. `resolve_formats` lives in `report.py`, not `utils.py`, and has `defaults=True`. The Excel writer uses the dtype defaults; glob keys (`'*_pct'`) work everywhere.
+3. One rule for a format value: preset name, `str.format` spec (contains `{`), callable, otherwise a raw Excel code. A string that looks like a preset name (`^[a-z][a-z_0-9]*$`) but is not one raises `KeyError` listing the valid names, so a typo never writes an invalid number format that triggers Excel's "repaired content" prompt.
+4. Bad values never raise while formatting; they fall back to `str(value)`.
+5. Every preset renders the same on both sides (`thousands` has a Python form matching `#,##0,"k"`).
+
+**Cuts from the plan's Deferred list that touch this spec**
+- Hyperlinks (`links=`), bold section-break rows (`bold_rows`) and the general `conditional=` rule API. `highlight`, `colorscale` and `banded` cover the deliverable cases.
+- Per-sheet `sheet_options` is replaced by sheet spec dicts: `{sheet: {'df': df, **options}}`.
+- Suppressing Excel's "number stored as text" warning on `id_columns`: openpyxl cannot write the setting that hides it, so the warning stays.
+- The `formats(**by_preset)` helper, `pct()`/`num()` and the `bp_signed` preset.
+- `test_excel_codes_valid_in_openpyxl`: openpyxl does not validate number formats, so it proves nothing.
+- The spec's open question on a title row was resolved in scope: `title=` and `notes=` are built, and the header moves down (read back with `skiprows=len(notes) + 3`).
+
+**Other changes while building**
+- Note-row height: wrapped note rows get an estimated 12pt per line, because Excel does not auto-fit merged cells. The plan did not ask for this.
+- `id_columns` read-back: cells are stored as text, so a plain `pd.read_excel` re-infers them as numbers. Use `dtype={col: str}` to keep leading zeros.
+- Width padding: column widths add the spec formula's +2 padding.
+- `freeze=n` is literal: it freezes exactly n columns, even with `index=True`.
+- `formatted=False` rejects Excel-only options: `title=` (or any `excel_write`-only option) with `formatted=False` raises `TypeError` from pandas.
+- Out of scope, still open: the large-frame fast path, `formatted=True` as the default, grouped MultiIndex headers. The "final home" question is settled: presets in `oryxflow/report.py`, writer in `utils.py`.
