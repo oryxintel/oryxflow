@@ -190,8 +190,10 @@ def _target_entry(target, key):
     if isinstance(target, CacheTarget):
         raise TypeError('input {!r} is an in-memory (cache) target, which a report notebook '
                         'cannot reach; use a persisted task type such as TaskPqPandas'.format(key))
+    import pathlib
     cls = type(target)
-    return {'target': '{}.{}'.format(cls.__module__, cls.__qualname__), 'path': str(target.path)}
+    return {'target': '{}.{}'.format(cls.__module__, cls.__qualname__),
+            'path': str(pathlib.Path(target.path).resolve())}
 
 
 def _dep_entry(dep, key):
@@ -258,7 +260,8 @@ def inputLoad(spec=None, task=None, keys=None):
     spec defaults to the ``oryxflow_inputs`` variable injected into the notebook. task picks one
     dependency by name (or position); with none, one dependency is loaded directly and several
     come back as ``{name: data}``. keys picks outputs of a multi-output dependency: a string gives
-    one value, a list gives a list in that order, None gives a dict.
+    one value, a list gives a list in that order, None gives a dict (unlike ``self.inputLoad``,
+    which returns a list for a multi-output dependency). task takes a name or an index, not a class.
     """
     if spec is None:
         spec = _injected_inputs()

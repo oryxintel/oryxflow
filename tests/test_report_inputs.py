@@ -114,7 +114,7 @@ def test_inputLoad_none_message(monkeypatch):
 
 
 def test_inputs_of_cache_dep_raises(datadir):
-    with pytest.raises(TypeError, match='c') as e:
+    with pytest.raises(TypeError, match="'c'") as e:
         rpt.inputs_of(RiCacheDep())
     assert 'TaskPqPandas' in str(e.value)
 
@@ -123,3 +123,17 @@ def test_inputs_of_cloud_raises(datadir, monkeypatch):
     monkeypatch.setattr(oryxflow.settings, 'cloud_fs_enabled', True)
     with pytest.raises(NotImplementedError):
         rpt.inputs_of(RiNamed())
+
+
+def test_inputs_of_paths_are_absolute(tmp_path, monkeypatch):
+    import os
+    old_dir, old_path = oryxflow.settings.dir, oryxflow.settings.dirpath
+    monkeypatch.chdir(tmp_path)
+    oryxflow.set_dir('reldata')
+    try:
+        spec = rpt.inputs_of(RiNamed())
+        assert os.path.isabs(spec['a']['path'])
+        assert all(os.path.isabs(v['path']) for v in spec['b']['persists'].values())
+    finally:
+        oryxflow.settings.dir = old_dir
+        oryxflow.settings.dirpath = old_path
