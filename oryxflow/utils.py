@@ -365,6 +365,9 @@ def _excel_specs(df, index, formats):
     Raises KeyError for a mistyped preset name.
     '''
     from oryxflow import report
+    if isinstance(formats, dict):
+        for spec in formats.values():
+            report.excel_code(spec)
     out = []
     if index:
         idx = df.index.to_frame()
@@ -386,6 +389,16 @@ def _excel_isna(v):
     return not isinstance(v, str) and pd.api.types.is_scalar(v) and pd.isna(v)
 
 
+def _excel_id_text(v):
+    '''
+    Text of an id value: a whole-number float (an int code column holding NaN) loses its '.0'.
+    '''
+    from oryxflow import report
+    if isinstance(v, float) and v.is_integer():
+        return report.fmt(v, 'int_plain')
+    return str(v)
+
+
 def _excel_fill(fill):
     '''
     (bg, font) colours of a highlight fill: a name in _EXCEL_FILLS or {'bg': .., 'font': ..}.
@@ -404,6 +417,25 @@ def _excel_check_styling(sheet_name, df, opts):
     '''
     Raise KeyError for a styling option naming a column the frame lacks or an unknown fill.
     '''
+    import pandas as pd
+    if not isinstance(opts['highlight'], dict):
+        raise TypeError("highlight must be a dict {{column: {{value: fill}}}}, got {!r}".format(
+            opts['highlight']))
+    for col, mapping in opts['highlight'].items():
+        if not isinstance(mapping, dict):
+            raise TypeError("highlight[{!r}] must be a dict {{value: fill}}, got {!r}".format(
+                col, mapping))
+    freeze = opts['freeze']
+    if isinstance(freeze, int) and not isinstance(freeze, bool):
+        ncols = df.shape[1] + (df.index.nlevels if opts['index'] else 0)
+        if freeze < 0 or freeze > ncols:
+            raise ValueError("sheet {!r}: freeze={} is outside 0..{} (the number of columns)".format(
+                sheet_name, freeze, ncols))
+    for col, dtype in zip(df.columns, df.dtypes):
+        if isinstance(dtype, pd.DatetimeTZDtype):
+            raise ValueError(
+                "sheet {!r}: column {!r} is timezone-aware and Excel cannot store timezones; "
+                "use df[{!r}].dt.tz_localize(None) first".format(sheet_name, col, col))
     have = {str(c) for c in df.columns}
     names = list(opts['highlight']) + list(opts['colorscale']) + list(opts['wrap_columns']) \
         + list(opts['group_starts']) + list(opts['id_columns'])
@@ -503,18 +535,19 @@ def _excel_format_sheet(ws, df, row_header, index=False, formats=None, filters=T
     id_pos = positions(id_columns)
     group_pos = positions(group_starts)
     for c in range(1, ncols + 1):
-        for r in range(first, last_row + 1):
-            cell = ws.cell(row=r, column=c)
-            if c in id_pos:
-                # Excel flags these with a "number stored as text" warning. openpyxl has an
-                # IgnoredError class but its worksheet writer never serializes it, so the
-                # warning cannot be suppressed from here.
-                cell.number_format = '@'
-            if wrap_pos or c in id_pos:
-                cell.alignment = Alignment(
-                    wrap_text=True if c in wrap_pos else None,
-                    vertical='top' if wrap_pos else None,
-                    horizontal='right' if c in id_pos else None)
+        if wrap_pos or id_pos:
+            for r in range(first, last_row + 1):
+                cell = ws.cell(row=r, column=c)
+                if c in id_pos:
+                    # Excel flags these with a "number stored as text" warning. openpyxl has an
+                    # IgnoredError class but its worksheet writer never serializes it, so the
+                    # warning cannot be suppressed from here.
+                    cell.number_format = '@'
+                if wrap_pos or c in id_pos:
+                    cell.alignment = Alignment(
+                        wrap_text=True if c in wrap_pos else None,
+                        vertical='top' if wrap_pos else None,
+                        horizontal='right' if c in id_pos else None)
         if c in group_pos:
             for r in range(row_header, last_row + 1):
                 cell = ws.cell(row=r, column=c)
@@ -528,8 +561,12 @@ def _excel_format_sheet(ws, df, row_header, index=False, formats=None, filters=T
                 rng = '{0}{1}:{0}{2}'.format(get_column_letter(p), first, last_row)
                 for value, fill in mapping.items():
                     bg, fg = _excel_fill(fill)
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        formula = repr(value)
+                    else:
+                        formula = '"{}"'.format(str(value).replace('"', '""'))
                     ws.conditional_formatting.add(rng, CellIsRule(
-                        operator='equal', formula=['"{}"'.format(str(value).replace('"', '""'))],
+                        operator='equal', formula=[formula],
                         fill=PatternFill(start_color=bg, end_color=bg, fill_type='solid'),
                         font=Font(color=fg) if fg else None))
         for p in sorted(positions(colorscale)):
@@ -587,7 +624,10 @@ def _excel_sheet_specs(data, options):
             if unknown:
                 raise TypeError('sheet {!r} got unexpected options {}'.format(name, sorted(unknown)))
             item = item['df']
-        out.append((name, item, dict(_EXCEL_DEFAULTS, **options, **own)))
+        opts = dict(_EXCEL_DEFAULTS, **options, **own)
+        if isinstance(opts['notes'], str):
+            opts['notes'] = [opts['notes']]
+        out.append((name, item, opts))
     return out
 
 
@@ -602,7 +642,8 @@ def excel_write(path, data, **options):
         formats=False writes no number formats. Formats are display-only: values are unchanged.
     deliverable options: title (str) and notes (list of str) go above the table, so the
         header row moves down (read back with pd.read_excel(skiprows=len(notes) + 3));
-        highlight {col: {value: fill}} with fill a name in _EXCEL_FILLS or {'bg', 'font'};
+        highlight {col: {value: fill}} with fill a name
+        (green, yellow, red, grey) or {'bg', 'font'};
         colorscale, wrap_columns, group_starts (lists of columns); banded (bool);
         id_columns are written as text so codes keep leading zeros.
     '''
@@ -619,7 +660,8 @@ def excel_write(path, data, **options):
             df = df.copy()
             for j, col in enumerate(df.columns):
                 if str(col) in ids:
-                    df[col] = [None if _excel_isna(v) else str(v) for v in df.iloc[:, j]]
+                    df[col] = [None if _excel_isna(v) else _excel_id_text(v)
+                               for v in df.iloc[:, j]]
         prepared.append((name, df, opts))
     if isinstance(path, str):
         path = pathlib.Path(path)

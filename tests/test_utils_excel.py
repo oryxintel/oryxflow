@@ -488,3 +488,65 @@ def test_unformatted_path_unchanged(tmp_path):
     ws = openpyxl.load_workbook(p)['a']
     assert ws.auto_filter.ref is None
     assert ws.freeze_panes is None
+
+
+def test_notes_bare_string(tmp_path):
+    p = tmp_path / 'n.xlsx'
+    excel_write(p, make_df(), title='T', notes='only note')
+    ws = sheet(p)
+    assert ws['A2'].value == 'only note'
+    assert ws['A4'].value == 'name'
+    assert ws.auto_filter.ref.startswith('A4')
+    p2 = tmp_path / 'n2.xlsx'
+    excel_write(p2, {'s': {'df': make_df(), 'notes': 'per sheet'}})
+    assert sheet(p2)['A2'].value == 'per sheet'
+    assert sheet(p2)['A3'].value is None
+
+
+def test_id_columns_float_codes(tmp_path):
+    p = tmp_path / 'i.xlsx'
+    excel_write(p, pd.DataFrame({'code': [39580.0, np.nan], 'x': [1, 2]}), id_columns=['code'])
+    ws = sheet(p)
+    assert ws['A2'].value == '39580'
+    assert ws['A3'].value is None
+
+
+def test_formats_unmatched_key_validated(tmp_path):
+    p = tmp_path / 'f.xlsx'
+    with pytest.raises(KeyError):
+        excel_write(p, make_df(), formats={'valeu': 'pctt'})
+    assert not p.exists()
+
+
+def test_tz_aware_column_rejected(tmp_path):
+    p = tmp_path / 'tz.xlsx'
+    df = pd.DataFrame({'t': pd.to_datetime(['2026-01-01']).tz_localize('UTC')})
+    with pytest.raises(ValueError, match="'t'.*tz_localize"):
+        excel_write(p, df)
+    assert not p.exists()
+
+
+def test_highlight_numeric_key(tmp_path):
+    p = tmp_path / 'h.xlsx'
+    excel_write(p, pd.DataFrame({'r': [1, 2]}), highlight={'r': {1: 'green', 'x': 'red'}})
+    cf = sheet(p).conditional_formatting
+    formulas = sorted(r.formula[0] for c in cf for r in c.rules)
+    assert formulas == ['"x"', '1']
+
+
+def test_freeze_out_of_range(tmp_path):
+    p = tmp_path / 'z.xlsx'
+    with pytest.raises(ValueError, match='freeze'):
+        excel_write(p, make_df(), freeze=99)
+    with pytest.raises(ValueError, match='freeze'):
+        excel_write(p, make_df(), freeze=-1)
+    assert not p.exists()
+
+
+def test_highlight_bad_type(tmp_path):
+    p = tmp_path / 'ht.xlsx'
+    with pytest.raises(TypeError, match='highlight'):
+        excel_write(p, make_df(), highlight=['value'])
+    with pytest.raises(TypeError, match='highlight'):
+        excel_write(p, make_df(), highlight={'value': 'green'})
+    assert not p.exists()

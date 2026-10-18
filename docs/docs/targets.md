@@ -144,7 +144,7 @@ flow_perf = oryxflow.Workflow(WritePerformance)
 flow_perf.run()
 ```
 
-Number columns get thousands separators and two decimals, and date columns show as dates, unless you say otherwise with `formats`. Its keys are column names or patterns such as `'*_pct'`, and its values are one of the names below. Outside a task, write a file directly with `oryxflow.utils.excel_write`:
+Decimal columns get thousands separators and two decimals, whole-number columns stay as typed (use `'int'` for separators), and date columns show as dates, unless you say otherwise with `formats`. Its keys are column names or patterns such as `'*_pct'`, and its values are one of the names below. Outside a task, write a file directly with `oryxflow.utils.excel_write`:
 
 <!--phmdoctest-share-names-->
 ```python

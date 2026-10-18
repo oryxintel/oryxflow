@@ -58,3 +58,11 @@ def test_import_is_light():
     import subprocess, sys
     code = 'import oryxflow.report, sys; print(any(m in sys.modules for m in ("openpyxl","jinja2","matplotlib","papermill")))'
     assert subprocess.run([sys.executable, '-c', code], capture_output=True, text=True).stdout.strip() == 'False'
+
+
+def test_empty_spec_rejected():
+    from oryxflow import report
+    with pytest.raises(KeyError):
+        report.excel_code('')
+    with pytest.raises(KeyError):
+        report.fmt(1, '')

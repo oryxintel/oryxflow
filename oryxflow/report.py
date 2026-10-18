@@ -58,8 +58,8 @@ _PRESET_LIKE = re.compile(r'^[a-z][a-z_0-9]*$')
 
 def _check_spec(spec):
     """Raise KeyError if spec looks like a preset name but is not one."""
-    if (isinstance(spec, str) and '{' not in spec and _PRESET_LIKE.match(spec)
-            and spec not in FORMATS):
+    if (isinstance(spec, str) and '{' not in spec
+            and (spec == '' or (_PRESET_LIKE.match(spec) and spec not in FORMATS))):
         raise KeyError('unknown format %r; valid names: %s' % (spec, ', '.join(FORMATS)))
 
 

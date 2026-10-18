@@ -9,11 +9,11 @@ as `0.0532` instead of `5.3%`, datetimes show as `2026-01-01 00:00:00`, the head
 out of view, and there is no autofilter. Excel is the format we pick *because a human will open
 it*, so the human ends up spending the first minute of every file tidying it up by hand.
 
-The older **d6txviz** library (an earlier Databolt reporting package) solved this with
-`d6txviz.reporting.xlsx.to_excel(path, {sheet: df}, ...)`. What it offers, and how much of it is
+An earlier, unpublished reporting helper solved this with a single
+`to_excel(path, {sheet: df}, ...)` function. What it offers, and how much of it is
 worth keeping:
 
-| d6txviz feature | Verdict |
+| Earlier helper feature | Verdict |
 | --- | --- |
 | `{sheet: df}` dict → one sheet per frame | **keep** |
 | bold, wrapped, shaded (`#d3d9e3`), bordered header row | **keep** |
@@ -25,11 +25,11 @@ worth keeping:
 | `as_datetime=False` → `df[col].dt.date` | **drop** — it rewrites the data; a `yyyy-mm-dd` number format gives the same look losslessly |
 | `rename=` (dict or YAML string) | **drop** — `df.rename(...)` already exists; no `pyyaml` dependency |
 | `title=` / `title_format=` | **drop** — never implemented there; a title row also shifts the header so `pd.read_excel` stops round-tripping (see Open questions) |
-| `PandasXlsxReport` class | **drop** — an unfinished stub |
-| `excel2img` (win32com screenshot of a sheet) | **drop** — Windows-only, needs Excel installed |
+| A report-builder class | **drop** — an unfinished stub |
+| A sheet-to-image export (win32com screenshot) | **drop** — Windows-only, needs Excel installed |
 | ppt / mako text-report modules | out of scope |
 
-d6txviz's engine choice is also instructive: it wrote with **xlsxwriter**, then re-read the file
+The earlier helper's engine choice is also instructive: it wrote with **xlsxwriter**, then re-read the file
 with `pd.read_excel` to compute widths, then re-opened it with **openpyxl** to set widths and
 filters, saving twice — three passes, two engines, and (per its own `# todo: preserve column
 formats`) it lost formats along the way. oryxflow already requires openpyxl and pandas' openpyxl
@@ -45,8 +45,8 @@ formats, styled header, optional conditional formatting, multiple sheets), and a
 ### Design decisions
 
 - **A function, not a writer class.** `excel_write(path, data, **options)` mirrors
-  `df.to_excel` and d6txviz's `to_excel`; nothing needs to persist between calls. A class was
-  rejected (d6txviz's own `PandasXlsxReport` never got past a stub, and a builder API is more to
+  `df.to_excel` and the earlier helper's `to_excel`; nothing needs to persist between calls. A class was
+  rejected (the earlier helper's report-builder class never got past a stub, and a builder API is more to
   learn for no gain). The per-sheet work lives in a private `_excel_format_sheet(ws, df, ...)`
   so a later writer (e.g. a report module adding charts) can reuse it on any openpyxl worksheet.
 - **Engine: openpyxl only, no xlsxwriter.** openpyxl is already in `install_requires`, can read
@@ -66,7 +66,7 @@ formats, styled header, optional conditional formatting, multiple sheets), and a
   Resolution order per column, first match wins:
   1. exact column name in `formats`;
   2. `fnmatch` glob keys in `formats`, in dict order (`{'*_pct': 'pct', 'ret_*': 'pct'}` — this
-     replaces d6txviz's separate `float_pct_columns`, and handles "percent by name" without a
+     replaces the earlier helper's separate `float_pct_columns`, and handles "percent by name" without a
      second parameter);
   3. dtype default: float → `'float'`, datetime64 → `'date'` if every non-null value is at
      midnight else `'datetime'`, everything else (ints, bools, strings, objects) → untouched
@@ -112,8 +112,8 @@ formats, styled header, optional conditional formatting, multiple sheets), and a
   `widths` also accepts an int (all columns) or a `{column: int}` dict merged over the auto
   values.
 - **Header style:** bold, `wrap_text=True`, vertical top / horizontal left, fill `D3D9E3`, thin
-  bottom border — d6txviz's look. Applied by restyling row 1 after `to_excel` (pandas' own header
-  style is bold+border+centered; we overwrite it). The d6txviz `startrow=1, header=False` trick
+  bottom border — the earlier helper's look. Applied by restyling row 1 after `to_excel` (pandas' own header
+  style is bold+border+centered; we overwrite it). The earlier helper's `startrow=1, header=False` trick
   (write the header manually) is not needed.
 - **Conditional formatting: a small named set plus an escape hatch.**
   `conditional={column_or_glob: kind}` where `kind` is `'color_scale'` (red–yellow–green 3-colour
@@ -415,7 +415,7 @@ No change to `setup.py` (openpyxl is already required) or `oryxflow/tasks/__init
   (Excel is chosen for humans)? It changes every existing Excel output's styling, but not its
   data. Or a class attribute (`excel_options = {...}`) so a task sets formatting once instead of
   in every `save()` call.
-- **Title / notes row above the table** (d6txviz's unfinished `title=`). Needs `startrow` and a
+- **Title / notes row above the table** (the earlier helper's unfinished `title=`). Needs `startrow` and a
   matching `header=` offset in `ExcelPandasSheetsTarget.load`, or a separate "readme" sheet
   instead. Left out until there is a use.
 - **MultiIndex columns:** flattening to `'a / x'` means loading back gives flat names. Acceptable,
@@ -453,3 +453,11 @@ Built from `20261018-output-formats-impl-plan.md` (Part A). Where this file and 
 - `freeze=n` is literal: it freezes exactly n columns, even with `index=True`.
 - `formatted=False` rejects Excel-only options: `title=` (or any `excel_write`-only option) with `formatted=False` raises `TypeError` from pandas.
 - Out of scope, still open: the large-frame fast path, `formatted=True` as the default, grouped MultiIndex headers. The "final home" question is settled: presets in `oryxflow/report.py`, writer in `utils.py`.
+
+**Review-fix changes (behaviour added after the first build)**
+- `notes` accepts a single string (treated as a one-item list), globally and per sheet.
+- `id_columns`: a whole-number float (an int code column holding NaN) is written without `.0`; NaN stays an empty cell.
+- Timezone-aware datetime columns raise `ValueError` naming the column and suggesting `.dt.tz_localize(None)`, before any file is written.
+- `highlight` keys that are int/float (not bool) use an unquoted formula, so `{1: 'green'}` matches the number 1; string keys stay quoted. A non-dict `highlight`, or a non-dict inner value, raises `TypeError`.
+- `freeze=n` raises `ValueError` when n is negative or larger than the number of written columns.
+- Every value of a dict `formats` is validated up front, even when its key matches no column, so a typo'd preset raises `KeyError` before any file is written. An empty-string format also raises `KeyError`.
