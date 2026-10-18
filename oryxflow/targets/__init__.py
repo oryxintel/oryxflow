@@ -195,7 +195,7 @@ class ExcelPandasTarget(DataTarget):
 
         Args:
             cached (bool): keep data cached in memory
-            **kwargs: arguments to pass to pd.read_csv
+            **kwargs: arguments to pass to pd.read_excel
 
         Returns: pandas dataframe
 
@@ -203,17 +203,22 @@ class ExcelPandasTarget(DataTarget):
         return super().load(pd.read_excel, cached, **kwargs)
 
     
-    def save(self, df, **kwargs):
+    def save(self, df, formatted=False, **kwargs):
         """
         Save dataframe to Excel
 
         Args:
             df (obj): pandas dataframe
-            **kwargs (dict): additional arguments to pass to df.to_csv
+            formatted (bool): write a formatted sheet 'Sheet1' via oryxflow.utils.excel_write
+            **kwargs (dict): df.to_excel arguments, or excel_write options if formatted
 
         Returns: filename
 
         """
+        if formatted:
+            from oryxflow.utils import excel_write
+            excel_write(self.path, {'Sheet1': df}, **kwargs)
+            return self.path
         opts = {**{'index':False},**kwargs}
         return super().save(df, 'to_excel', **opts)
 
@@ -251,17 +256,22 @@ class ExcelPandasSheetsTarget(_LocalPathTarget):
         else:
             raise RuntimeError('Target does not exist, make sure task is complete')
 
-    def save(self, data, **kwargs):
+    def save(self, data, formatted=False, **kwargs):
         """
         Save dict of dataframes as sheets in a single Excel file
 
         Args:
-            data (dict): {sheet_name: dataframe}
-            kwargs: additional arguments to pass to df.to_excel
+            data (dict): {sheet_name: dataframe}, or {sheet_name: spec dict} if formatted
+            formatted (bool): write formatted sheets via oryxflow.utils.excel_write
+            kwargs: additional arguments to pass to df.to_excel, or excel_write options if formatted
 
         Returns: filename
 
         """
+        if formatted:
+            from oryxflow.utils import excel_write
+            excel_write(self.path, data, **kwargs)
+            return self.path
         opts = {**{'index': False}, **kwargs}
         (self.path).parent.mkdir(parents=True, exist_ok=True)
         with pd.ExcelWriter(self.path, engine='openpyxl') as writer:

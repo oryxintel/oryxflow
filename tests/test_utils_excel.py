@@ -409,3 +409,82 @@ def test_deliverable_end_to_end(tmp_path):
     # read_excel infers numbers from text cells unless told otherwise
     got = pd.read_excel(p, sheet_name='Retail', skiprows=3, dtype={'fips': str})
     assert list(got['fips']) == ['39580', '6037']
+
+
+def _with_dir(tmp_path, fn):
+    import oryxflow
+    old_dir, old_path = oryxflow.settings.dir, oryxflow.settings.dirpath
+    oryxflow.set_dir(str(tmp_path / 'data'))
+    try:
+        fn()
+    finally:
+        oryxflow.settings.dir = old_dir
+        oryxflow.settings.dirpath = old_path
+
+
+def test_task_formatted_save(tmp_path):
+    import oryxflow
+    import oryxflow.tasks
+
+    class TaskFmtSheets(oryxflow.tasks.TaskExcelPandas):
+        persists = ['summary', 'detail']
+
+        def run(self):
+            df = make_df()
+            self.save({'summary': df, 'detail': df}, formatted=True, formats={'ret_*': 'pct'})
+
+    def go():
+        oryxflow.run(TaskFmtSheets())
+        out = TaskFmtSheets().outputLoad(as_dict=True)
+        plain = tmp_path / 'plain.xlsx'
+        make_df().to_excel(plain, index=False)
+        pd.testing.assert_frame_equal(out['summary'], pd.read_excel(plain))
+        path = TaskFmtSheets().output().path
+        ws = openpyxl.load_workbook(path)['summary']
+        assert ws.auto_filter.ref
+        col = [c.column_letter for c in ws[1] if c.value == 'ret_pct'][0]
+        assert ws[col + '2'].number_format == '0.0%'
+
+    _with_dir(tmp_path, go)
+
+
+def test_task_single_formatted_save(tmp_path):
+    import oryxflow
+    import oryxflow.tasks
+
+    class TaskFmtSingle(oryxflow.tasks.TaskExcelPandasSingle):
+        def run(self):
+            self.save(make_df(), formatted=True)
+
+    def go():
+        oryxflow.run(TaskFmtSingle())
+        wb = openpyxl.load_workbook(TaskFmtSingle().output().path)
+        assert wb.sheetnames == ['Sheet1']
+        assert wb['Sheet1'].auto_filter.ref
+
+    _with_dir(tmp_path, go)
+
+
+def test_task_formatted_typo_raises(tmp_path):
+    import oryxflow
+    import oryxflow.tasks
+
+    class TaskFmtTypo(oryxflow.tasks.TaskExcelPandasSingle):
+        def run(self):
+            self.save(make_df(), formatted=True, formats={'value': 'pctt'})
+
+    def go():
+        with pytest.raises(RuntimeError) as e:
+            oryxflow.run(TaskFmtTypo())
+        assert isinstance(e.value.__cause__, KeyError)
+
+    _with_dir(tmp_path, go)
+
+
+def test_unformatted_path_unchanged(tmp_path):
+    from oryxflow.targets import ExcelPandasSheetsTarget
+    p = tmp_path / 'x.xlsx'
+    ExcelPandasSheetsTarget(p).save({'a': make_df()})
+    ws = openpyxl.load_workbook(p)['a']
+    assert ws.auto_filter.ref is None
+    assert ws.freeze_panes is None
