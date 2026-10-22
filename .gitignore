@@ -131,3 +131,6 @@ dmypy.json
 
 # local dogfooding harness: re-implements a private project's evals against oryxflow.evals
 utest/
+
+# machine-local agent notes (private paths)
+CLAUDE.local.md
