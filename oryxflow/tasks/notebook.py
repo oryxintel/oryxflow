@@ -305,39 +305,76 @@ class TaskNotebook(TaskData):
             raise FileNotFoundError('template notebook not found: {}'.format(path))
         return path
 
-    def _deps_version(self, path, cells):
-        """``{'imports': ..., 'deps': ...}``, each key present only when it watches something,
-        so a template without local imports keeps the code identity it had before."""
+    def _code_parts(self):
+        """The pieces of the code identity, per file: ``template`` (cells digest, or
+        'missing'), ``python``, and when watched ``imports`` ({relpath: digest}) and ``deps``
+        ({glob: digest}). ``code_version()`` folds them; a run saves them in the executed
+        notebook so the next rerun can say which file changed."""
+        path = self._template_file()
+        parts = {'python': codehash.task_code_hash(self) if settings.code_version_auto else None}
+        if not path.exists():
+            parts['template'] = 'missing'
+            return parts
+        cells = _read_cells(path)
+        parts['template'] = _template_digest(cells)
         deps = self.template_deps
         if deps is None:
-            return {}
+            return parts
         deps = [deps] if isinstance(deps, str) else list(deps)
-        out = {}
         if 'auto' in deps:
             imports = [i for kind, src, _ in cells if kind == 'code' for i in _cell_imports(src)]
             bases = list(dict.fromkeys([pathlib.Path.cwd(), path.parent]))
             hashes = _local_imports(imports, bases, codehash._project_root(path))
             if hashes:
-                out['imports'] = _digest(hashes)
+                parts['imports'] = hashes
         globs = [d for d in deps if d != 'auto']
         if globs:
-            out['deps'] = oryxflow.utils.hash_files(*globs)
-        return out
+            parts['deps'] = {g: oryxflow.utils.hash_files(g) for g in globs}
+            parts['deps_all'] = oryxflow.utils.hash_files(*globs)
+        return parts
 
     def code_version(self):
         """Code identity: the template's cells, the project modules it imports (or
-        ``template_deps``) and the task's own Python (when auto hashing is on).
+        ``template_deps``) and the task's own Python (when auto hashing is on). A key is
+        present only when it watches something, so a template without local imports keeps
+        the code identity it had before.
 
         A template that cannot be found counts as a change, so the task reports incomplete and
         ``run()`` then raises the error naming the path."""
-        path = self._template_file()
+        parts = self._code_parts()
+        out = {'template': parts['template'], 'python': parts['python']}
+        if 'imports' in parts:
+            out['imports'] = _digest(parts['imports'])
+        if 'deps_all' in parts:
+            out['deps'] = parts['deps_all']
+        return out
+
+    def code_change_detail(self):
+        """What changed since the saved report was made, for the rerun reason ("template dep
+        viz/report.py"), or None when the saved report predates this record."""
+        path = self.output().path
         if not path.exists():
-            return {'template': 'missing',
-                    'python': codehash.task_code_hash(self) if settings.code_version_auto else None}
-        cells = _read_cells(path)
-        return {'template': _template_digest(cells),
-                'python': codehash.task_code_hash(self) if settings.code_version_auto else None,
-                **self._deps_version(path, cells)}
+            return None
+        try:
+            with open(path, encoding='utf-8') as f:
+                saved = (json.load(f).get('metadata') or {}).get('oryxflow', {}).get('code')
+        except (OSError, ValueError):
+            return None
+        if not saved:
+            return None
+        now = self._code_parts()
+        changed = []
+        if saved.get('template') != now.get('template'):
+            changed.append('template cells')
+        if saved.get('python') != now.get('python'):
+            changed.append('task code')
+        for key, label in (('imports', 'template dep'), ('deps', 'template_deps')):
+            old, new = saved.get(key) or {}, now.get(key) or {}
+            names = sorted(k for k in set(old) | set(new) if old.get(k) != new.get(k))
+            changed += ['{} {}'.format(label, n) for n in names]
+        if not changed:
+            return None
+        return ', '.join(changed[:3]) + ('...' if len(changed) > 3 else '')
 
     def _param_values(self):
         values = {name: getattr(self, name) for name, _ in self.get_params()}
@@ -466,4 +503,9 @@ class TaskNotebook(TaskData):
             pm_logger.removeFilter(drop)
             if pydevd:
                 os.environ.pop('PYDEVD_DISABLE_FILE_VALIDATION', None)
+        executed = nbformat.read(str(running), as_version=4)
+        parts = self._code_parts()
+        parts.pop('deps_all', None)
+        executed.metadata['oryxflow'] = {'code': parts}
+        nbformat.write(executed, str(running))
         self.save(running, html_template=self.html_template, include_code=self.html_include_code)

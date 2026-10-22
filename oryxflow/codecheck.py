@@ -355,6 +355,15 @@ class Advisor:
                 rec = comparable_record(task, rec) or rec
                 own = _resolve_code_version(task)
                 if rec.get('code_version') != own:
+                    # a task whose computed code_version folds files can name the one that
+                    # moved (TaskNotebook: "template dep viz/report.py")
+                    detail = getattr(task, 'code_change_detail', None)
+                    try:
+                        detail = detail() if callable(detail) else None
+                    except Exception:
+                        detail = None
+                    if detail:
+                        return 'code change ({})'.format(detail)
                     return 'code change ({} -> {})'.format(
                         rec.get('code_version') if rec.get('code_version') is not None
                         else 'auto',

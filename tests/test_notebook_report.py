@@ -523,3 +523,16 @@ def test_no_unknown_parameter_warning_for_task_parameters(env, monkeypatch):
     assert not [m for m in capture.messages if 'Passed unknown parameter' in m]
     import os
     assert 'PYDEVD_DISABLE_FILE_VALIDATION' not in os.environ     # set for the kernel only
+
+
+def test_rerun_reason_names_the_changed_file(imports_env):
+    env = imports_env
+    flow = oryxflow.Workflow(NbReportImports)
+    flow.run()
+    _viz(env, label='B')
+    task = flow.get_task()
+    result = flow.run()
+    assert result.reasons[task.task_id] == 'code change (template dep viz/helper.py)'
+
+    _template(env / 'imports.ipynb', data_src=IMPORT_SRC + "\nprint('more')")
+    assert flow.run().reasons[task.task_id] == 'code change (template cells)'
