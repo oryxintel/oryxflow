@@ -176,7 +176,7 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
                     invalidate.append(oryxflow.taskflow_downstream(tf, tup))
 
             invalidate = set().union(*invalidate)
-            invalidate = {t for t in invalidate if t.complete()}
+            invalidate = {t for t in invalidate if _has_output(t)}
         if len(invalidate) > 0:
             if confirm:
                 print('Forced tasks', invalidate)
@@ -257,8 +257,18 @@ def taskflow_downstream(task, task_downstream, only_complete=False):
     with core.traversal_scope():
         tasks = core.find_deps(task_downstream, task.task_family)
         if only_complete:
-            tasks = {t for t in tasks if t.complete()}
+            tasks = {t for t in tasks if _has_output(t)}
         return tasks
+
+
+def _has_output(task):
+    # what a reset can delete: output on disk. Not complete(): that cascades, so a task whose
+    # upstream output is missing reads incomplete and its own stale files were kept
+    try:
+        outputs = core.flatten(task.output())
+        return bool(outputs) and all(o.exists() for o in outputs)
+    except Exception:
+        return False
 
 
 def invalidate_all(confirm=False):

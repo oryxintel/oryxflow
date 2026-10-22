@@ -507,7 +507,26 @@ class Task(metaclass=Register):
         for name in names:
             values = grid[name]
             if callable(values):
-                values = values(self)
+                try:
+                    values = values(self)
+                except AttributeError as e:
+                    missing = getattr(e, 'name', None)
+                    if missing in grid and not hasattr(self, missing):
+                        # @requires_each keeps fanned parameters off this task by design (it
+                        # would carry one branch's value), so a grid computed from this task's
+                        # own value of that parameter -- "the same loader, previous quarter"
+                        # -- can't read it
+                        raise TypeError(
+                            "{0}: the {1!r} values for {2} are computed from this task's own "
+                            "'{1}', but a task that fans out over '{1}' with @requires_each "
+                            "does not have that parameter. To depend on {2} at another value of "
+                            "your own '{1}' (e.g. the previous period): replace the decorators "
+                            "with @oryxflow.inherits(<the same tasks>) so {0} keeps '{1}', and "
+                            "write requires() by hand -- {{'current': self.clone(<Task>), "
+                            "'prior': self.clone({2}, {1}=prior(self.{1}))}}, or "
+                            "self.requires_grid({2}, {1}=[...]) for several values.".format(
+                                self.task_family, missing, cls.__name__)) from e
+                    raise
             if not isinstance(values, (list, tuple)):
                 raise ValueError(
                     '{}: requires_grid values must be a list of values to fan out over, got {} for {}'.format(
@@ -1324,6 +1343,26 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
     _advisor = _codecheck.Advisor(_emit)
     warned = _advisor.warned   # unacknowledged code-change warning strings (RunResult)
 
+    upstream_ran = {}   # task_id -> True, or len(ran) when last found False
+
+    def _upstream_ran(task):
+        # complete() cascades over deps (check_dependencies), so whether a task looked complete
+        # depended on visit order: of two tasks sharing a missing upstream, the first visited
+        # ran it and reran, the second then found it complete and was skipped -- stale, with
+        # a green run (an untracked task keeps no record, so _dep_state can't catch it). A
+        # task whose upstream ran in this build is out of date, whichever order got there.
+        if not ran or not _settings.check_dependencies:
+            return False
+        tid = task.task_id
+        known = upstream_ran.get(tid)
+        if known is True or known == len(ran):
+            return known is True          # True is final; False holds until more tasks run
+        ran_ids = {t.task_id for t in ran}
+        hit = any(dep.task_id in ran_ids or _upstream_ran(dep)
+                  for dep in flatten(task.requires()))
+        upstream_ran[tid] = True if hit else len(ran)
+        return hit
+
     def _emit_failed(task, error, tb, duration):
         _emit('task_failed',
               {'task_id': task.task_id, 'family': task.task_family,
@@ -1344,7 +1383,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         if tid in visited:
             return visited[tid]
 
-        if task.complete():
+        if task.complete() and not _upstream_ran(task):
             _advisor.advise(task)
             logger.debug("task skipped (already complete): {}", tid)
             already_complete.append(task)

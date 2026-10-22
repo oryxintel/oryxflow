@@ -231,3 +231,65 @@ class TestTrackedBelowUntracked:
         rec2 = oryxflow.state.get_record(dirpath, tid)
         assert rec2['v'] == oryxflow.state.RECORD_V
         assert rec2['dep_state'] == mod.Report()._dep_state()
+
+
+SIBLINGS = '''
+import oryxflow
+
+class A(oryxflow.tasks.TaskPickle):
+    def run(self):
+        self.save(1)
+
+@oryxflow.requires(A)
+class First(oryxflow.tasks.TaskPickle):
+    def run(self):
+        self.save(self.inputLoad())
+
+@oryxflow.requires(A)
+class Second(oryxflow.tasks.TaskPickle):
+    def run(self):
+        self.save(self.inputLoad())
+
+@oryxflow.requires(First, Second)
+class Agg(oryxflow.tasks.TaskAggregator):
+    def run(self):
+        pass
+'''
+
+
+class TestSiblingsOfARerunUpstream:
+    # untracked tasks (auto off): First's cascade reran A, then Second found A complete and
+    # was skipped -- stale with a green run, depending only on visit order
+
+    def test_both_siblings_rerun(self, env, monkeypatch):
+        monkeypatch.setattr(oryxflow.settings, 'code_version_auto', False)
+        mod, _ = _load(env, 'siblings', SIBLINGS)
+        oryxflow.run(mod.Agg())
+        mod.A().output().invalidate()
+        r = oryxflow.run(mod.Agg())
+        assert {t.task_family for t in r.ran} == {'A', 'First', 'Second', 'Agg'}
+        assert oryxflow.run(mod.Agg()).ran == []
+
+    def test_reset_downstream_deletes_files_behind_a_missing_upstream(self, env, monkeypatch):
+        monkeypatch.setattr(oryxflow.settings, 'code_version_auto', False)
+        mod, _ = _load(env, 'siblings_reset', SIBLINGS)
+        flow = oryxflow.Workflow(mod.Agg)
+        flow.run()
+        mod.A().output().invalidate()
+        flow.reset_downstream(mod.A)
+        assert not mod.Second().output().exists()
+
+
+def test_shifted_fan_out_says_what_to_do(env):
+    # "the same loader at the previous period": the fanned parameter is kept off the
+    # requiring task by design, so the grid callable can't read it -- say what to write
+    class Loader(oryxflow.tasks.TaskPickle):
+        period = oryxflow.Parameter()
+
+    @oryxflow.requires({'current': Loader})
+    @oryxflow.requires_each({'prior': Loader}, period=lambda t: [t.period + '-1'])
+    class Compare(oryxflow.tasks.TaskPickle):
+        pass
+
+    with pytest.raises(TypeError, match=r"inherits.*self.clone\(Loader, period=prior"):
+        Compare().requires()
