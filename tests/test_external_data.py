@@ -435,3 +435,82 @@ class TestReviewFixes:
 
         with pytest.raises(Exception, match='same task id'):
             oryxflow.Workflow(Both).run()
+
+
+class TestExportLifecycle:
+
+    @pytest.fixture
+    def p1(self, tmp_path):
+        p = tmp_path / 'project1'
+        p.mkdir()
+        (p / 'tasks_a.py').write_text(TASKS_A)
+        (p / 'tasks_b.py').write_text(TASKS_B)
+        return p
+
+    def test_renamed_class_is_dropped(self, p1):
+        _run_script(p1, """
+            import oryxflow, tasks_a
+            oryxflow.Workflow(tasks_a.A).run()
+        """)
+        (p1 / 'tasks_a.py').write_text(TASKS_A.replace('class A(', 'class Renamed('))
+        _run_script(p1, """
+            import oryxflow, tasks_a
+            oryxflow.Workflow(tasks_a.Renamed).run()
+        """)
+        assert set(oryxflow.FlowImport(p1).tasks) == {'Renamed'}
+
+    def test_deleted_module_is_dropped(self, p1):
+        _run_script(p1, """
+            import oryxflow, tasks_a, tasks_b
+            oryxflow.Workflow(tasks_a.A).run()
+            oryxflow.Workflow(tasks_b.B).run()
+        """)
+        (p1 / 'tasks_a.py').unlink()
+        _run_script(p1, """
+            import oryxflow, tasks_b
+            oryxflow.Workflow(tasks_b.B).run()
+        """)
+        assert set(oryxflow.FlowImport(p1).tasks) == {'B'}
+
+    def test_unexporting_the_only_exported_task(self, p1):
+        _run_script(p1, """
+            import oryxflow, tasks_a
+            oryxflow.Workflow(tasks_a.A).run()
+        """)
+        (p1 / 'tasks_a.py').write_text(TASKS_A.replace('export = True', 'export = False'))
+        _run_script(p1, """
+            import oryxflow, tasks_a
+            oryxflow.Workflow(tasks_a.A).run()
+        """)
+        assert oryxflow.FlowImport(p1).tasks == {}
+
+    def test_scratch_env_does_not_repoint_consumers(self, p1):
+        _run_script(p1, """
+            import oryxflow, tasks_a
+            oryxflow.Workflow(tasks_a.A, env='prod').run()
+        """)
+        _run_script(p1, """
+            import warnings, oryxflow, tasks_a
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter('always')
+                oryxflow.Workflow(tasks_a.A, env='scratch').run()
+            assert any('keeps pointing consumers' in str(x.message) for x in w), [str(x.message) for x in w]
+        """)
+        A = oryxflow.FlowImport(p1).A
+        assert A.built == [{'s': 'x'}]
+        assert 'env=prod' in Path(A().output().path).as_posix()
+
+    def test_package_named_like_oryxflow_is_not_library_code(self, projects):
+        p1, _ = projects
+
+        class OwnOutput2(oryxflow.tasks.TaskPqPandas):
+            export = True
+            path = str(p1 / 'data')
+
+            def output(self):
+                return super().output()
+
+            def run(self):
+                self.save(pd.DataFrame({'v': [1]}))
+        OwnOutput2.__module__ = 'oryxflow_models'
+        assert oexport._not_exportable(OwnOutput2)

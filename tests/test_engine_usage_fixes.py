@@ -5,6 +5,7 @@ import os
 import sys
 
 import pytest
+from pathlib import Path
 
 import oryxflow
 import oryxflow.codehash
@@ -221,3 +222,18 @@ class TestRetryBudget:
         with pytest.raises(PermissionError):
             oryxflow.state.put_record(oryxflow.settings.dirpath, 'T_2', {'v': 1})
         assert len(calls) == first + 1
+
+
+class TestTaskGroup:
+
+    def test_group_folder_is_inside_the_data_dir(self, env):
+        class Grouped(oryxflow.tasks.TaskPickle):
+            task_group = 'g1'
+
+            def run(self):
+                self.save({'a': 1})
+
+        path = Path(Grouped().output().path).resolve()
+        assert path.parent.parent == (oryxflow.settings.dirpath / 'group=g1').resolve()
+        oryxflow.run(Grouped())
+        assert path.is_file()

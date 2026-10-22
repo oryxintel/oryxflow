@@ -221,7 +221,7 @@ class TaskData(core.Task):
 
         # Add Group
         if hasattr(self, 'task_group'):
-            dirpath = dirpath / f"/group={getattr(self, 'task_group')}"
+            dirpath = dirpath / f"group={getattr(self, 'task_group')}"
 
         # Get Path
         tidroot = getattr(self, 'target_dir', self.task_id.split('_')[0])

@@ -181,17 +181,19 @@ Step by step, here is what actually happens:
 3.  `flow2.run()` propagates that registration onto the task instances just before executing them: every task in `flow2` gets `self.flows = {'flow': flow}`. This is why the attach must come *before* the run — a task created and run without it would have `self.flows` empty.
 4.  Inside `Task3.run()`, `self.flows['flow']` is the attached `flow` object, so `self.flows['flow'].outputLoad()` calls `outputLoad()` on it and returns `Task1`'s DataFrame. `Task3` then saves it as its own output.
 
-The key idea is that the link is between *flows*, resolved lazily at load time — `Task3` never declares `Task1` in its `requires()`. That keeps the two flows independent (separate projects, separate `data/` directories, separate run/reset scopes) while still letting one read the other's results. Crucially, unlike a `requires` edge, the attached flow **keeps its own** `path`/`env`, so `self.flows['flow'].outputLoad()` reads from *that* flow's data root — which may be a different project's `data/` or a different `env=`. For reading another *project's* outputs, prefer `FlowImport` and a plain `@requires` (see [Reading another project's outputs](#reading-another-projects-outputs-flowimport)): it is tracked, and reruns follow upstream. `attach_flow` fits when you want a whole flow configured once — a fixed `env=` or parameter slice — and read on demand:
+The key idea is that the link is between *flows*, resolved lazily at load time — `Task3` never declares `Task1` in its `requires()`. That keeps the two flows independent (separate projects, separate `data/` directories, separate run/reset scopes) while still letting one read the other's results. Crucially, unlike a `requires` edge, the attached flow **keeps its own** `path`/`env`, so `self.flows['flow'].outputLoad()` reads from *that* flow's data root — which may be a different project's `data/` or a different `env=`. For reading another *project's* outputs, prefer `FlowImport` and a plain `@requires` (see [Reading another project's outputs](#reading-another-projects-outputs-flowimport)): it is tracked, and reruns follow upstream. `attach_flow` fits when you want a whole flow configured once — a fixed `env=` or parameter slice of your own pipeline — and read on demand:
 
 ```python
-# another project's flow, configured once: its prod environment
-flow_prod = oryxflow.Workflow(exported.Task2, path='../another-project/data', env='prod')
+# your pipeline, configured once: its prod environment
+flow_prod = oryxflow.Workflow(Task2, env='prod')
 
-# your flow whose task consumes the scraped data
+# your flow whose task consumes the prod data
 flow_mine = oryxflow.Workflow(MyTask)
-flow_mine.attach_flow(flow_prod, 'scraped')
-flow_mine.run()          # inside MyTask.run(): self.flows['scraped'].outputLoad(Task2)
+flow_mine.attach_flow(flow_prod, 'prod')
+flow_mine.run()          # inside MyTask.run(): self.flows['prod'].outputLoad(Task2)
 ```
+
+Tasks loaded with `FlowImport` always read the other project's data folder: a `path=` or `env=` on the flow does not move them.
 
 Two trade-offs to know:
 

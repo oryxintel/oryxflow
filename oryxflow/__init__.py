@@ -965,10 +965,9 @@ class Workflow(object):
             for temp_task in tasks:
                 if flows:
                     temp_task.flows = self.params['flows']
-                # an imported (external) task with its own path reads the other project's data
-                # dir: this flow's path/env must not re-point it
-                if path and not (getattr(temp_task, 'external', False)
-                                 and getattr(type(temp_task), 'path', None) is not None):
+                # a task loaded with FlowImport reads the other project's data dir: this
+                # flow's path/env must not re-point it
+                if path and not type(temp_task).__module__.startswith('oryxflow_import_'):
                     temp_task.path = self.params['path']
 
 class WorkflowMulti(object):
