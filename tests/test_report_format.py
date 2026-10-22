@@ -7,7 +7,7 @@ def test_presets_table():
     assert rpt.FORMATS['pct'] == rpt.Format('{:.1%}', '0.0%')
     assert rpt.FORMATS['float'].excel == '#,##0.00'
     assert set(rpt.FORMATS) == {'int', 'int_plain', 'int_signed', 'float', 'float4', 'num1', 'num2',
-        'pct', 'pct0', 'pct2', 'pct_signed', 'multiple', 'thousands', 'date', 'datetime', 'text'}
+        'pct', 'pct0', 'pct1', 'pct2', 'pct_signed', 'multiple', 'thousands', 'date', 'datetime', 'text'}
 
 def test_int_variants():
     assert rpt.fmt(39580, 'int_plain') == '39580' and rpt.excel_code('int_plain') == '0'   # ids: no separator
@@ -83,7 +83,10 @@ def test_table_hides_range_index():
     df = pd.DataFrame({'r': [0.05, 0.1]})
     assert 'row_heading' not in rpt.table(df).to_html()
     df2 = pd.DataFrame({'r': [0.05, 0.1]}, index=['a', 'b']).rename_axis('sector')
-    assert 'row_heading' in rpt.table(df2).to_html()
+    html = rpt.table(df2).to_html()                       # named index: leading column, no blank row
+    assert 'index_name' not in html and '>sector<' in html and 'row_heading' not in html
+    df3 = pd.DataFrame({'r': [0.05, 0.1]}, index=['a', 'b'])
+    assert 'row_heading' in rpt.table(df3).to_html()
     assert 'row_heading' in rpt.table(df, index=True).to_html()
 
 
@@ -137,3 +140,15 @@ def test_table_right_aligns_object_numbers():
                if 'text-align: right' in props for j in re.findall(r'_col(\d+)', sel)}
     assert aligned == {'ret', 'n'}
     assert '5.0%' in html
+
+
+def test_table_named_index_formats_by_name():
+    pytest.importorskip('jinja2')
+    df = pd.DataFrame({'r': [0.05]}, index=pd.Index([0.25], name='share'))
+    html = rpt.table(df, formats={'share': 'pct0', 'r': 'pct'}).to_html()
+    assert '25%' in html and '5.0%' in html
+
+
+def test_pct1_alias():
+    assert rpt.fmt(0.0532, 'pct1') == rpt.fmt(0.0532, 'pct') == '5.3%'
+    assert rpt.excel_code('pct1') == '0.0%'

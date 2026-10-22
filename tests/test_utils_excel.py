@@ -578,3 +578,17 @@ def test_file_handle(tmp_path):
         excel_write(f, make_df())
     os.replace(tmp, p)
     assert sheet(p)['D1'].value == 'ret_pct'
+
+
+def test_shared_column_options_skip_sheets_without_the_column(tmp_path):
+    df = make_df()
+    other = pd.DataFrame({'note': ['x']})
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, {'a': df, 'b': other}, wrap_columns=['name'], id_columns=['name'],
+                highlight={'name': {'a': 'green'}}, colorscale=['value'])
+    wb = openpyxl.load_workbook(p)
+    assert wb['a']['A2'].alignment.wrap_text and wb['a']['A2'].number_format == '@'
+    with pytest.raises(KeyError, match='nope'):                # in no sheet: still a typo
+        excel_write(tmp_path / 'b.xlsx', {'a': df, 'b': other}, wrap_columns=['name', 'nope'])
+    with pytest.raises(KeyError, match='note'):                # a sheet's own option stays strict
+        excel_write(tmp_path / 'c.xlsx', {'a': {'df': df, 'wrap_columns': ['note']}, 'b': other})

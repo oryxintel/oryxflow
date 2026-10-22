@@ -564,9 +564,19 @@ def requires_each(task_to_require, /, *extra, derive=None, **grid):
     don't cover, write `requires()` yourself and call
     :py:meth:`~oryxflow.core.Task.requires_grid`, which is what this decorator uses.
 
-    One case the decorator refuses on purpose: a task that compares ITS OWN value with others
-    (`sector` vs `sector_compare`) fans out over a parameter it also carries. Keep the
-    parameter and use the method form — `inputLoadConcat()` works on it all the same:
+    A task that depends on the same task at ANOTHER value of its own parameter (last quarter,
+    a peer sector) passes a function that reads that parameter; the task then keeps it:
+
+        ```python
+        @oryxflow.requires_each({'prior': Rankings},
+                                period_yq=lambda self: [previous_quarter(self.period_yq)])
+        class RankChange(oryxflow.tasks.TaskPqPandas):     # carries period_yq itself
+            ...
+        ```
+
+    With a plain list the decorator refuses a task that compares ITS OWN value with others
+    (`sector` vs `sector_compare`): it fans out over a parameter it also carries. Use a function
+    as above, or keep the parameter and use the method form:
 
         ```python
         def requires(self):

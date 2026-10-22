@@ -189,11 +189,20 @@ def _json_default(v):
 
 
 class _DropOryxflowUnknown(logging.Filter):
-    """Drops papermill's "Passed unknown parameter" warning for oryxflow's own injected names,
-    which a template need not declare. Warnings about the user's names stay."""
+    """Drops papermill's "Passed unknown parameter" warning for oryxflow's own injected names
+    and for the task's parameters: a report inherits every parameter of its upstream band and
+    the template need not declare the ones it does not use. Warnings about the names
+    ``notebook_parameters()`` adds stay, since those are passed for the template."""
+    def __init__(self, quiet=()):
+        super().__init__()
+        self.quiet = set(quiet)
+
     def filter(self, record):
         msg = record.getMessage()
-        return not (msg.startswith('Passed unknown parameter') and _RESERVED_PREFIX in msg)
+        if not msg.startswith('Passed unknown parameter'):
+            return True
+        name = msg.rpartition(':')[2].strip()
+        return not (name.startswith(_RESERVED_PREFIX) or name in self.quiet)
 
 
 def _has_parameters_tag(nb):
@@ -432,8 +441,13 @@ class TaskNotebook(TaskData):
         self.logger.info("notebook {} -> {}", template, target.html_path)
         self.logger.debug("notebook parameters: {}", sorted(parameters))
         pm_logger = logging.getLogger('papermill')
-        drop = _DropOryxflowUnknown()
+        drop = _DropOryxflowUnknown(name for name, _ in self.get_params())
         pm_logger.addFilter(drop)
+        # the kernel inherits this environment: without it, every run prints the debugger's
+        # "frozen modules" note twice
+        pydevd = 'PYDEVD_DISABLE_FILE_VALIDATION' not in os.environ
+        if pydevd:
+            os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
         try:
             pm.execute_notebook(str(template) if as_is else nb, str(running), parameters=parameters,
                                 cwd=os.getcwd(), kernel_name=self.kernel_name, language='python',
@@ -450,4 +464,6 @@ class TaskNotebook(TaskData):
             raise
         finally:
             pm_logger.removeFilter(drop)
+            if pydevd:
+                os.environ.pop('PYDEVD_DISABLE_FILE_VALIDATION', None)
         self.save(running, html_template=self.html_template, include_code=self.html_include_code)

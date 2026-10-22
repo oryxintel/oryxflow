@@ -108,5 +108,6 @@ If the report also depends on files the template reads, such as text snippets, l
 - `columns=[...]` picks and orders columns, `rename={...}` relabels them (key `formats` by the new names),
 - `caption='...'` adds a title,
 - `index=True` or `False` forces the index on or off.
+- a named index is shown as the first column(s), headed by its name, so `formats` and `rename` can use that name.
 
 To format a single number, for example inside a sentence, use `rpt.fmt(0.053, 'pct')`, which gives `5.3%`. To get a dataframe of ready-made strings for markdown or prose tables, use `rpt.format_frame(df, formats)`; it does not need `jinja2`.

@@ -505,3 +505,21 @@ def test_template_without_kernelspec_runs(env):
     assert 'kernelspec' not in nbformat.read(str(env / 'template.ipynb'), as_version=4).metadata
     oryxflow.run(NbReport())
     assert 'SUM=3' in _html(NbReport())
+
+
+class NbReportInherited(NbReport):
+    region_code = oryxflow.Parameter(default='r1')     # inherited, not declared by the template
+
+
+def test_no_unknown_parameter_warning_for_task_parameters(env, monkeypatch):
+    monkeypatch.delenv('PYDEVD_DISABLE_FILE_VALIDATION', raising=False)
+    capture = _Capture()
+    logger = logging.getLogger('papermill')
+    logger.addHandler(capture)
+    try:
+        oryxflow.run(NbReportInherited())
+    finally:
+        logger.removeHandler(capture)
+    assert not [m for m in capture.messages if 'Passed unknown parameter' in m]
+    import os
+    assert 'PYDEVD_DISABLE_FILE_VALIDATION' not in os.environ     # set for the kernel only

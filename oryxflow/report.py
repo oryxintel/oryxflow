@@ -44,6 +44,7 @@ FORMATS = {
     'num2': Format('{:,.2f}', '#,##0.00'),
     'pct': Format('{:.1%}', '0.0%'),
     'pct0': Format('{:.0%}', '0%'),
+    'pct1': Format('{:.1%}', '0.0%'),
     'pct2': Format('{:.2%}', '0.00%'),
     'pct_signed': Format('{:+.1%}', '+0.0%;-0.0%;0.0%'),
     'multiple': Format('{:.2f}x', '0.00"x"'),
@@ -168,7 +169,8 @@ def table(df, formats=None, index='auto', rename=None, columns=None, caption=Non
 
     columns selects and orders columns, then rename relabels them; formats are keyed by the
     renamed labels. index='auto' hides a default RangeIndex and keeps a meaningful one;
-    True/False force it. Needs jinja2 (``oryxflow[notebook]``); ``format_frame`` does not.
+    True/False force it. A named index is shown as ordinary leading columns, headed by its
+    name (rename and formats can use it), so the table gets no extra header row. Needs jinja2 (``oryxflow[notebook]``); ``format_frame`` does not.
     """
     try:
         import jinja2  # noqa: F401
@@ -177,6 +179,11 @@ def table(df, formats=None, index='auto', rename=None, columns=None, caption=Non
                           'or use report.format_frame, which works without it')
     if columns is not None:
         df = df[list(columns)]
+    if index is not False and any(n is not None for n in df.index.names):
+        # a named index would get its own header row, blank under the columns: show it as
+        # ordinary leading columns instead
+        df = df.reset_index()
+        index = False
     if rename:
         df = df.rename(columns=rename)
     specs = resolve_formats(df, formats, defaults=False)

@@ -741,13 +741,17 @@ def _apply_spec(cls):
     Run from scratch after every decorator, so decorator ORDER cannot matter.
     """
     spec = cls.__dict__.get('_requires_spec', [])
-    fanned, derived = set(), set()
+    fanned, derived, own = set(), set(), set()
     for entry in spec:
         if entry['kind'] == 'each':
             fanned.update(entry['grid'])
             derived.update(entry.get('derive') or ())
-    # both differ per branch, so neither belongs on the task the branches converge into
-    excluded = fanned | derived
+            own.update(n for n, v in entry['grid'].items() if _grid_reads(v, n))
+    # both differ per branch, so neither belongs on the task the branches converge into --
+    # unless the values are computed from the task's OWN value of it (`period_yq=lambda t:
+    # [prior(t.period_yq)]`, the same task at the previous quarter): then the task is keyed
+    # by that value and keeps the parameter
+    excluded = (fanned - own) | derived
 
     injected = set(cls.__dict__.get('_requires_injected', ()))
 
@@ -758,8 +762,8 @@ def _apply_spec(cls):
             what = "fans out over '{}'".format(name) if name in fanned \
                 else "derives '{}' per branch".format(name)
             hint = (" If the task compares its OWN '{0}' with others ('{0}' vs '{0}_compare'), "
-                    "keep the parameter and write requires() with self.requires_grid(...) "
-                    "instead of the decorator.".format(name)) if name in fanned else ""
+                    "fan out with a function that reads it ({0}=lambda self: [..self.{0}..]), or "
+                    "keep the parameter and write requires() with self.requires_grid(...).".format(name)) if name in fanned else ""
             raise TypeError(
                 "{}: declares a '{}' parameter and also {}. The task the branches converge "
                 "into must not carry it -- it would put one branch's value in the combining "
@@ -785,6 +789,12 @@ def _apply_spec(cls):
 
     if any(entry['kind'] != 'inherit' for entry in spec):
         cls.requires = _spec_requires
+
+
+def _grid_reads(values, name):
+    """True when a fan-out's values are a function that reads the task's own ``name``."""
+    code = getattr(values, '__code__', None)
+    return code is not None and name in code.co_names
 
 
 def _add_spec(cls, entry):

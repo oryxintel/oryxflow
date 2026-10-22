@@ -438,6 +438,23 @@ class CountryCombine(oryxflow.tasks.TaskPqPandas):
 The function sees the task's **parameters** — not its inputs, which don't exist until its
 dependencies are known.
 
+A common case is the same task at another value of the task's own parameter: this quarter's
+rankings next to last quarter's. When the function reads the parameter it fans out over, the task
+keeps that parameter, so it is still keyed by its own quarter:
+
+<!--phmdoctest-skip-->
+```python
+@oryxflow.requires({'now': Rankings})
+@oryxflow.requires_each({'prior': Rankings},
+                        period_yq=lambda self: [previous_quarter(self.period_yq)])
+class RankChange(oryxflow.tasks.TaskPqPandas):
+    def run(self):
+        deps = self.inputLoad(flatten=False)
+        now, prior = deps['now'], deps['prior'][previous_quarter(self.period_yq)]
+```
+
+With a plain list, the fanned parameter stays off the task as usual.
+
 `requires_grid` is the same thing written out longhand, for when you want the dict in your own
 `requires()`:
 
