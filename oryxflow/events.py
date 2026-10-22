@@ -326,6 +326,11 @@ def print_status():
         return
     print('pending code warnings: {}'.format(len(warns)))
     for w in warns:
+        if w.get('kind') == 'old_record':
+            print('  {}: kept without comparing code (record from an older oryxflow) -- '
+                  'reset() it if you edited it since its last run, else '
+                  'accept_code()'.format(w.get('task_id')))
+            continue
         files = ', '.join(w.get('changed_files') or []) or '?'
         print('  {} (code_version={}): changed {} -- bump code_version, or '
               'accept_code()/reset()'.format(w.get('family'), w.get('code_version'), files))

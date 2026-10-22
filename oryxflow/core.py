@@ -773,10 +773,12 @@ def _apply_spec(cls):
     # (c) copy parameters from every entry, skipping every fanned/derived name GLOBALLY (not
     # per-decorator): @requires(X) copying an 'X.region' that @requires_each deliberately
     # excluded is the exact bug @requires_each exists to prevent, and it would be silent.
+    # Parameters fixed with an imported task's bind()/latest() stay on that task only.
     for entry in spec:
         for src in _entry_sources(entry):
+            bound = getattr(src, '_oryxflow_bound', ())
             for pname, pobj in src.get_params():
-                if pname in excluded or hasattr(cls, pname):
+                if pname in excluded or pname in bound or hasattr(cls, pname):
                     continue
                 setattr(cls, pname, pobj)
                 injected.add(pname)
@@ -1425,6 +1427,9 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
                'source_hashes': hashes, 'reason': reason, 'duration_s': duration,
                'git_sha': git_sha, 'git_dirty': git_dirty,
                'oryxflow_version': _version,
+               # the exact inputs, so a run is reproducible when a dep was picked at import
+               # time (an imported task bound with .latest())
+               'deps': [d.task_id for d in flatten(task.requires())],
                'dirpath': str(dirpath if dirpath is not None else _settings.dirpath)},
               msg="task complete: {} in {:.3f}s".format(tid, duration))
         _code_warned.pop(tid, None)   # condition resolved; a future recurrence re-warns
@@ -1487,6 +1492,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         with traversal_scope():
             for task in tasks:
                 _process(task)
+        _advisor.finish()
     finally:
         _codehash.unfreeze()
         _log.set_task_log_capture(previous_capture)

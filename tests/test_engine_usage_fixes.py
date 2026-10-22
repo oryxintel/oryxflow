@@ -133,12 +133,12 @@ class TestInterpreterStableHashes:
         b = ast.parse('def f(x):\n    return x + 1\n')
         assert oryxflow.codehash._dump(a) != oryxflow.codehash._dump(b)
 
-    def test_record_format_is_5_without_interpreter_tag(self, env):
+    def test_record_format_has_no_interpreter_tag(self, env):
         mod = _fresh_import(env, 'fixmod_v5', TASK_V1)
         t = mod.TaskFix()
         oryxflow.run(t)
         rec = oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id)
-        assert oryxflow.state.RECORD_V == 5 and rec['v'] == 5
+        assert rec['v'] == oryxflow.state.RECORD_V
         assert 'py' not in rec
         assert not hasattr(oryxflow.codehash, 'PY_TAG')
 
@@ -159,11 +159,14 @@ class TestInterpreterStableHashes:
         t = mod.TaskFix()
         oryxflow.run(t)
         rec = dict(oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id))
-        rec['v'] = 4
+        rec['v'] = 4                           # no 'py' tag: can't be compared
         rec['source_hashes'] = {'old-formula': 'x'}
         oryxflow.state.put_record(oryxflow.settings.dirpath, t.task_id, rec)
-        assert oryxflow.run(t).ran == []
-        assert oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id)['v'] == 5
+        r = oryxflow.run(t)
+        assert r.ran == []
+        assert len(r.warnings) == 1 and t.task_id in r.warnings[0]   # kept, but said so
+        assert oryxflow.state.get_record(oryxflow.settings.dirpath,
+                                         t.task_id)['v'] == oryxflow.state.RECORD_V
 
 
 class TestHashFiles:

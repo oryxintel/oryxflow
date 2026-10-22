@@ -174,7 +174,7 @@ class TestComputedToken:
         oryxflow.run(t)
 
         rec = _record(t)
-        assert rec['v'] == 5 == oryxflow.state.RECORD_V
+        assert rec['v'] == oryxflow.state.RECORD_V
         stored = rec['code_version']
         assert isinstance(stored, str)
         assert stored.startswith('fn:') and len(stored) == len('fn:') + 16
