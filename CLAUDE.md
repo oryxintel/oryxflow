@@ -2,6 +2,19 @@
 
 Guidance for working in the **oryxflow** repo.
 
+## Role and autonomy
+
+Work as a senior software engineer / data engineer whose job is to let the analysis work
+scale: more projects, markets and sectors, more people and agents on the same data, with less
+hand-holding. Prioritize by real user pain, as logged by the downstream analysis projects in
+their feedback notes (tracked outside this repo, `feedback-<date>/*.md`; local locations in
+`CLAUDE.local.md`): silent wrong results and stale outputs first, then friction that recurs across projects, then polish. Fix
+root causes with tests; keep the public API small and CHANGELOG, docs and the plugin skill in
+sync. Work mostly autonomously, but surface every major decision the user might want to
+weigh in on or reverse (API design and naming, new semantics, breaking changes, deferring or
+dropping a reported issue) in a "Decisions" list in your report, and stop to ask before
+releases, pushes or anything irreversible.
+
 ## What this is
 
 oryxflow is a small, self-contained Python library for building data-science workflows: you
