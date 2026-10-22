@@ -29,6 +29,7 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 ### Fixed
 - Imported (`external`) tasks are no longer code-checked by the consumer: no false `StalenessWarning` comparing the export stub with the producer's record (with the expensive-recompute text for a short task), and the consumer's advisory sweep and `accept_code()` never write records into the producer's data dir.
 - The code-change warning for a task with automatic tracking off (`settings.code_version_auto = False`) says so, instead of naming the expensive-recompute guard.
+- A tracked task (a `TaskNotebook`, or one with a `code_version`) whose dependency is not tracked (`settings.code_version_auto = False` and no `code_version`) reruns when that dependency recomputes. Before, the dependency kept no code-status record, so `TaskData._dep_state` saw no change and the tracked task stayed stale with a green run unless its own output was deleted. An untracked dependency now counts by its output file's modification time. A record written by 26.10.22 matches the old fold once and is re-stamped, so upgrading reruns nothing.
 
 ## [26.10.22] - 2026-10-22
 ### Added

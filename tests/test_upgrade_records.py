@@ -186,3 +186,48 @@ def test_auto_off_warning_names_the_setting(env, monkeypatch):
     assert r.ran == []
     msg = [str(x.message) for x in w if 'task T:' in str(x.message)][0]
     assert 'code_version_auto = False' in msg and 'expensive' not in msg
+
+
+UNTRACKED_UP = '''
+import oryxflow
+
+class Raw(oryxflow.tasks.TaskPickle):
+    def run(self):
+        self.save({'v': 1})
+
+@oryxflow.requires(Raw)
+class Report(oryxflow.tasks.TaskPickle):
+    code_version = '1'          # tracked, like a TaskNotebook in a code_version_auto=False project
+    def run(self):
+        self.save(self.inputLoad())
+'''
+
+
+class TestTrackedBelowUntracked:
+    # with code_version_auto off an unpinned task keeps no record, so the dependency fold
+    # saw '' before and after it recomputed: the tracked task after it stayed stale
+
+    def test_rerun_upstream_reruns_the_tracked_task(self, env, monkeypatch):
+        monkeypatch.setattr(oryxflow.settings, 'code_version_auto', False)
+        mod, _ = _load(env, 'untracked_up', UNTRACKED_UP)
+        assert mod.Raw()._code_fingerprint is None
+        oryxflow.run(mod.Report())
+        oryxflow.Workflow(mod.Report).reset(mod.Raw)
+        r = oryxflow.run(mod.Raw())                 # upstream recomputes on its own
+        assert r.did_run(mod.Raw)
+        assert oryxflow.run(mod.Report()).did_run(mod.Report)
+        assert oryxflow.run(mod.Report()).ran == []
+
+    def test_record_from_before_the_fix_does_not_rerun(self, env, monkeypatch):
+        monkeypatch.setattr(oryxflow.settings, 'code_version_auto', False)
+        mod, _ = _load(env, 'untracked_old', UNTRACKED_UP)
+        oryxflow.run(mod.Report())
+        dirpath, tid = oryxflow.settings.dirpath, mod.Report().task_id
+        rec = dict(oryxflow.state.get_record(dirpath, tid))
+        rec['dep_state'] = mod.Report()._dep_state(legacy=True)   # the 26.10.22 fold
+        rec['v'] = 5
+        oryxflow.state.put_record(dirpath, tid, rec)
+        assert oryxflow.run(mod.Report()).ran == []
+        rec2 = oryxflow.state.get_record(dirpath, tid)
+        assert rec2['v'] == oryxflow.state.RECORD_V
+        assert rec2['dep_state'] == mod.Report()._dep_state()

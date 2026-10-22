@@ -164,7 +164,8 @@ class TaskData(core.Task):
         rec = state.get_record(self._resolved_dirpath(), self.task_id)
         if rec is None:
             return True          # grandfathered; build() stamps it
-        if rec.get('v') != state.RECORD_V:
+        older = rec.get('v') != state.RECORD_V
+        if older:
             # written by an older oryxflow: compared with that version's hashing rules when
             # they are kept; otherwise not comparable -> complete (grandfather trust level),
             # build()'s advisory sweep re-stamps it and names it in a warning
@@ -174,7 +175,11 @@ class TaskData(core.Task):
                 return True
         if not self._own_code_ok(rec):
             return False
-        return rec.get('dep_state') == self._dep_state()
+        stored = rec.get('dep_state')
+        # a record from before untracked deps were folded by file time matches the old fold
+        # once; build()'s advisory sweep then re-stamps it (no mass rerun on upgrade)
+        return stored == self._dep_state() or (older
+                                               and stored == self._dep_state(legacy=True))
 
     def _own_code_ok(self, rec):
         # own dimension, mode-aware: a pin (code_version) is THE version while present;
@@ -209,12 +214,13 @@ class TaskData(core.Task):
             return True
         return False
 
-    def _dep_state(self):
+    def _dep_state(self, legacy=False):
         # folded output identity of the direct deps: each dep's record output_id, a fresh
         # id per actual materialization that re-stamps and accept_code PRESERVE. Downstream
         # therefore reruns when an upstream actually recomputed -- and only then: mode
         # toggles and accepts upstream don't ripple, while a reset+rerun upstream
-        # propagates even across separate builds.
+        # propagates even across separate builds. legacy=True: the 26.10.22 fold, where a
+        # dep with no record counted as '' (see _code_ok).
         from oryxflow import state
         ids = []
         for d in self.deps():
@@ -222,10 +228,13 @@ class TaskData(core.Task):
                 else settings.dirpath
             rec = state.get_record(dirpath, d.task_id)
             oid = (rec or {}).get('output_id')
-            if not oid and getattr(d, 'external', False):
-                # another project's output with no record there (its code invalidation is
-                # off): fold which output it is and when it was written, so this task still
-                # reruns when the producer rewrites it or a binding picks another build
+            if not oid and not legacy and (getattr(d, 'external', False)
+                                           or d._code_fingerprint is None):
+                # a dep that never gets a record here -- another project's output whose code
+                # tracking is off, or an untracked task (code_version_auto = False, no pin):
+                # fold which output it is and when it was written, so this task still reruns
+                # when that output is rewritten (or a binding picks another build). A '' here
+                # left a tracked task (a TaskNotebook, a pinned task) stale behind it.
                 oid = 'ext:{}:{}'.format(d.task_id, _output_mtime(d))
             ids.append(oid or '')
         return hashlib.md5('|'.join(sorted(ids)).encode('utf-8')).hexdigest()[:16]
