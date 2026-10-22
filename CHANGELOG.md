@@ -13,6 +13,8 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   prose. Agents grep this file for the symbol in their traceback.
 
 ## [Unreleased]
+
+## [26.10.21] - 2026-10-21
 ### Added
 - `oryxflow.utils.excel_write(path, data, **options)` writes finished-looking Excel files: styled header, filter arrows, frozen header, number formats and auto-sized columns. A sheet can also be a spec dict with `title`, `notes`, `highlight`, `colorscale`, `banded`, `wrap_columns`, `group_starts`, `id_columns` and `freeze`.
 - `ExcelPandasTarget.save(..., formatted=True)` and `ExcelPandasSheetsTarget.save(..., formatted=True)` (so `self.save(..., formatted=True, formats={'*_pct': 'pct'})` in `TaskExcelPandas` and `TaskExcelPandasSingle`) write through `excel_write`. The default `formatted=False` is unchanged.
