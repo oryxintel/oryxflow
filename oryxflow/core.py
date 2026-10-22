@@ -511,7 +511,8 @@ class Task(metaclass=Register):
                     values = values(self)
                 except AttributeError as e:
                     missing = getattr(e, 'name', None)
-                    if missing in grid and not hasattr(self, missing):
+                    if (missing in grid and getattr(e, 'obj', None) is self
+                            and not hasattr(self, missing)):
                         # @requires_each keeps fanned parameters off this task by design (it
                         # would carry one branch's value), so a grid computed from this task's
                         # own value of that parameter -- "the same loader, previous quarter"

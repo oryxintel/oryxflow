@@ -293,3 +293,19 @@ def test_shifted_fan_out_says_what_to_do(env):
 
     with pytest.raises(TypeError, match=r"inherits.*self.clone\(Loader, period=prior"):
         Compare().requires()
+
+
+def test_shifted_fan_out_hint_only_for_the_task_itself(env):
+    # an AttributeError on another object with the same name is not this case
+    class Cfg:
+        pass
+
+    class Loader2(oryxflow.tasks.TaskPickle):
+        period = oryxflow.Parameter()
+
+    @oryxflow.requires_each({'p': Loader2}, period=lambda t: [Cfg.period])
+    class Uses(oryxflow.tasks.TaskPickle):
+        pass
+
+    with pytest.raises(AttributeError):
+        Uses().requires()
