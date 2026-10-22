@@ -352,6 +352,7 @@ class Advisor:
         if fp is not None:
             rec = state.get_record(dirpath, task.task_id)
             if rec is not None:
+                older = rec.get('v') != state.RECORD_V
                 rec = comparable_record(task, rec) or rec
                 own = _resolve_code_version(task)
                 if rec.get('code_version') != own:
@@ -377,7 +378,13 @@ class Advisor:
                     if changed:
                         shown = ', '.join(changed[:3]) + ('...' if len(changed) > 3 else '')
                         return 'code change (auto: {})'.format(shown)
-                return 'upstream rerun'
+                # own code unchanged: the dependency fold moved. Name an upstream rerun only
+                # when one happened in this build -- otherwise say what did happen
+                if any(d.task_id in reasons or d in ran for d in flatten(task.requires())):
+                    return 'upstream rerun'
+                if older:
+                    return 'dependency check re-based (record from an older oryxflow)'
+                return 'upstream output changed since last run'
         if any(d.task_id in reasons or d in ran for d in flatten(task.requires())):
             return 'upstream rerun'
         return 'upstream rerun' if flatten(task.requires()) else 'output missing'

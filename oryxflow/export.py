@@ -597,7 +597,9 @@ def latest(cls, **match):
     ``@requires(exported.X.latest())`` follows the producer's refreshes without editing
     your parameters, and ``exported.X.latest(model='prod')`` picks only among production
     builds. Resolved when called (at import), so each run reads what is newest then; the
-    exact input a task ran with is in its ``task_ran`` event (``deps``)."""
+    exact input a task ran with is in its ``task_ran`` event (``deps``). Only as good as the
+    producer's ``built``: it should run experiments with ``Workflow(..., export=False)``; for
+    a reviewable production pin, prefer ``bind()``."""
     from oryxflow.tasks import _output_mtime
     newest, chosen = None, None
     for values in getattr(cls, 'built', None) or []:

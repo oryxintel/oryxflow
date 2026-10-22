@@ -146,6 +146,7 @@ class TestBind:
         assert flow.outputLoad().refresh.tolist() == ['2026-07-18']
         assert Uses(sector='office').requires().task_id == \
             exported.Returns(refresh=D7).task_id
+        assert 'Returns[bound: refresh=2026-07-18]' in flow.preview(print_it=False)
 
     def test_bound_value_wins_over_a_same_named_consumer_parameter(self, projects):
         p1, p2 = projects

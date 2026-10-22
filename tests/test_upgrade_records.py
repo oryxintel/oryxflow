@@ -309,3 +309,36 @@ def test_shifted_fan_out_hint_only_for_the_task_itself(env):
 
     with pytest.raises(AttributeError):
         Uses().requires()
+
+
+class TestRerunReason:
+    # a moved dependency fold with no upstream run in this build is not an "upstream rerun"
+
+    def _setup(self, env, name):
+        mod, _ = _load(env, name, SRC)
+        oryxflow.run(mod.Down(), export=False)
+        dirpath, tid = oryxflow.settings.dirpath, mod.Down().task_id
+        rec = dict(oryxflow.state.get_record(dirpath, tid))
+        rec['dep_state'] = 'something-else'
+        return mod, dirpath, tid, rec
+
+    def test_changed_upstream_output(self, env):
+        mod, dirpath, tid, rec = self._setup(env, 'reason_moved')
+        oryxflow.state.put_record(dirpath, tid, rec)
+        r = oryxflow.run(mod.Down(), export=False)
+        assert r.reasons[tid] == 'upstream output changed since last run'
+
+    def test_record_from_an_older_version(self, env):
+        mod, dirpath, tid, rec = self._setup(env, 'reason_older')
+        rec['v'] = 5
+        oryxflow.state.put_record(dirpath, tid, rec)
+        r = oryxflow.run(mod.Down(), export=False)
+        assert r.reasons[tid] == 'dependency check re-based (record from an older oryxflow)'
+
+    def test_real_upstream_rerun(self, env):
+        mod, _ = _load(env, 'reason_real', SRC)
+        flow = oryxflow.Workflow(mod.Down)
+        flow.run(export=False)
+        flow.reset(mod.Up)
+        r = flow.run(export=False)
+        assert r.reasons[mod.Down().task_id] == 'upstream rerun'

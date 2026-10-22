@@ -24,8 +24,14 @@ def print_tree(task, indent='', last=True, show_params=True, clip_params=False):
         is_task_complete = task.complete()
     is_complete = (bcolors.OKGREEN + 'COMPLETE' if is_task_complete else bcolors.OKBLUE + 'PENDING') + bcolors.ENDC
     name = task.__class__.__name__
+    bound = sorted(getattr(task, '_oryxflow_bound', ()))
     if show_params:
         params = task.to_str_params(only_significant=True)
+        if bound:
+            # fixed with an imported task's bind()/latest(): shown apart from the values that
+            # came through the flow
+            name += '[bound: {}]'.format(', '.join(
+                '{}={}'.format(k, params.pop(k)) for k in bound if k in params))
         if len(params)>1 and clip_params:
             params = next(iter(params.items()), None)  # keep only one param
             params = str(dict([params]))+'[more]'
