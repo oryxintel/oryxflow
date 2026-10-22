@@ -13,6 +13,8 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
   prose. Agents grep this file for the symbol in their traceback.
 
 ## [Unreleased]
+
+## [26.10.22] - 2026-10-22
 ### Added
 - Sharing outputs between projects. A task with `export = True` is part of the project's interface: every `run()` that includes one rewrites `tasks_export.py` at the project root (next to `data/`) with a read-only copy of each exported task -- docstring, output format, `persists`, parameters with defaults, `external = True`, the data path relative to the file, and `built`, the parameter values whose output exists. The file is only rewritten when it changes; `run(export=False)` skips it, and a failure to write it only warns.
 - `FlowImport('<project dir or export file>')` loads another project's `tasks_export.py`; its tasks are attributes (`exported.SectorReturns`, all in `.tasks`). `@oryxflow.requires` them like your own: parameters pass through the flow, and your task reruns when the other project recomputes. Each export loads under its own module name, so two projects with same-named files don't mix.
