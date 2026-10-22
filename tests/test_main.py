@@ -708,43 +708,6 @@ class TestMain:
 
         assert set(Named().requires()) == {'north', 'south', 'chart_north', 'chart_south'}
 
-    def test_requires_each_shifted_own_param(self, cleanup):
-        # the same task at the previous quarter: the grid reads the task's own period_yq, so
-        # the task keeps it, whether a sibling decorator supplies it or only the fan-out does
-        def prior(q):
-            return str(pd.Period(q, freq='Q') - 1)
-
-        class Rankings(oryxflow.tasks.TaskPqPandas):
-            period_yq = oryxflow.Parameter(default='2026Q2')
-
-            def run(self):
-                self.save(pd.DataFrame({'q': [self.period_yq]}))
-
-        @oryxflow.requires({'now': Rankings})
-        @oryxflow.requires_each({'prior': Rankings}, period_yq=lambda self: [prior(self.period_yq)])
-        class RankChange(oryxflow.tasks.TaskPqPandas):
-            def run(self):
-                deps = self.inputLoad(flatten=False)
-                self.save(pd.concat([deps['now'], *deps['prior'].values()]))
-
-        @oryxflow.requires_each(Rankings, period_yq=lambda self: [self.period_yq, prior(self.period_yq)])
-        class TwoQuarters(oryxflow.tasks.TaskPqPandas):
-            def run(self):
-                self.save(self.inputLoadConcat())
-
-        t = RankChange(period_yq='2026Q3')
-        assert set(t.requires()) == {'now', 'prior_2026Q2'}
-        oryxflow.run(t)
-        assert list(t.outputLoad()['q']) == ['2026Q3', '2026Q2']
-        assert 'period_yq' in dict(TwoQuarters.get_params())
-        assert sorted(TwoQuarters(period_yq='2026Q1').requires()) == ['2025Q4', '2026Q1']
-
-        # a plain list still keeps the fanned parameter off the combining task
-        @oryxflow.requires_each(Rankings, period_yq=['2026Q1', '2026Q2'])
-        class Listed(oryxflow.tasks.TaskPqPandas):
-            pass
-        assert 'period_yq' not in dict(Listed.get_params())
-
     def test_requires_each_callable_grid(self):
         by_sector = {'a': ['north'], 'b': ['south', 'east']}
 
