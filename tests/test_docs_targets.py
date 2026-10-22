@@ -139,3 +139,13 @@ def test_code_213(managenamespace):
 
     # Caution- no assertions.
     managenamespace(operation="update", additions=locals())
+
+
+def test_code_224():
+    import os
+
+    with open('report.xlsx.tmp', 'wb') as f:
+        oryxflow.utils.excel_write(f, {'summary': df_perf})
+    os.replace('report.xlsx.tmp', 'report.xlsx')
+
+    # Caution- no assertions.

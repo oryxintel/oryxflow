@@ -126,6 +126,8 @@ Pinned and automatic tasks mix freely in one pipeline, and a pinned task still r
 
     **One first-time trap.** Bringing an output under tracking for the *first* time — a pre-upgrade artifact, or the first pin in a `code_version_auto = False` project — in the *same edit* that changes its logic can bless the stale output, because there is no prior record to compare against. oryxflow warns when it can detect this (`output predates current code`); answer it with `reset()` to recompute, or `flow.accept_code()` if the outputs really are current. Once a task has one record on disk, the trap is closed for good — the stored hashes expose any edit no matter how you toggle the pin.
 
+    **After upgrading oryxflow.** Your tasks' records are checked against your code exactly as before, so an edit you made before or after the upgrade still reruns the task. The one exception is a record that can't be compared: one written by a much older oryxflow, or by another Python version under oryxflow 26.10.21 or earlier. Such a task is kept, and the run warns once, naming every one (`kept without rerunning: ...`; `oryxflow.events.print_status()` lists them too). If you edited one of them since its last run, `flow.reset(<Task>)` it.
+
 ## When your task depends on something that isn't Python
 
 Automatic tracking follows your Python, so it can't see the `.sql` file you execute, the prompt template you render, or the `.yaml` config you load — change one of those and the task happily serves its old output. Rather than remembering to `reset()` every time, **declare `code_version` as a method** and return whatever actually determines the result. Whatever it returns becomes part of that task's code identity: when the value changes, the task and everything downstream recompute on the next run, exactly as a logic edit would.
@@ -157,7 +159,7 @@ class LoadMaster(oryxflow.tasks.TaskPqPandas):
         self.save(pd.read_parquet('//share/published/master.parquet'))
 ```
 
-When the published file changes, `LoadMaster` and everything downstream recompute on the next run, and so do they when you edit `run()`. A synced or network folder that rewrites the file with the same bytes does nothing. Within one Python session, `hash_files` re-reads a file only when its size or modification time changed, so a large file costs a read only after it changed (each new session reads it once).
+Adding a `code_version()` method to a task that already has output reruns it once: oryxflow can't tell whether the file you now track is the one the cached output was built from. After that, when the published file changes, `LoadMaster` and everything downstream recompute on the next run, and so do they when you edit `run()`. A synced or network folder that rewrites the file with the same bytes does nothing. Within one Python session, `hash_files` re-reads a file only when its size or modification time changed, so a large file costs a read only after it changed (each new session reads it once).
 
 Files are just the common case; return anything the result depends on. A rendered template is often the better value, because one string carries the whole include chain, the helper that assembled it, *and* the parameter that chose the branch:
 

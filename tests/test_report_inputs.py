@@ -114,7 +114,7 @@ def test_inputLoad_selectors(named, listed):
     allin = rpt.inputLoad(named)
     assert set(allin) == {'a', 'b'}
     pd.testing.assert_frame_equal(allin['a'], a_frame())
-    assert set(allin['b']) == {'train', 'test'}
+    assert set(allin['b'].keys()) == {'train', 'test'}
 
 
 def test_inputLoad_uses_injected_inputs(named, monkeypatch):
@@ -124,7 +124,7 @@ def test_inputLoad_uses_injected_inputs(named, monkeypatch):
 
 def test_inputLoad_none_message(monkeypatch):
     monkeypatch.delattr(sys.modules['__main__'], 'oryxflow_inputs', raising=False)
-    with pytest.raises(ValueError, match='inputs_of'):
+    with pytest.raises(ValueError, match='default_inputs'):
         rpt.inputLoad()
 
 
@@ -163,3 +163,33 @@ def test_inputLoad_keys_for_excel_sheets(datadir):
     many = rpt.inputLoad(spec, task='xl', keys=['s2'])
     assert list(many) == ['s2']
     assert set(rpt.inputLoad(spec, task='xl')) == {'s1', 's2'}
+
+
+def test_inputLoad_multi_output_unpacks_like_self_inputLoad(named):
+    train, test = rpt.inputLoad(named, task='b')           # data, not the output names
+    assert list(train.columns) == ['t'] and list(test.columns) == ['s']
+    both = rpt.inputLoad(named, task='b')
+    assert list(both['test'].columns) == ['s']
+    assert [k for k, _ in both.items()] == ['train', 'test']
+    with pytest.raises(KeyError, match='train, test'):
+        both['valid']
+    expect = RiNamed().inputLoad(task='b')
+    assert [list(d.columns) for d in expect] == [list(d.columns) for d in both]
+
+
+def test_default_inputs_by_hand(datadir, monkeypatch):
+    monkeypatch.delattr(sys.modules['__main__'], 'oryxflow_inputs', raising=False)
+    with pytest.raises(FileNotFoundError, match='run the flow first'):
+        rpt.default_inputs(RiNamed)
+    oryxflow.run(RiNamed(), abort=True)
+    spec = rpt.default_inputs(RiNamed)
+    assert spec == rpt.inputs_of(RiNamed())
+    assert rpt.default_inputs(RiNamed()) == spec
+    with pytest.raises(TypeError):
+        rpt.default_inputs(RiNamed(), x=1)
+
+
+def test_default_inputs_keeps_injected(monkeypatch):
+    injected = {'a': {'target': 'x.Y', 'path': 'p'}}
+    monkeypatch.setattr(sys.modules['__main__'], 'oryxflow_inputs', injected, raising=False)
+    assert rpt.default_inputs(RiNamed) is injected        # the task is not even built

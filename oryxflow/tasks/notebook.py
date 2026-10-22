@@ -3,11 +3,13 @@
 Needs the ``notebook`` extra (papermill, nbconvert, nbformat, ipykernel, jinja2). Not imported by
 ``oryxflow.tasks``, so the core install never imports papermill.
 """
+import ast
 import hashlib
 import json
 import logging
 import os
 import pathlib
+import re
 
 try:
     import papermill as pm
@@ -18,18 +20,31 @@ except ImportError as e:
                       "pip install oryxflow[notebook]") from e
 
 import oryxflow.report
-from oryxflow import codehash, settings
+import oryxflow.utils
+from oryxflow import codehash, core, settings
 from oryxflow.parameter import EnumParameter
 from oryxflow.tasks import TaskData
 from oryxflow.targets.notebook import NotebookTarget
 
 _RESERVED_PREFIX = 'oryxflow_'
+_ANSI = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
+_PARAMETERS_COMMENT = re.compile(r'^#\s*parameters\s*$', re.IGNORECASE)
+_MAGIC = re.compile(r'^\s*[%!]')
+_CELL_LINE = re.compile(r'Cell In\[(\d+)\], line (\d+)')
+
+# published path -> task_id within one build: two reports in one run writing one deliverable
+# is a mistake (a fan-out whose publish pattern misses the fanned parameter); a later build
+# overwriting it with new parameters (a new vintage) is not. The build is told apart by the
+# identity of the engine's per-traversal memo, which lives exactly as long as the build.
+_published = {'build': None, 'paths': {}}
 
 
-def _template_digest(path):
-    """Digest of what in a template changes the result: each cell's type, source and tags, in
-    order. Outputs, execution counts and kernel metadata are left out, so running and saving the
-    template in Jupyter does not count as an edit."""
+def strip_ansi(text):
+    """Text without terminal color codes (a Jupyter traceback is full of them)."""
+    return _ANSI.sub('', text)
+
+
+def _read_cells(path):
     with open(path, encoding='utf-8') as f:
         nb = json.load(f)
     cells = []
@@ -37,9 +52,131 @@ def _template_digest(path):
         src = c.get('source', '')
         if isinstance(src, list):
             src = ''.join(src)
-        tags = sorted((c.get('metadata') or {}).get('tags') or [])
-        cells.append([c.get('cell_type'), src, tags])
-    blob = json.dumps(cells, sort_keys=True)
+        cells.append((c.get('cell_type'), src, sorted((c.get('metadata') or {}).get('tags') or [])))
+    return cells
+
+
+def _template_digest(cells):
+    """Digest of what in a template changes the result: each cell's type, source and tags, in
+    order. Outputs, execution counts and kernel metadata are left out, so running and saving the
+    template in Jupyter does not count as an edit."""
+    blob = json.dumps([list(c) for c in cells], sort_keys=True)
+    return hashlib.md5(blob.encode('utf-8')).hexdigest()[:16]
+
+
+def _cell_imports(src):
+    """(module, level, names) for every import statement in one code cell. IPython magics and
+    shell lines are skipped; a cell that still does not parse is read line by line."""
+    lines = [l for l in src.splitlines() if not _MAGIC.match(l)]
+    try:
+        trees = [ast.parse('\n'.join(lines))]
+    except SyntaxError:
+        trees = []
+        for l in lines:
+            try:
+                trees.append(ast.parse(l.strip()))
+            except SyntaxError:
+                pass
+    out = []
+    for tree in trees:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                out.extend((a.name, 0, ()) for a in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                out.append((node.module or '', node.level, tuple(a.name for a in node.names)))
+    return out
+
+
+def _module_files(modname, bases):
+    """Source files a module import executes, found under ``bases`` without importing anything:
+    each package's ``__init__.py`` on the way, then the module itself."""
+    files = []
+    for base in bases:
+        parts = modname.split('.') if modname else []
+        here = pathlib.Path(base)
+        found = []
+        for i, part in enumerate(parts):
+            here = here / part
+            if (here / '__init__.py').is_file():
+                found.append(here / '__init__.py')
+            elif i == len(parts) - 1 and here.with_suffix('.py').is_file():
+                found.append(here.with_suffix('.py'))
+            elif not here.is_dir():
+                found = []
+                break
+        if found:
+            files.extend(found)
+            break
+    return files
+
+
+_wiring_cache = {}
+
+
+def _is_wiring(path):
+    """True for a module that defines tasks or a flow (``tasks.py``, ``flow.py``): a template
+    imports it to build its inputs by hand, and its effect on the report already arrives through
+    the parameters and the upstream data. Watching it would rerun every report on any task edit."""
+    try:
+        key = (str(path), os.stat(path).st_mtime_ns)
+    except OSError:
+        return False
+    if key not in _wiring_cache:
+        try:
+            tree = ast.parse(pathlib.Path(path).read_bytes())
+        except (SyntaxError, ValueError):
+            tree = ast.Module(body=[], type_ignores=[])
+        found = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                heads = [ast.unparse(b) for b in node.bases + node.decorator_list]
+                found = any('oryxflow' in h or h.split('.')[-1].startswith('Task') for h in heads)
+            elif isinstance(node, ast.Call):
+                found = ast.unparse(node.func).split('.')[-1] in ('Workflow', 'WorkflowMulti')
+            if found:
+                break
+        _wiring_cache[key] = found
+    return _wiring_cache[key]
+
+
+def _local_imports(imports, bases, root):
+    """``{relpath: digest}`` of the project-local modules named by ``imports``, and of the local
+    modules those import in turn. Installed packages are outside ``root`` and never counted, nor
+    are modules that define tasks or a flow (``_is_wiring``), nor what only those import."""
+    root = pathlib.Path(root).resolve()
+    queue = [(m, lvl, names, None) for m, lvl, names in imports]
+    seen, out = set(), {}
+    while queue:
+        mod, level, names, importer = queue.pop()
+        if level:
+            if importer is None:
+                continue                         # a relative import in a notebook cannot run
+            base = importer.parent
+            for _ in range(level - 1):
+                base = base.parent
+            search = [base]
+        else:
+            search = bases
+        files = _module_files(mod, search)
+        for n in names:                          # `from pkg import mod`, mod a submodule
+            files += _module_files('{}.{}'.format(mod, n) if mod else n, search)
+        for f in files:
+            f = f.resolve()
+            if f in seen or not codehash._is_local(f, root):
+                continue
+            seen.add(f)
+            if _is_wiring(f):
+                continue
+            digest = codehash.file_hash(f)
+            if digest is None:
+                continue
+            out[f.relative_to(root).as_posix()] = digest
+            queue.extend((m, lvl, ns, f) for m, lvl, ns in codehash._imports_of(f))
+    return out
+
+
+def _digest(hashes):
+    blob = '|'.join('{}={}'.format(k, hashes[k]) for k in sorted(hashes))
     return hashlib.md5(blob.encode('utf-8')).hexdigest()[:16]
 
 
@@ -52,30 +189,91 @@ def _json_default(v):
 
 
 class _DropOryxflowUnknown(logging.Filter):
-    """Drops papermill's "Passed unknown parameter" warning for oryxflow's own injected names,
-    which a template need not declare. Warnings about the user's names stay."""
+    """Drops papermill's "Passed unknown parameter" warning for oryxflow's own injected names
+    and for the task's parameters: a report inherits every parameter of its upstream band and
+    the template need not declare the ones it does not use. Warnings about the names
+    ``notebook_parameters()`` adds stay, since those are passed for the template."""
+    def __init__(self, quiet=()):
+        super().__init__()
+        self.quiet = set(quiet)
+
     def filter(self, record):
         msg = record.getMessage()
-        return not (msg.startswith('Passed unknown parameter') and _RESERVED_PREFIX in msg)
+        if not msg.startswith('Passed unknown parameter'):
+            return True
+        name = msg.rpartition(':')[2].strip()
+        return not (name.startswith(_RESERVED_PREFIX) or name in self.quiet)
 
 
-def _has_parameters_cell(path):
-    nb = nbformat.read(str(path), as_version=4)
+def _has_parameters_tag(nb):
     return any('parameters' in (c.get('metadata', {}).get('tags') or []) for c in nb.cells)
+
+
+def _parameters_cell(nb):
+    """The cell tagged ``parameters``, else the first code cell whose first line is
+    ``# parameters`` (tagged here, in memory: papermill only knows the tag). None if neither."""
+    for c in nb.cells:
+        if 'parameters' in (c.get('metadata', {}).get('tags') or []):
+            return c
+    for c in nb.cells:
+        lines = [l for l in c.source.splitlines() if l.strip()]
+        if c.cell_type == 'code' and lines and _PARAMETERS_COMMENT.match(lines[0].strip()):
+            c.metadata.setdefault('tags', []).append('parameters')
+            return c
+    return None
+
+
+class NotebookCellError(pm.PapermillExecutionError):
+    """A template cell raised. The message names the cell, its failing line, the error and the
+    saved ``.failed.ipynb``, without terminal color codes; the kernel's full traceback (also
+    without color codes) is in ``traceback`` and in the chained cause."""
+
+    def __init__(self, err, template, failed_path):
+        tb = [strip_ansi(t) for t in (err.traceback or [])]
+        super().__init__(err.cell_index, err.exec_count, err.source, err.ename,
+                         strip_ansi(str(err.evalue)), tb)
+        self.template = pathlib.Path(template)
+        self.failed_path = pathlib.Path(failed_path)
+
+    def failing_line(self):
+        """The source line of the template cell that raised, or None."""
+        lines = (self.source or '').splitlines()
+        for m in _CELL_LINE.finditer('\n'.join(self.traceback)):
+            if m.group(1) == str(self.exec_count) and 0 < int(m.group(2)) <= len(lines):
+                return lines[int(m.group(2)) - 1].strip()
+        return None
+
+    def __str__(self):
+        line = self.failing_line()
+        return '{} failed in cell In[{}]{}: {}: {}\n  executed notebook up to the failure: {}'.format(
+            self.template.name, self.exec_count,
+            ', at `{}`'.format(line) if line else '', self.ename, self.evalue, self.failed_path)
+
+
+class _KernelTraceback(Exception):
+    """The kernel's traceback as plain text, chained under a NotebookCellError."""
 
 
 class TaskNotebook(TaskData):
     """Task whose output is an executed, parameterized notebook and its HTML report.
 
     Set ``notebook`` to a template path (relative to the working directory). The template needs a
-    cell tagged ``parameters``. ``run()`` injects every task parameter under its own name, the
-    keys of ``notebook_parameters()``, and ``oryxflow_inputs`` / ``oryxflow_task_id`` /
-    ``oryxflow_task_family``; the notebook reads its inputs with
-    ``oryxflow.report.inputLoad(task=...)``. The output is the executed ``.ipynb`` plus a
-    code-free ``.html``; ``outputLoad()`` returns the html path.
+    cell tagged ``parameters``, or a code cell whose first line is ``# parameters``. ``run()``
+    injects every task parameter under its own name, the keys of ``notebook_parameters()``, and
+    ``oryxflow_inputs`` / ``oryxflow_task_id`` / ``oryxflow_task_family``; the notebook reads its
+    inputs with ``oryxflow.report.inputLoad(task=...)``. The output is the executed ``.ipynb``
+    plus a code-free ``.html``; ``outputLoad()`` returns the html path.
 
-    The task reruns when its parameters, its upstream data, its Python code or the template's
-    cells change, and not when only the template's saved outputs change.
+    ``publish`` keeps a copy under a readable name, a path pattern filled with the parameters:
+    ``publish = 'reports/render/viz-{market}-performance.html'`` (a list for several; a
+    ``.ipynb`` pattern gets the executed notebook). ``report_title`` (same pattern form) sets the
+    html page title; it defaults to the published file's name, else the task family.
+
+    The task reruns when its parameters, its upstream data, its Python code (with auto
+    invalidation on), the template's cells, or the project modules the template imports change,
+    and not when only the template's saved outputs change. ``template_deps`` lists file globs to
+    watch instead of the imports (include ``'auto'`` to keep them too); ``None`` watches only the
+    template.
     """
     target_class = NotebookTarget
     target_ext = 'ipynb'
@@ -85,6 +283,10 @@ class TaskNotebook(TaskData):
     kernel_name = 'python3'
     html_template = 'classic'
     html_include_code = False
+    html_mathjax = False
+    template_deps = 'auto'
+    publish = None
+    report_title = None
 
     def notebook_parameters(self):
         """Extra values to inject into the template, merged over the task parameters."""
@@ -104,14 +306,116 @@ class TaskNotebook(TaskData):
             raise FileNotFoundError('template notebook not found: {}'.format(path))
         return path
 
+    def _code_parts(self):
+        """The pieces of the code identity, per file: ``template`` (cells digest, or
+        'missing'), ``python``, and when watched ``imports`` ({relpath: digest}) and ``deps``
+        ({glob: digest}). ``code_version()`` folds them; a run saves them in the executed
+        notebook so the next rerun can say which file changed."""
+        path = self._template_file()
+        parts = {'python': codehash.task_code_hash(self) if settings.code_version_auto else None}
+        if not path.exists():
+            parts['template'] = 'missing'
+            return parts
+        cells = _read_cells(path)
+        parts['template'] = _template_digest(cells)
+        deps = self.template_deps
+        if deps is None:
+            return parts
+        deps = [deps] if isinstance(deps, str) else list(deps)
+        if 'auto' in deps:
+            imports = [i for kind, src, _ in cells if kind == 'code' for i in _cell_imports(src)]
+            bases = list(dict.fromkeys([pathlib.Path.cwd(), path.parent]))
+            hashes = _local_imports(imports, bases, codehash._project_root(path))
+            if hashes:
+                parts['imports'] = hashes
+        globs = [d for d in deps if d != 'auto']
+        if globs:
+            parts['deps'] = {g: oryxflow.utils.hash_files(g) for g in globs}
+            parts['deps_all'] = oryxflow.utils.hash_files(*globs)
+        return parts
+
     def code_version(self):
-        """Code identity: the template's cells plus the task's own Python (when auto hashing is on).
+        """Code identity: the template's cells, the project modules it imports (or
+        ``template_deps``) and the task's own Python (when auto hashing is on). A key is
+        present only when it watches something, so a template without local imports keeps
+        the code identity it had before.
 
         A template that cannot be found counts as a change, so the task reports incomplete and
         ``run()`` then raises the error naming the path."""
-        path = self._template_file()
-        return {'template': _template_digest(path) if path.exists() else 'missing',
-                'python': codehash.task_code_hash(self) if settings.code_version_auto else None}
+        parts = self._code_parts()
+        out = {'template': parts['template'], 'python': parts['python']}
+        if 'imports' in parts:
+            out['imports'] = _digest(parts['imports'])
+        if 'deps_all' in parts:
+            out['deps'] = parts['deps_all']
+        return out
+
+    def code_change_detail(self):
+        """What changed since the saved report was made, for the rerun reason ("template dep
+        viz/report.py"), or None when the saved report predates this record."""
+        path = self.output().path
+        if not path.exists():
+            return None
+        try:
+            with open(path, encoding='utf-8') as f:
+                saved = (json.load(f).get('metadata') or {}).get('oryxflow', {}).get('code')
+        except (OSError, ValueError):
+            return None
+        if not saved:
+            return None
+        now = self._code_parts()
+        changed = []
+        if saved.get('template') != now.get('template'):
+            changed.append('template cells')
+        if saved.get('python') != now.get('python'):
+            changed.append('task code')
+        for key, label in (('imports', 'template dep'), ('deps', 'template_deps')):
+            old, new = saved.get(key) or {}, now.get(key) or {}
+            names = sorted(k for k in set(old) | set(new) if old.get(k) != new.get(k))
+            changed += ['{} {}'.format(label, n) for n in names]
+        if not changed:
+            return None
+        return ', '.join(changed[:3]) + ('...' if len(changed) > 3 else '')
+
+    def _param_values(self):
+        values = {name: getattr(self, name) for name, _ in self.get_params()}
+        values.update(self.notebook_parameters() or {})
+        return values
+
+    def _fill(self, pattern, what):
+        try:
+            return pattern.format(**self._param_values())
+        except (KeyError, IndexError) as e:
+            raise ValueError('{}.{} = {!r} names {} but the parameters are: {}'.format(
+                type(self).__name__, what, pattern, e,
+                ', '.join(sorted(self._param_values())) or 'none')) from None
+
+    def _publish_paths(self):
+        """The published copies for these parameters (relative to the working directory)."""
+        patterns = self.publish or []
+        patterns = [patterns] if isinstance(patterns, (str, pathlib.PurePath)) else list(patterns)
+        paths = []
+        for p in patterns:
+            path = pathlib.Path(self._fill(str(p), 'publish'))
+            if path.suffix.lower() not in ('.html', '.ipynb'):
+                raise ValueError('{}.publish: {} must end in .html or .ipynb'.format(
+                    type(self).__name__, path))
+            paths.append(path if path.is_absolute() else pathlib.Path.cwd() / path)
+        return paths
+
+    def _report_title(self):
+        """The html page title."""
+        if self.report_title:
+            return self._fill(self.report_title, 'report_title')
+        html = [p for p in self._publish_paths() if p.suffix.lower() == '.html']
+        return html[0].stem if html else self.task_family
+
+    def output(self):
+        target = super().output()
+        if isinstance(target, NotebookTarget):     # persists is rejected in run()
+            target.publish = self._publish_paths()
+            target.title = self._report_title()
+        return target
 
     def _parameters(self):
         params = {}
@@ -131,17 +435,40 @@ class TaskNotebook(TaskData):
         params['oryxflow_task_family'] = self.task_family
         return params
 
+    def _claim_publish(self, target):
+        build = core._traversal.requires
+        if build is None:
+            return
+        if _published['build'] is not build:
+            _published.update(build=build, paths={})
+        for p in target.publish:
+            owner = _published['paths'].setdefault(str(p.resolve()), self.task_id)
+            if owner != self.task_id:
+                raise ValueError(
+                    '{}: {} and {} both publish to {}; put the parameter that tells them apart '
+                    'in the publish pattern ({!r})'.format(
+                        type(self).__name__, owner, self.task_id, p, self.publish))
+
     def run(self):
         """Execute the template with papermill and save the notebook and its HTML report."""
         if self.persist != ['data']:
             raise ValueError('TaskNotebook has exactly one output; remove persists from {}'.format(
                 type(self).__name__))
         template = self._template_path()
-        if not _has_parameters_cell(template):
-            raise ValueError('template {} has no cell tagged "parameters"'.format(template))
+        nb = nbformat.read(str(template), as_version=4)
+        # papermill needs the parameters tag and a kernelspec; a template written with nbformat
+        # or tagged by a '# parameters' comment gets them in memory, the file is left alone
+        as_is = _has_parameters_tag(nb) and 'kernelspec' in nb.metadata
+        if 'kernelspec' not in nb.metadata:
+            nb.metadata['kernelspec'] = {'name': self.kernel_name, 'language': 'python',
+                                         'display_name': self.kernel_name}
+        if _parameters_cell(nb) is None:
+            raise ValueError('template {} has no parameters cell: tag a code cell "parameters", '
+                             'or start it with the line "# parameters"'.format(template))
         parameters = self._parameters()
 
         target = self.output()
+        self._claim_publish(target)
         target.path.parent.mkdir(parents=True, exist_ok=True)
         running = target.path.with_name(target.path.stem + '.running.ipynb')
         failed = target.path.with_name(target.path.stem + '.failed.ipynb')
@@ -152,17 +479,35 @@ class TaskNotebook(TaskData):
         self.logger.info("notebook {} -> {}", template, target.html_path)
         self.logger.debug("notebook parameters: {}", sorted(parameters))
         pm_logger = logging.getLogger('papermill')
-        drop = _DropOryxflowUnknown()
+        drop = _DropOryxflowUnknown(name for name, _ in self.get_params())
         pm_logger.addFilter(drop)
+        # the kernel inherits this environment: without it, every run prints the debugger's
+        # "frozen modules" note twice
+        pydevd = 'PYDEVD_DISABLE_FILE_VALIDATION' not in os.environ
+        if pydevd:
+            os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
         try:
-            pm.execute_notebook(str(template), str(running), parameters=parameters,
+            pm.execute_notebook(str(template) if as_is else nb, str(running), parameters=parameters,
                                 cwd=os.getcwd(), kernel_name=self.kernel_name, language='python',
                                 progress_bar=False, log_output=False,
                                 request_save_on_cell_execute=False)
+        except pm.PapermillExecutionError as e:
+            if running.exists():
+                running.replace(failed)
+            err = NotebookCellError(e, template, failed)
+            raise err from _KernelTraceback('\n'.join(err.traceback))
         except Exception:
             if running.exists():
                 running.replace(failed)
             raise
         finally:
             pm_logger.removeFilter(drop)
-        self.save(running, html_template=self.html_template, include_code=self.html_include_code)
+            if pydevd:
+                os.environ.pop('PYDEVD_DISABLE_FILE_VALIDATION', None)
+        executed = nbformat.read(str(running), as_version=4)
+        parts = self._code_parts()
+        parts.pop('deps_all', None)
+        executed.metadata['oryxflow'] = {'code': parts}
+        nbformat.write(executed, str(running))
+        self.save(running, html_template=self.html_template, include_code=self.html_include_code,
+                  mathjax=self.html_mathjax)

@@ -68,7 +68,7 @@ class SectorReturns(oryxflow.tasks.TaskPqPandas):
         self.save(...)   # your logic -- NOT exported
 ```
 
-Every `flow.run()` that includes an exported task rewrites `tasks_export.py` at the project root -- the folder that holds `data/`, so run your flow from there, as usual. For each exported task it holds a read-only copy: the docstring, the output format, `persists`, the parameters with their defaults, `external = True` (never run, only read) and the data path, written relative to the file so it works wherever the folders live. `built` lists the parameter values whose output exists:
+Every `flow.run()` that includes an exported task rewrites `tasks_export.py` at the project root -- the folder that holds `data/`, so run your flow from there, as usual. For each exported task it holds a read-only copy: the docstring, the output format, `persists`, the parameters with their defaults, `external = True` (never run, only read) and the data path, written relative to the file so it works wherever the folders live. `built` lists the parameter values your runs have built since the task was exported, as long as their output is still there (an output built before you added `export = True` appears once a run includes it). The values are plain Python values (`{'year': 2026, 'debug': False}`), so you can compare them or pass one straight to a `Workflow`:
 
 ```python
 class SectorReturns(oryxflow.tasks.TaskPqPandas):
@@ -85,7 +85,17 @@ class SectorReturns(oryxflow.tasks.TaskPqPandas):
 
 There is no `run()` in the file, so you can hand your outputs to someone without your code: share `tasks_export.py` with the `data/` folder (Git LFS above makes that easy).
 
-Commit `tasks_export.py`. It is your project's interface: when you rename an exported task, change its parameters or its `persists`, the diff shows it, and so does every project reading it. The file is only rewritten when its content changes, and `flow.run(export=False)` skips it for a throwaway run. To write it without running, call `oryxflow.FlowExport(save=True).generate()`.
+Commit `tasks_export.py`. It is your project's interface: when you rename an exported task, change its parameters or its `persists`, the diff shows it, and so does every project reading it. The file comes out the same whichever script you run it from (parameters are listed by name), and it is only rewritten when its content changes. To write it without running, call `oryxflow.FlowExport(save=True).generate()`.
+
+Adding or removing `export = True` doesn't rerun the task: it describes the task to other projects and doesn't change its output.
+
+A few things to know:
+
+- **Keep experiments out of `built`.** Other projects pick from `built`, so a run with experimental settings shouldn't land there. `flow.run(export=False)` skips the file for one run; `oryxflow.Workflow(Task, params, export=False)` does it for every run of that flow, so an experiment script can't forget.
+- **Run each entry point once.** A run writes the exported tasks of the task files it imported, and keeps the rest from the previous file. If you have several scripts (`run.py`, `run_report.py`) and one of them imports a task file the others don't, run it once after marking its tasks: until then the run warns `marked export = True, but this run did not import ...`.
+- **A failed update is reported.** If `tasks_export.py` can't be written, the run still succeeds but says so in `result.warnings` and the log, because other projects keep reading the previous file.
+- **Export the checked result.** Other projects read the exported task's own output, as soon as it is written. If your pipeline checks data before releasing it (a checks task that fails the run, columns stamped at publish time), mark the task *after* the checks with `export = True`: a task that requires the checks and saves the released data. Exporting the raw task upstream of the checks lets other projects read data that failed them.
+- **Your data folder is now shared.** Other projects read exported outputs from your `data/`. Resetting an exported task or cleaning up `data/` removes what they read: their next run stops with `external missing output` until you rebuild it.
 
 Export tasks whose output another project can read without your code: parquet, csv or json. A pickled object may need your classes to load.
 
@@ -107,13 +117,41 @@ oryxflow.Workflow(SectorReport, {'sector': 'retail'}).run()
 
 What that gets you:
 
-- **Parameters pass through the flow.** `SectorReport` takes on `sector` from `SectorReturns`, so you choose the sector the way you choose any parameter, including one flow per sector with `WorkflowMulti`. `exported.SectorReturns.built` lists what `project1` has built.
-- **Reruns follow upstream.** When `project1` recomputes `SectorReturns`, `SectorReport` reruns on its next run; when nothing changed there, nothing reruns here. (This uses `project1`'s code tracking, which is on by default.)
+- **Parameters pass through the flow.** `SectorReport` takes on `sector` from `SectorReturns`, so you choose the sector the way you choose any parameter, including one flow per sector with `WorkflowMulti`. `exported.SectorReturns.built` lists what `project1` has built. They also become part of the identity of `SectorReport` and of every task after it -- see the next section for parameters you'd rather fix once.
+- **Reruns follow upstream.** When `project1` recomputes `SectorReturns`, `SectorReport` reruns on its next run; when nothing changed there, nothing reruns here.
 - **Your flow's settings don't move them.** Imported tasks read `project1`'s data folder even when your `Workflow` sets `path=` or `env=`.
 - **No side effects on the other project.** Imported tasks never run from here. If an output isn't there, the run stops with `external missing output (looked for <path>); built: ...` -- pick a built value, or have `project1` build the one you need.
 - **No path work.** The export knows where `project1` keeps its files, and two projects whose files share a name (`tasks.py`, `cfg.py`) don't mix: the export imports nothing from `project1`. Task names must differ from your own tasks' names, though: a run that meets two different tasks with the same name and parameters stops with an error naming both.
 
-**Don't read another project's outputs by file path or run id.** Output file names come from the task's name and parameters, and the format has changed between releases, so a hard-coded path breaks silently, skips the file-format handling and never notices when the upstream project recomputes. A run id names one build in the event log, not an output -- the cache keeps the latest output per task, so there is no "that run's output" to fetch. A file path is fine for a consumer *outside* oryxflow (Excel, a BI tool); hand it `flow.outputPath(...)`, not a typed-in path.
+### Fixing the other project's parameters: `bind()` and `latest()`
+
+Often the other project's parameters aren't yours to choose per run: a data refresh date, a model's settings. Passing them through means copying each value into your own parameters, every task after it carries them in its identity, and each refresh upstream is an edit here. Fix them where you require the task instead:
+
+```python
+exported = oryxflow.FlowImport('../data-project')
+
+# the newest build -- follows each refresh without editing anything here
+@oryxflow.requires(exported.ReturnsMarket.latest())
+class MarketReport(oryxflow.tasks.TaskPqPandas):
+    ...
+
+# exact values, for a pinned, reproducible input
+@oryxflow.requires(exported.ReturnsMarket.bind(refresh='2026-10-18'))
+class MarketReportPinned(oryxflow.tasks.TaskPqPandas):
+    ...
+```
+
+- `bind(**values)` fixes those parameters. They aren't copied onto your task, so they don't enter your flow parameters or any of your task names, and the ones you don't bind still pass through.
+- `latest()` binds every parameter to the most recently written entry in `built`; `latest(model='prod')` picks only among builds with that value. It is decided when your script imports the tasks, so each run reads what is newest at that moment, and the event log records the exact input each task ran with (`deps` in its `task_ran` event).
+- Either way your task reruns when the input changes: a new build picked by `latest()`, a new value in `bind()`, or the other project recomputing that build.
+
+Switching an existing pipeline from passed-through parameters to `bind()`/`latest()` (or from reading a published file to `FlowImport`) changes your tasks' names, so they recompute once.
+
+### Published files or `FlowImport`?
+
+Some projects publish fixed files on purpose, for people and tools as well as for other flows (a shared folder of parquet files with a content stamp). Reading such a file is a valid contract: give the loading task a `code_version()` with `oryxflow.hash_files(path)` (see [Managing workflows](managing-workflows.md#when-your-task-depends-on-something-that-isnt-python)) so it reruns when the file changes. Use `FlowImport` when the other project exports the task you need: you get its parameters and built values, and reruns that follow its recomputes.
+
+**Don't read another project's task outputs (its `data/` folder) by file path or run id.** Output file names come from the task's name and parameters, and the format has changed between releases, so a hard-coded path breaks silently, skips the file-format handling and never notices when the upstream project recomputes. A run id names one build in the event log, not an output -- the cache keeps the latest output per task, so there is no "that run's output" to fetch. A file path is fine for a consumer *outside* oryxflow (Excel, a BI tool); hand it `flow.outputPath(...)`, not a typed-in path.
 
 ## Reading another flow's outputs (`attach_flow`)
 

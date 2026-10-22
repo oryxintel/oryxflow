@@ -14,7 +14,7 @@ nbformat = pytest.importorskip('nbformat')
 import oryxflow
 import oryxflow.state
 from oryxflow.tasks import TaskCache, TaskPqPandas
-from oryxflow.tasks.notebook import TaskNotebook
+from oryxflow.tasks.notebook import NotebookCellError, TaskNotebook
 
 DATA_SRC = ("import oryxflow.report as rpt\n"
             "df = rpt.inputLoad(task='up')\n"
@@ -318,3 +318,239 @@ def test_missing_template(env):
         oryxflow.run(NbReportMissing())
     assert isinstance(e.value.__cause__, FileNotFoundError)
     assert 'nope.ipynb' in str(e.value.__cause__)
+
+
+# -- code identity: modules the template imports -------------------------------------------
+
+IMPORT_SRC = ("import oryxflow.report as rpt\n"
+              "%matplotlib inline\n"
+              "from viz import helper\n"
+              "print('LABEL=' + helper.label())")
+
+
+class NbReportImports(TaskNotebook):
+    notebook = 'imports.ipynb'
+
+
+class NbReportDepsGlob(TaskNotebook):
+    notebook = 'imports.ipynb'
+    template_deps = ['notes/*.md']
+
+
+class NbReportDepsNone(TaskNotebook):
+    notebook = 'imports.ipynb'
+    template_deps = None
+
+
+def _viz(env, label='A', common='X = 1'):
+    (env / 'viz').mkdir(exist_ok=True)
+    (env / 'viz' / '__init__.py').write_text('', encoding='utf-8')
+    (env / 'viz' / 'common.py').write_text(common + '\n', encoding='utf-8')
+    (env / 'viz' / 'helper.py').write_text(
+        '"""Helpers."""\nfrom . import common\n\n\ndef label():\n    return {!r}\n'.format(label),
+        encoding='utf-8')
+
+
+@pytest.fixture
+def imports_env(env):
+    (env / 'pyproject.toml').write_text('', encoding='utf-8')   # the project root
+    _viz(env)
+    _template(env / 'imports.ipynb', data_src=IMPORT_SRC)
+    return env
+
+
+def test_imported_module_edit_reruns(imports_env):
+    env = imports_env
+    flow = oryxflow.Workflow(NbReportImports)
+    assert flow.run().did_run(NbReportImports)
+    assert 'LABEL=A' in _html(flow.get_task())
+    assert not flow.run().did_run(NbReportImports)
+
+    _viz(env, label='B')                                   # edit the imported helper
+    assert flow.run().did_run(NbReportImports)
+    assert 'LABEL=B' in _html(flow.get_task())
+
+    _viz(env, label='B', common='X = 2')                   # a module the helper imports
+    assert flow.run().did_run(NbReportImports)
+
+
+def test_imported_module_docstring_edit_does_not_rerun(imports_env):
+    env = imports_env
+    flow = oryxflow.Workflow(NbReportImports)
+    flow.run()
+    path = env / 'viz' / 'helper.py'
+    path.write_text(path.read_text(encoding='utf-8').replace('Helpers.', 'Plot helpers.'),
+                    encoding='utf-8')
+    assert not flow.run().did_run(NbReportImports)
+
+
+def test_task_modules_are_not_tracked(imports_env):
+    # a template imports the project's task module to build its inputs by hand; a task edit
+    # reaches the report through the data, so it must not rerun every report
+    env = imports_env
+    task_src = 'import oryxflow\n\n\nclass Up(oryxflow.tasks.TaskPqPandas):\n    x = {}\n'
+    (env / 'mytasks.py').write_text(task_src.format(1), encoding='utf-8')
+    _template(env / 'imports.ipynb', data_src='import mytasks\n' + IMPORT_SRC)
+    before = NbReportImports().code_version()
+    assert 'imports' in before                             # viz/helper.py is still watched
+    (env / 'mytasks.py').write_text(task_src.format(2), encoding='utf-8')
+    assert NbReportImports().code_version() == before
+
+
+def test_installed_imports_are_not_tracked(env):
+    # the fixture template imports only oryxflow, which is not part of the project
+    assert set(NbReport().code_version()) == {'template', 'python'}
+
+
+def test_template_deps_globs_and_none(imports_env):
+    env = imports_env
+    (env / 'notes').mkdir()
+    (env / 'notes' / 'a.md').write_text('one', encoding='utf-8')
+    flow = oryxflow.Workflow(NbReportDepsGlob)
+    flow.run()
+    assert 'imports' not in NbReportDepsGlob().code_version()
+    (env / 'notes' / 'a.md').write_text('two', encoding='utf-8')
+    assert flow.run().did_run(NbReportDepsGlob)
+    _viz(env, label='C')                                   # not watched: the list replaces auto
+    assert not flow.run().did_run(NbReportDepsGlob)
+
+    assert set(NbReportDepsNone().code_version()) == {'template', 'python'}
+
+
+# -- published copies and title ---------------------------------------------------------------
+
+class NbReportPublished(NbReport):
+    publish = ['out/report-x{x}.html', 'out/report-x{x}.ipynb']
+
+
+class NbReportTitled(NbReport):
+    report_title = 'Sales report, x={x}'
+
+
+class NbReportPublishFixed(NbReport):
+    publish = 'out/same.html'
+
+
+class NbReportPublishBad(NbReport):
+    publish = 'out/report-{region}.html'
+
+
+def test_publish_copies_and_title(env):
+    flow = oryxflow.Workflow(NbReportPublished, params={'x': 2})
+    flow.run()
+    html_copy = env / 'out' / 'report-x2.html'
+    assert html_copy.read_text(encoding='utf-8') == _html(flow.get_task())
+    assert '<title>report-x2</title>' in html_copy.read_text(encoding='utf-8')
+    assert nbformat.read(str(env / 'out' / 'report-x2.ipynb'), as_version=4).cells
+    assert not list((env / 'out').glob('*.tmp'))
+
+    html_copy.unlink()                                     # a deleted deliverable is rebuilt
+    assert flow.run().did_run(NbReportPublished)
+    assert html_copy.exists()
+
+
+def test_title(env):
+    oryxflow.run(NbReport())
+    assert '<title>NbReport</title>' in _html(NbReport())
+    oryxflow.run(NbReportTitled())
+    assert '<title>Sales report, x=1</title>' in _html(NbReportTitled())
+
+
+def test_publish_guards(env):
+    # one build, two reports, one file: refused
+    with pytest.raises(RuntimeError) as e:
+        oryxflow.run([NbReportPublishFixed(x=1), NbReportPublishFixed(x=2)])
+    assert 'same.html' in str(e.value.__cause__) and 'publish pattern' in str(e.value.__cause__)
+    # a later build replacing it (new parameters, say a new quarter) is fine
+    oryxflow.run(NbReportPublishFixed(x=3))
+    assert (env / 'out' / 'same.html').exists()
+
+    with pytest.raises(ValueError) as e:
+        NbReportPublishBad().output()
+    assert 'region' in str(e.value) and 'x' in str(e.value)
+
+
+# -- failures and template authoring ----------------------------------------------------------
+
+def test_failure_message_is_clean(env):
+    _template(env / 'template.ipynb', extra_cells=[
+        nbformat.v4.new_code_cell("y = 1\nraise KeyError('pulled_at')")])
+    task = NbReport()
+    with pytest.raises(RuntimeError) as e:
+        oryxflow.run(task)
+    err = e.value.__cause__
+    assert isinstance(err, NotebookCellError)
+    msg = str(err)
+    assert '\x1b' not in msg and '\x1b' not in str(e.value)
+    assert "raise KeyError('pulled_at')" in msg
+    assert "KeyError: 'pulled_at'" in msg
+    assert 'failed.ipynb' in msg and err.failed_path.exists()
+    assert len(msg.splitlines()) == 2
+    assert '\x1b' not in str(err.__cause__) and 'pulled_at' in str(err.__cause__)
+
+
+def test_parameters_comment_instead_of_tag(env):
+    nb = nbformat.v4.new_notebook()
+    nb.cells = [nbformat.v4.new_code_cell('# parameters\nx = 1\noryxflow_inputs = None'),
+                nbformat.v4.new_code_cell(DATA_SRC)]
+    nbformat.write(nb, str(env / 'template.ipynb'))
+    flow = oryxflow.Workflow(NbReport, params={'x': 2})
+    flow.run()
+    assert 'SUM=6' in _html(flow.get_task())
+    saved = nbformat.read(str(env / 'template.ipynb'), as_version=4)
+    assert 'tags' not in saved.cells[0].metadata               # the file itself is left alone
+
+
+def test_template_without_kernelspec_runs(env):
+    assert 'kernelspec' not in nbformat.read(str(env / 'template.ipynb'), as_version=4).metadata
+    oryxflow.run(NbReport())
+    assert 'SUM=3' in _html(NbReport())
+
+
+class NbReportInherited(NbReport):
+    region_code = oryxflow.Parameter(default='r1')     # inherited, not declared by the template
+
+
+def test_no_unknown_parameter_warning_for_task_parameters(env, monkeypatch):
+    monkeypatch.delenv('PYDEVD_DISABLE_FILE_VALIDATION', raising=False)
+    capture = _Capture()
+    logger = logging.getLogger('papermill')
+    logger.addHandler(capture)
+    try:
+        oryxflow.run(NbReportInherited())
+    finally:
+        logger.removeHandler(capture)
+    assert not [m for m in capture.messages if 'Passed unknown parameter' in m]
+    import os
+    assert 'PYDEVD_DISABLE_FILE_VALIDATION' not in os.environ     # set for the kernel only
+
+
+def test_rerun_reason_names_the_changed_file(imports_env):
+    env = imports_env
+    flow = oryxflow.Workflow(NbReportImports)
+    flow.run()
+    _viz(env, label='B')
+    task = flow.get_task()
+    result = flow.run()
+    assert result.reasons[task.task_id] == 'code change (template dep viz/helper.py)'
+
+    _template(env / 'imports.ipynb', data_src=IMPORT_SRC + "\nprint('more')")
+    assert flow.run().reasons[task.task_id] == 'code change (template cells)'
+
+
+class NbReportMath(NbReport):
+    html_mathjax = True
+
+
+def test_dollar_amounts_stay_text(env):
+    _template(env / 'template.ipynb', extra_cells=[
+        nbformat.v4.new_markdown_cell('Sales rose from $1.2bn to $3bn.'),
+        nbformat.v4.new_code_cell("from IPython.display import Markdown\nMarkdown('Cost $5m vs $7m')")])
+    oryxflow.run(NbReport())
+    text = _html(NbReport())
+    assert 'MathJax.Hub' not in text and 'latest.js' not in text   # no formula rendering
+    assert '$1.2bn to $3bn' in text and '$5m vs $7m' in text
+    assert '<title>NbReport</title>' in text
+
+    oryxflow.run(NbReportMath())                            # opt in for real formulas
+    assert 'MathJax.Hub' in _html(NbReportMath())

@@ -80,6 +80,57 @@ def mtime_guard_trips(task, hashes):
         return False
 
 
+def comparable_record(task, rec):
+    """``rec`` in the current record version's terms, or None when it can't be compared with
+    the code. A record an older oryxflow wrote is checked by hashing the current code with
+    that version's rules (``codehash.rules_of``): the same hashes mean the code is unchanged
+    since the record, so the record gets the current hashes; different ones mean an edit, so
+    the stored values stay and the normal comparison sees the change. Same for a computed
+    ``code_version()`` token, which may fold code hashes."""
+    from oryxflow.core import _resolve_code_version
+    v = rec.get('v')
+    if v == state.RECORD_V:
+        return rec
+    if v not in codehash.LEGACY_VERSIONS or (v == 4 and rec.get('py') != codehash.LEGACY_PY_TAG):
+        return None
+    try:
+        with codehash.rules_of(v):
+            old_hashes = codehash.task_hashes(task)
+            old_token = _resolve_code_version(task)
+        new_hashes = codehash.task_hashes(task)
+        new_token = _resolve_code_version(task)
+    except Exception as e:
+        logger.debug("comparing the v{} record of {} failed: {}: {}",
+                     v, task.task_id, type(e).__name__, e)
+        return None
+    out = dict(rec)
+    out.pop('py', None)
+    out['v'] = state.RECORD_V
+    if (rec.get('source_hashes') or {}) == old_hashes:
+        out['source_hashes'] = new_hashes
+    if rec.get('code_version') == old_token:
+        out['code_version'] = new_token
+    return out
+
+
+def _moved_deps(stored, task):
+    """Which inputs differ from the record: a dependency rewritten since, or a different one
+    (an imported task bound to other parameters -- another task id). '' when unknown."""
+    if not stored or not hasattr(task, '_dep_ids'):
+        return ''
+    current = task._dep_ids()
+    new = sorted(t for t in current if t not in stored)
+    old = sorted(t for t in stored if t not in current)
+    rewritten = sorted(t for t in current if t in stored and stored[t] != current[t])
+    parts = []
+    if new or old:
+        parts.append('now {}'.format(', '.join(new)) + (' (was {})'.format(', '.join(old))
+                                                         if old else ''))
+    if rewritten:
+        parts.append('rewritten {}'.format(', '.join(rewritten)))
+    return '; '.join(parts)
+
+
 def make_record(task, hashes, output_id, duration=None):
     # one shape for every stamp: both dimensions (own hashes + dep output-identity
     # fold) recorded on every write regardless of mode, plus the live fingerprint
@@ -90,6 +141,8 @@ def make_record(task, hashes, output_id, duration=None):
             'code_version': _resolve_code_version(task),
             'source_hashes': hashes, 'output_id': output_id,
             'dep_state': task._dep_state() if hasattr(task, '_dep_state') else None,
+            # per dep, so a rerun reason can name the input that moved
+            'dep_ids': task._dep_ids() if hasattr(task, '_dep_ids') else None,
             'duration_s': duration,
             'v': state.RECORD_V,
             'ts': datetime.now(timezone.utc).isoformat()}
@@ -104,6 +157,38 @@ class Advisor:
         self.emit = emit
         self.warned = []      # unacknowledged code-change warning strings (RunResult)
         self.advised = set()  # task_ids already checked this build
+        self.unverified = {}  # why -> [task_id] kept without comparing code (see finish)
+
+    def _unverified(self, task, why, note):
+        # kept complete without any way to compare its code: one summary warning per build
+        # (finish), plus a per-task event so print_status() lists it until rerun or accepted
+        self.unverified.setdefault(why, []).append(task.task_id)
+        self.emit('code_warning',
+                  {'task_id': task.task_id, 'family': task.task_family,
+                   'changed_files': [note], 'kind': why,
+                   'code_version': None}, level='warning')
+
+    def finish(self):
+        """After the build: one warning naming every task kept without comparing its code."""
+        texts = {
+            'old_record': (
+                "{n} task(s) have code-status records from an older oryxflow or another "
+                "Python version, which can't be compared with the current code, so they were "
+                "kept without rerunning: {ids}. If you edited one since its last run, rerun "
+                "it: flow.reset(<Task>) (flow.reset_downstream(<Task>) for everything after "
+                "it)."),
+        }
+        for why, ids in self.unverified.items():
+            shown = ', '.join(ids[:10]) + (' ... and {} more'.format(len(ids) - 10)
+                                           if len(ids) > 10 else '')
+            msg = 'oryxflow: ' + texts[why].format(n=len(ids), ids=shown)
+            if msg not in self.warned:
+                self.warned.append(msg)
+            try:
+                _stdwarnings.warn(msg, StalenessWarning)
+            except Exception:
+                pass
+            logger.warning("{}", msg)
 
     def warn(self, task, msg, changed_files):
         # decision 12a: the advisory must be visible without enable_logging(), so it
@@ -155,6 +240,10 @@ class Advisor:
         if tid in self.advised:
             return
         self.advised.add(tid)
+        if getattr(task, 'external', False):
+            # produced elsewhere (another project's export): its record belongs to the
+            # producer, compared against the producer's code -- never checked or stamped here
+            return
         fp = task._code_fingerprint
         if fp is None:
             # fingerprint folds deps, so None means the entire upstream subtree is
@@ -189,15 +278,23 @@ class Advisor:
                 self._put(dirpath, tid,
                           make_record(task, hashes, uuid.uuid4().hex[:16]))
             return
-        if rec.get('v') != state.RECORD_V:
-            # record format changed -> stored hashes aren't comparable; converge
-            # silently at grandfather trust level, PRESERVING output_id (and the
-            # recorded run cost) so downstream dep_state folds don't move
-            self._put(dirpath, tid,
-                      make_record(task, hashes_of(task),
-                                  rec.get('output_id') or uuid.uuid4().hex[:16],
-                                  duration=rec.get('duration_s')))
-            return
+        old_version = rec.get('v') != state.RECORD_V
+        if old_version:
+            translated = comparable_record(task, rec)
+            if translated is None:
+                # can't be compared with the code at all: keep it (grandfather trust),
+                # PRESERVING output_id (and the recorded run cost) so downstream dep_state
+                # folds don't move -- and say so, naming the task (finish)
+                self._unverified(task, 'old_record',
+                                 '<not compared: record from an older oryxflow or Python>')
+                self._put(dirpath, tid,
+                          make_record(task, hashes_of(task),
+                                      rec.get('output_id') or uuid.uuid4().hex[:16],
+                                      duration=rec.get('duration_s')))
+                return
+            # compared exactly: an unchanged task is re-stamped below, an edited one that is
+            # still complete (pin, expensive guard) warns and keeps its old record
+            rec = translated
         stored = rec.get('source_hashes') or {}
         current = hashes_of(task)
         own = _resolve_code_version(task)
@@ -230,6 +327,15 @@ class Advisor:
                         task.task_family, ', '.join(changed),
                         own, task.task_family),
                     changed)
+            elif not settings.code_version_auto:
+                self.warn(task, (
+                    "task {}: {} changed since cached run -- reusing cached output, "
+                    "because automatic code invalidation is off "
+                    "(settings.code_version_auto = False). reset() to recompute, "
+                    "oryxflow.accept_code({}) if output-equivalent, or set code_version "
+                    "to manage this task explicitly.").format(
+                        task.task_family, ', '.join(changed), task.task_family),
+                    changed)
             else:
                 self.warn(task, (
                     "task {}: {} changed since cached run; last run took {:.0f}s -- "
@@ -242,11 +348,11 @@ class Advisor:
                         getattr(settings, 'code_version_auto_expensive_s', None),
                         task.task_family),
                     changed)
-        elif (rec.get('fingerprint') != fp
+        elif (old_version or rec.get('fingerprint') != fp
                 or rec.get('code_version') != own):
             # hashes match but the record predates a mode flip (pin added/removed with
-            # unchanged code) or an upstream toggle -- converge silently, preserving
-            # output_id and run cost
+            # unchanged code), an upstream toggle or this record version -- converge
+            # silently, preserving output_id and run cost
             self._put(dirpath, tid,
                       make_record(task, current,
                                   rec.get('output_id') or uuid.uuid4().hex[:16],
@@ -266,8 +372,19 @@ class Advisor:
         if fp is not None:
             rec = state.get_record(dirpath, task.task_id)
             if rec is not None:
+                older = rec.get('v') != state.RECORD_V
+                rec = comparable_record(task, rec) or rec
                 own = _resolve_code_version(task)
                 if rec.get('code_version') != own:
+                    # a task whose computed code_version folds files can name the one that
+                    # moved (TaskNotebook: "template dep viz/report.py")
+                    detail = getattr(task, 'code_change_detail', None)
+                    try:
+                        detail = detail() if callable(detail) else None
+                    except Exception:
+                        detail = None
+                    if detail:
+                        return 'code change ({})'.format(detail)
                     return 'code change ({} -> {})'.format(
                         rec.get('code_version') if rec.get('code_version') is not None
                         else 'auto',
@@ -281,7 +398,16 @@ class Advisor:
                     if changed:
                         shown = ', '.join(changed[:3]) + ('...' if len(changed) > 3 else '')
                         return 'code change (auto: {})'.format(shown)
-                return 'upstream rerun'
+                # own code unchanged: the dependency fold moved. Name an upstream rerun only
+                # when one happened in this build -- otherwise say what did happen
+                if any(d.task_id in reasons or d in ran for d in flatten(task.requires())):
+                    return 'upstream rerun'
+                if older:
+                    return 'dependency check re-based (record from an older oryxflow)'
+                moved = _moved_deps(rec.get('dep_ids'), task)
+                if moved:
+                    return 'upstream output changed since last run: {}'.format(moved)
+                return 'upstream output changed since last run'
         if any(d.task_id in reasons or d in ran for d in flatten(task.requires())):
             return 'upstream rerun'
         return 'upstream rerun' if flatten(task.requires()) else 'output missing'
@@ -321,12 +447,14 @@ def accept_code(task=None):
     now = datetime.now(timezone.utc).isoformat()
     accepted = []
 
-    def _restamp(dirpath, task_id, rec, hashes, family, fingerprint=None, dep_state=None):
+    def _restamp(dirpath, task_id, rec, hashes, family, fingerprint=None, dep_state=None,
+                 dep_ids=None):
         rec = dict(rec)   # preserves output_id: accepting must not ripple downstream
         if fingerprint is not None:
             rec['fingerprint'] = fingerprint
         if dep_state is not None:
             rec['dep_state'] = dep_state
+            rec['dep_ids'] = dep_ids
         rec['source_hashes'] = hashes
         rec.pop('py', None)   # pre-v5 interpreter tag
         rec['v'] = state.RECORD_V
@@ -358,6 +486,8 @@ def accept_code(task=None):
         if t.task_id in seen:
             return
         seen.add(t.task_id)
+        if getattr(t, 'external', False):
+            return    # another project's record: only its producer may accept its code
         # every ingredient degrades independently: the fingerprint folds deps
         # recursively (so one broken requires() upstream would poison it), and a
         # broken requires() must not stop THIS node's blessing -- fingerprint and
@@ -378,8 +508,9 @@ def accept_code(task=None):
             _walk(dep)
         try:
             dep_state = t._dep_state() if hasattr(t, '_dep_state') else None
+            dep_ids = t._dep_ids() if hasattr(t, '_dep_ids') else None
         except Exception:
-            dep_state = None
+            dep_state = dep_ids = None
         try:
             dirpath = t._resolved_dirpath() if hasattr(t, '_resolved_dirpath') \
                 else settings.dirpath
@@ -395,7 +526,7 @@ def accept_code(task=None):
                        'code_version': core._resolve_code_version(t),
                        'duration_s': None}
             _restamp(dirpath, t.task_id, rec, codehash.task_hashes(type(t)),
-                     t.task_family, fingerprint=fp, dep_state=dep_state)
+                     t.task_family, fingerprint=fp, dep_state=dep_state, dep_ids=dep_ids)
         except Exception:
             skipped.append(t.task_id)
 

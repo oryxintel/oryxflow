@@ -18,16 +18,19 @@ import time
 from pathlib import Path, PurePosixPath
 
 # record schema version, stamped as 'v' in every record. Bump when the fingerprint
-# formula changes: _code_ok treats a record with a different/missing v as unverifiable
-# (complete) and build()'s advisory sweep silently re-stamps it -- a one-time
-# re-baseline at the trust level of grandfathering, never a mass rerun.
+# formula changes. A record of a version codehash.rules_of() reproduces (LEGACY_VERSIONS) is
+# compared exactly by re-hashing the code with that version's rules
+# (codecheck.comparable_record); any other version can't be compared, so it is trusted
+# (complete) and re-stamped by build()'s advisory sweep, which names each such task in one
+# warning (Advisor.finish) -- never a mass rerun, never silent.
 # v2: code_version_auto (fingerprint may fold the AST auto token).
 # v3: symbol-level source_hashes ('<relpath>::<symbol>' keys, codehash.task_hashes) --
 #     v2 file-level records converge silently via the mismatch path above.
 # v4: code_version may be a method; records store the RESOLVED token.
 # v5: interpreter-stable AST dump (codehash._dump), so hashes compare across Python minor
 #     versions; the per-record 'py' tag is gone.
-RECORD_V = 5
+# v6: class-body metadata attributes (export, export_source, built) are left out of the hash.
+RECORD_V = 6
 
 # str(store path) -> dict of records, invalidated on write
 _cache = {}

@@ -13,7 +13,10 @@ stable across Python versions), so comments,
 docstrings, formatting edits and adding/removing/bumping a ``code_version`` produce no hash
 change (it is a token, compared as its own record dimension -- never a source edit). That
 covers both forms: a ``code_version = '3'`` pin line and a ``def code_version(self)`` whose
-return value is hashed as the token, so editing the method's body moves the token alone.
+return value is hashed as the token, so editing the method's body moves the token alone. The
+class-body metadata attributes ``export``, ``export_source`` and ``built`` are stripped too
+(``_METADATA_ATTRS``): they describe the task to other projects, never its output.
+``rules_of(v)`` reproduces an older record version's rules, so its records compare exactly.
 What symbol analysis can't carve up degrades conservatively: module side-effect
 statements share one ``<relpath>::<module>`` bucket, unresolvable/star-imported modules and
 non-top-level classes fall back to whole-file hashes (``<relpath>::*`` /
@@ -29,6 +32,7 @@ Task class) mean "inert / no warning", never a false rerun and never a false gre
 """
 
 import ast
+import contextlib
 import os
 import sys
 import hashlib
@@ -114,6 +118,49 @@ def unfreeze():
     _freeze_depth = max(0, _freeze_depth - 1)
 
 
+# The hashing rules in force: the AST dump, and whether class-body metadata attributes
+# (_METADATA_ATTRS) are left out. rules_of() swaps in an older record version's rules so a
+# record an older oryxflow wrote can be compared exactly (codecheck.comparable_record).
+_active_dump = _dump
+_strip_metadata = True
+
+# per-file and walk caches hold digests made under one set of rules, so each rule set
+# gets its own
+_RULE_CACHES = ('_hash_cache', '_symindex_cache', '_module_cache', '_task_hash_cache',
+                '_freeze_validated')
+_rule_cache_store = {}   # record version -> {cache name: dict}
+
+# record versions whose hashes rules_of() reproduces. v4: plain ast.dump, whose output
+# differs across Python minor versions (the record's 'py' tag says which one wrote it).
+# v5: _dump. Both hashed the metadata attributes.
+LEGACY_VERSIONS = (4, 5)
+LEGACY_PY_TAG = '{}.{}'.format(sys.version_info.major, sys.version_info.minor)
+
+
+def _hash_dump(node):
+    return _active_dump(node)
+
+
+@contextlib.contextmanager
+def rules_of(version):
+    """Hash with the rules of code-status record version ``version`` (one of
+    ``LEGACY_VERSIONS``) inside the block."""
+    global _active_dump, _strip_metadata
+    if version not in LEGACY_VERSIONS:
+        raise ValueError('no hashing rules kept for record version {}'.format(version))
+    saved = {name: globals()[name] for name in _RULE_CACHES}
+    saved_rules = (_active_dump, _strip_metadata)
+    store = _rule_cache_store.setdefault(version, {name: {} for name in _RULE_CACHES})
+    globals().update(store)
+    _active_dump = ast.dump if version == 4 else _dump
+    _strip_metadata = False
+    try:
+        yield
+    finally:
+        globals().update(saved)
+        _active_dump, _strip_metadata = saved_rules
+
+
 def _walk_cache_get(cache, key):
     """Cached multi-file walk result if still fresh: inside a build (freeze) an entry
     already validated this generation is trusted outright, otherwise every recorded
@@ -185,6 +232,21 @@ def _is_code_version_stmt(stmt):
     return False
 
 
+# class attributes that describe a task to other projects and never change its output: adding
+# `export = True` must not rerun the task and everything downstream of it. `export_source` and
+# `built` are what tasks_export.py writes on each imported class.
+_METADATA_ATTRS = ('export', 'export_source', 'built')
+
+
+def _is_metadata_stmt(stmt):
+    if isinstance(stmt, ast.Assign):
+        return (len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name)
+                and stmt.targets[0].id in _METADATA_ATTRS)
+    if isinstance(stmt, ast.AnnAssign):
+        return isinstance(stmt.target, ast.Name) and stmt.target.id in _METADATA_ATTRS
+    return False
+
+
 def _strip_docstrings(tree):
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -199,7 +261,8 @@ def _strip_docstrings(tree):
             # record comparison), never a source change -- otherwise opting in could
             # never be free (the opt-in edit would always move the hash it is
             # compared against)
-            node.body = [s for s in node.body if not _is_code_version_stmt(s)]
+            node.body = [s for s in node.body if not _is_code_version_stmt(s)
+                         and not (_strip_metadata and _is_metadata_stmt(s))]
     return tree
 
 
@@ -222,7 +285,7 @@ def file_hash(path):
         return None
     try:
         tree = _strip_docstrings(ast.parse(src))
-        digest = hashlib.md5(_dump(tree).encode('utf-8')).hexdigest()
+        digest = hashlib.md5(_hash_dump(tree).encode('utf-8')).hexdigest()
     except SyntaxError:
         digest = hashlib.md5(src).hexdigest()
     except Exception:
@@ -507,7 +570,7 @@ def _symbol_index(path):
             side.append(stmt)
             names = _bound_names(stmt)
             _bind_imports(stmt)
-        digest = hashlib.md5(_dump(stmt).encode('utf-8')).hexdigest()
+        digest = hashlib.md5(_hash_dump(stmt).encode('utf-8')).hexdigest()
         stmt_refs = frozenset(_collect_refs(stmt))
         for n in names:
             # a name bound by SEVERAL statements (`def f` then `f = cache(f)`,
@@ -520,7 +583,7 @@ def _symbol_index(path):
             refs[n] = refs.get(n, frozenset()) | stmt_refs
     side_digest = None
     if side:
-        blob = '|'.join(_dump(s) for s in side)
+        blob = '|'.join(_hash_dump(s) for s in side)
         side_digest = hashlib.md5(blob.encode('utf-8')).hexdigest()
     index = {'symbols': symbols, 'refs': refs, 'imports': imports,
              'stars': tuple(stars), 'sideeffect': side_digest}
@@ -597,7 +660,7 @@ def callable_hashes(*fns):
             continue
         rel = os.path.relpath(str(Path(start).resolve()), root).replace(os.sep, '/')
         hashes['{}::{}()'.format(rel, fn.__qualname__)] = hashlib.md5(
-            _dump(tree).encode('utf-8')).hexdigest()
+            _hash_dump(tree).encode('utf-8')).hexdigest()
         roots.setdefault(root, []).append(
             (str(Path(start).resolve()), mod.__name__, frozenset(_collect_refs(tree))))
     for root, seeds in roots.items():
