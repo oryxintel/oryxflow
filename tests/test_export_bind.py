@@ -261,3 +261,30 @@ def test_output_load_takes_an_instance(projects):
     oryxflow.Workflow(Returns, {'refresh': D10, 'sector': 'retail'}).run()
     df = flow.outputLoad(Returns(refresh=D10, sector='retail'))
     assert df.sector.tolist() == ['retail']
+
+
+def test_rerun_reason_names_the_rebound_import(projects):
+    # a consumer pinned to another build of an imported task says which one, not just
+    # "upstream output changed"
+    p1, p2 = projects
+    Returns = _producer(p1)
+    oryxflow.Workflow(Returns, {'refresh': D7}).run()
+    oryxflow.Workflow(Returns, {'refresh': D10}).run()
+
+    def consumer(value):
+        exported = oryxflow.FlowImport(p1)
+
+        @oryxflow.requires(exported.Returns.bind(refresh=value))
+        class Uses(oryxflow.tasks.TaskPqPandas):
+            path = str(p2 / 'data')
+
+            def run(self):
+                self.save(self.inputLoad())
+        return Uses
+
+    oryxflow.Workflow(consumer('2026-07-18')).run()
+    Uses = consumer('2026-10-18')
+    r = oryxflow.Workflow(Uses).run()
+    reason = r.reasons[Uses().task_id]
+    assert reason.startswith('upstream output changed since last run: now Returns_')
+    assert Returns(refresh=D10).task_id in reason and Returns(refresh=D7).task_id in reason

@@ -550,7 +550,7 @@ class TestAutoInvalidation:
         r2 = oryxflow.run(b)
         assert r2.did_run(mod_b.TaskB)
         assert not r2.did_run(mod_a.TaskA)
-        assert r2.reasons[b.task_id] == 'upstream output changed since last run'
+        assert r2.reasons[b.task_id].startswith('upstream output changed since last run: rewritten TaskA')
 
     def test_auto_precedence_explicit_wins_then_resumes(self, env, monkeypatch):
         # code_version present -> it stays the authority (edit warns, doesn't rerun);

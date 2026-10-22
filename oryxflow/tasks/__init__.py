@@ -32,6 +32,10 @@ def _regroup(data, groups):
     return out
 
 
+def _fold(ids):
+    return hashlib.md5('|'.join(sorted(ids)).encode('utf-8')).hexdigest()[:16]
+
+
 def _output_mtime(task):
     """Newest modification time (ns) of a task's local output files, '' when unknown."""
     try:
@@ -215,6 +219,9 @@ class TaskData(core.Task):
         return False
 
     def _dep_state(self, legacy=False):
+        return _fold(self._dep_ids(legacy).values())
+
+    def _dep_ids(self, legacy=False):
         # folded output identity of the direct deps: each dep's record output_id, a fresh
         # id per actual materialization that re-stamps and accept_code PRESERVE. Downstream
         # therefore reruns when an upstream actually recomputed -- and only then: mode
@@ -222,7 +229,7 @@ class TaskData(core.Task):
         # propagates even across separate builds. legacy=True: the 26.10.22 fold, where a
         # dep with no record counted as '' (see _code_ok).
         from oryxflow import state
-        ids = []
+        ids = {}   # dep task_id -> its output identity
         for d in self.deps():
             dirpath = d._resolved_dirpath() if hasattr(d, '_resolved_dirpath') \
                 else settings.dirpath
@@ -236,8 +243,8 @@ class TaskData(core.Task):
                 # when that output is rewritten (or a binding picks another build). A '' here
                 # left a tracked task (a TaskNotebook, a pinned task) stale behind it.
                 oid = 'ext:{}:{}'.format(d.task_id, _output_mtime(d))
-            ids.append(oid or '')
-        return hashlib.md5('|'.join(sorted(ids)).encode('utf-8')).hexdigest()[:16]
+            ids[d.task_id] = oid or ''
+        return ids
 
     def _resolved_dirpath(self):
         # the data directory this task's artifacts (and code-invalidation records) live in

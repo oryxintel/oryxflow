@@ -113,6 +113,24 @@ def comparable_record(task, rec):
     return out
 
 
+def _moved_deps(stored, task):
+    """Which inputs differ from the record: a dependency rewritten since, or a different one
+    (an imported task bound to other parameters -- another task id). '' when unknown."""
+    if not stored or not hasattr(task, '_dep_ids'):
+        return ''
+    current = task._dep_ids()
+    new = sorted(t for t in current if t not in stored)
+    old = sorted(t for t in stored if t not in current)
+    rewritten = sorted(t for t in current if t in stored and stored[t] != current[t])
+    parts = []
+    if new or old:
+        parts.append('now {}'.format(', '.join(new)) + (' (was {})'.format(', '.join(old))
+                                                         if old else ''))
+    if rewritten:
+        parts.append('rewritten {}'.format(', '.join(rewritten)))
+    return '; '.join(parts)
+
+
 def make_record(task, hashes, output_id, duration=None):
     # one shape for every stamp: both dimensions (own hashes + dep output-identity
     # fold) recorded on every write regardless of mode, plus the live fingerprint
@@ -123,6 +141,8 @@ def make_record(task, hashes, output_id, duration=None):
             'code_version': _resolve_code_version(task),
             'source_hashes': hashes, 'output_id': output_id,
             'dep_state': task._dep_state() if hasattr(task, '_dep_state') else None,
+            # per dep, so a rerun reason can name the input that moved
+            'dep_ids': task._dep_ids() if hasattr(task, '_dep_ids') else None,
             'duration_s': duration,
             'v': state.RECORD_V,
             'ts': datetime.now(timezone.utc).isoformat()}
@@ -384,6 +404,9 @@ class Advisor:
                     return 'upstream rerun'
                 if older:
                     return 'dependency check re-based (record from an older oryxflow)'
+                moved = _moved_deps(rec.get('dep_ids'), task)
+                if moved:
+                    return 'upstream output changed since last run: {}'.format(moved)
                 return 'upstream output changed since last run'
         if any(d.task_id in reasons or d in ran for d in flatten(task.requires())):
             return 'upstream rerun'
@@ -424,12 +447,14 @@ def accept_code(task=None):
     now = datetime.now(timezone.utc).isoformat()
     accepted = []
 
-    def _restamp(dirpath, task_id, rec, hashes, family, fingerprint=None, dep_state=None):
+    def _restamp(dirpath, task_id, rec, hashes, family, fingerprint=None, dep_state=None,
+                 dep_ids=None):
         rec = dict(rec)   # preserves output_id: accepting must not ripple downstream
         if fingerprint is not None:
             rec['fingerprint'] = fingerprint
         if dep_state is not None:
             rec['dep_state'] = dep_state
+            rec['dep_ids'] = dep_ids
         rec['source_hashes'] = hashes
         rec.pop('py', None)   # pre-v5 interpreter tag
         rec['v'] = state.RECORD_V
@@ -483,8 +508,9 @@ def accept_code(task=None):
             _walk(dep)
         try:
             dep_state = t._dep_state() if hasattr(t, '_dep_state') else None
+            dep_ids = t._dep_ids() if hasattr(t, '_dep_ids') else None
         except Exception:
-            dep_state = None
+            dep_state = dep_ids = None
         try:
             dirpath = t._resolved_dirpath() if hasattr(t, '_resolved_dirpath') \
                 else settings.dirpath
@@ -500,7 +526,7 @@ def accept_code(task=None):
                        'code_version': core._resolve_code_version(t),
                        'duration_s': None}
             _restamp(dirpath, t.task_id, rec, codehash.task_hashes(type(t)),
-                     t.task_family, fingerprint=fp, dep_state=dep_state)
+                     t.task_family, fingerprint=fp, dep_state=dep_state, dep_ids=dep_ids)
         except Exception:
             skipped.append(t.task_id)
 

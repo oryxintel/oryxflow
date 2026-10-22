@@ -196,6 +196,8 @@ def _project_classes(root):
     while stack:
         cls = stack.pop()
         stack.extend(cls.__subclasses__())
+        if cls.__module__.startswith('oryxflow_import_'):
+            continue     # another project's export loaded with FlowImport, not this project's
         mod = sys.modules.get(cls.__module__)
         f = getattr(mod, '__file__', None)
         if not f or getattr(mod, cls.__name__, None) is not cls:
@@ -539,7 +541,8 @@ def auto_export(tasks):
                 text = path.read_text(encoding='utf-8')
             except OSError:
                 return []
-            if not any('\nclass {}('.format(type(t).__name__) in text for t in dag):
+            if not any('\nclass {}('.format(type(t).__name__) in text for t in dag
+                       if not getattr(t, 'external', False)):
                 return []
         export = FlowExport(tasks=dag, save=True)
         export.generate()
