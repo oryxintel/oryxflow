@@ -823,8 +823,9 @@ def _resolve_requires(task):
     completeness cascade calls this, and for a fan-out each call re-clones every branch.
 
     An UNNAMED fan-out keys dependencies on the value itself, exactly as it always has. Naming
-    a group qualifies its keys with that name (``chart_north``) -- which is how naming resolves
-    a collision between two fan-outs over the same values. The label stays the bare value, so
+    a group qualifies its keys with that name (``chart_north``). When two unnamed fan-outs share
+    a value, every unnamed one is qualified with its task family (``RegionChart_north``)
+    instead of colliding. The label stays the bare value, so
     ``inputLoad(flatten=False)`` yields ``{'chart': {'north': ...}}`` either way.
     """
     return _memoized(_traversal.requires, 'requires', task,
@@ -856,6 +857,17 @@ def _resolve_requires_uncached(task):
         deps[key] = dep
         origin[key] = owner
 
+    grids = {id(e): task.requires_grid(e['cls'], derive=e.get('derive'), **e['grid'])
+             for e in spec if e['kind'] == 'each'}
+    # two unnamed fan-outs over overlapping values (two report kinds over one grid) would
+    # collide on the bare value: then every unnamed fan-out is keyed by its task family
+    seen_labels, overlap = set(), False
+    for e in spec:
+        if e['kind'] == 'each' and not e['group']:
+            labels = set(grids[id(e)])
+            overlap = overlap or bool(seen_labels & labels)
+            seen_labels |= labels
+
     for entry in spec:
         if entry['kind'] == 'inherit':
             continue
@@ -866,11 +878,12 @@ def _resolve_requires_uncached(task):
             for name, c in pairs:
                 _put(name, task.clone(c), c.task_family)
         else:
-            grid = task.requires_grid(entry['cls'], derive=entry.get('derive'), **entry['grid'])
+            grid = grids[id(entry)]
             name = entry['group'] or entry['cls'].task_family
+            prefix = entry['group'] or (name if overlap else None)
             labels = {}
             for label, dep in grid.items():
-                key = '{}_{}'.format(entry['group'], label) if entry['group'] else label
+                key = '{}_{}'.format(prefix, label) if prefix else label
                 _put(key, dep, entry['cls'].task_family)
                 labels[key] = label
             groups[name] = labels

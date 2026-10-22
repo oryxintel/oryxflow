@@ -395,8 +395,9 @@ Why keep the drivers table out of the narratives at all? Because each narrative 
 call. Fold the table into them and changing how it's formatted re-bills every region; keep it
 separate and the narratives stay cached.
 
-If two fan-outs would produce the same keys — one per region of narratives *and* one per region of
-charts — name one of them, and its keys carry the name:
+Two fan-outs over the same values (one per region of narratives *and* one per region of charts)
+each get keys that start with their task's name, `RegionNarrative_north` and `RegionChart_north`, so
+neither replaces the other. To use a shorter name, name the group:
 
 ```python
 @oryxflow.requires_each({'chart': RegionChart}, region=cfg.REGIONS)
@@ -409,7 +410,9 @@ class Report(oryxflow.tasks.TaskMarkdown):
         deps['chart']['north']                 # named group
 ```
 
-Without a name, colliding keys are an error rather than one dependency quietly replacing the other.
+`self.inputLoad(task=RegionNarrative)` gets just that group's branches (`task='chart'` for the named
+one). The same task fanned out twice over the same values has nothing to tell its keys apart, so
+that is an error: name one.
 
 ### When the list depends on the task's own parameters
 

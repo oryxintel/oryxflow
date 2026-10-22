@@ -550,3 +550,45 @@ def test_highlight_bad_type(tmp_path):
     with pytest.raises(TypeError, match='highlight'):
         excel_write(p, make_df(), highlight={'value': 'green'})
     assert not p.exists()
+
+
+def test_sheet_formats_merge_over_shared(tmp_path):
+    df = make_df()
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, {'a': df,
+                    'b': {'df': df, 'formats': {'value': '0.000', 'year': None}},
+                    'c': {'df': df, 'formats': {'*': 'text'}},
+                    'd': {'df': df, 'formats': False}},
+                formats={'ret_*': 'pct', 'year': 'int', 'value': 'int'})
+    wb = openpyxl.load_workbook(p)
+    assert wb['a']['D2'].number_format == '0.0%' and wb['a']['C2'].number_format == '#,##0'
+    b = wb['b']
+    assert b['D2'].number_format == '0.0%'                 # shared key kept
+    assert b['C2'].number_format == '0.000'                # the sheet's key wins
+    assert b['B2'].number_format == 'General'              # None drops the shared format
+    assert wb['c']['D2'].number_format == '@'              # the sheet's glob beats the shared one
+    assert wb['d']['D2'].number_format == 'General'
+
+
+def test_file_handle(tmp_path):
+    import os
+    p = tmp_path / 'a.xlsx'
+    tmp = tmp_path / 'a.xlsx.tmp'
+    with open(tmp, 'wb') as f:
+        excel_write(f, make_df())
+    os.replace(tmp, p)
+    assert sheet(p)['D1'].value == 'ret_pct'
+
+
+def test_shared_column_options_skip_sheets_without_the_column(tmp_path):
+    df = make_df()
+    other = pd.DataFrame({'note': ['x']})
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, {'a': df, 'b': other}, wrap_columns=['name'], id_columns=['name'],
+                highlight={'name': {'a': 'green'}}, colorscale=['value'])
+    wb = openpyxl.load_workbook(p)
+    assert wb['a']['A2'].alignment.wrap_text and wb['a']['A2'].number_format == '@'
+    with pytest.raises(KeyError, match='nope'):                # in no sheet: still a typo
+        excel_write(tmp_path / 'b.xlsx', {'a': df, 'b': other}, wrap_columns=['name', 'nope'])
+    with pytest.raises(KeyError, match='note'):                # a sheet's own option stays strict
+        excel_write(tmp_path / 'c.xlsx', {'a': {'df': df, 'wrap_columns': ['note']}, 'b': other})

@@ -650,19 +650,51 @@ def _excel_sheet_specs(data, options):
             if unknown:
                 raise TypeError('sheet {!r} got unexpected options {}'.format(name, sorted(unknown)))
             item = item['df']
-        opts = dict(_EXCEL_DEFAULTS, **options, **own)
+        opts = {**_EXCEL_DEFAULTS, **options, **own}
+        shared = options.get('formats')
+        if isinstance(own.get('formats'), dict) and isinstance(shared, dict):
+            # the sheet's keys first: among globs the first match wins, and the sheet's should
+            opts['formats'] = {**own['formats'],
+                               **{k: v for k, v in shared.items() if k not in own['formats']}}
         if isinstance(opts['notes'], str):
             opts['notes'] = [opts['notes']]
-        out.append((name, item, opts))
+        out.append((name, item, opts, {k for k in options if k not in own}))
     return out
+
+
+_EXCEL_COLUMN_OPTIONS = ('highlight', 'colorscale', 'wrap_columns', 'group_starts', 'id_columns')
+
+
+def _excel_shared_columns(df, opts, shared, seen):
+    '''
+    Drop the columns a shared (workbook-level) styling option names but this sheet lacks: a
+    workbook option applies to the sheets that have the column. Records the columns found in
+    seen, so a name no sheet has can still be reported as a typo.
+    '''
+    have = {str(c) for c in df.columns}
+    opts = dict(opts)
+    for key in _EXCEL_COLUMN_OPTIONS:
+        if key not in shared:
+            continue
+        names = opts[key]
+        seen.setdefault(key, set()).update(str(c) for c in names if str(c) in have)
+        if isinstance(names, dict):
+            opts[key] = {c: v for c, v in names.items() if str(c) in have}
+        else:
+            opts[key] = [c for c in names if str(c) in have]
+    return opts
 
 
 def excel_write(path, data, **options):
     '''
     Write one or more dataframes to a formatted Excel file and return path.
 
+    path: a file path, or an open binary file handle (for an atomic publish, write to a
+        temporary file opened with open(tmp, 'wb') and os.replace it over the target).
     data: DataFrame (sheet 'Sheet1') or {sheet_name: df_or_spec}; a spec is
-        {'df': df, **per_sheet_options}, overriding the options below for that sheet.
+        {'df': df, **per_sheet_options}, overriding the options below for that sheet. A sheet's
+        formats dict is merged over the shared one (its keys win; a None value removes a column's
+        format); a sheet's formats=False writes that sheet with no number formats.
     options: formats, index, filters, freeze, widths, width_min, width_max, header_style.
         formats maps column names or globs to a preset name, str.format spec or Excel code;
         formats=False writes no number formats. Formats are display-only: values are unchanged.
@@ -672,14 +704,19 @@ def excel_write(path, data, **options):
         (green, yellow, red, grey) or {'bg', 'font'};
         colorscale, wrap_columns, group_starts (lists of columns); banded (bool);
         id_columns are written as text so codes keep leading zeros.
+        Given for the whole workbook, these column options apply to the sheets that have the
+        column (a column no sheet has raises KeyError); given in a sheet spec, every column
+        must exist in that sheet.
     '''
     import pandas as pd
     sheets = _excel_sheet_specs(data, options)
-    _excel_check_sheet_names([n for n, _, _ in sheets])
+    _excel_check_sheet_names([n for n, _, _, _ in sheets])
     prepared = []
-    for name, df, opts in sheets:
+    seen = {}
+    for name, df, opts, shared in sheets:
         df = _excel_flatten_columns(df)
         _excel_specs(df, opts['index'], opts['formats'])  # fail on a bad format before any write
+        opts = _excel_shared_columns(df, opts, shared, seen)
         _excel_check_styling(name, df, opts)
         if opts['id_columns']:
             ids = {str(c) for c in opts['id_columns']}
@@ -689,6 +726,11 @@ def excel_write(path, data, **options):
                     df[col] = [None if _excel_isna(v) else _excel_id_text(v)
                                for v in df.iloc[:, j]]
         prepared.append((name, df, opts))
+    for key in _EXCEL_COLUMN_OPTIONS:
+        if key in seen:
+            missing = [c for c in options[key] if str(c) not in seen[key]]
+            if missing:
+                raise KeyError('{}: column {!r} not found in any sheet'.format(key, missing[0]))
     if isinstance(path, str):
         path = pathlib.Path(path)
     if isinstance(path, pathlib.Path):

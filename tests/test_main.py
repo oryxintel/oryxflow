@@ -678,13 +678,26 @@ class TestMain:
             def run(self):
                 self.save(pd.DataFrame({'region': [self.region]}))
 
+        # two unnamed fan-outs over the same values are keyed by task family, not a collision
         @oryxflow.requires_each(StackChart, region=regions)
         @oryxflow.requires_each(StackNarrative, region=regions)
         class Collide(oryxflow.tasks.TaskPqPandas):
             pass
 
+        assert set(Collide().requires()) == {'StackChart_north', 'StackChart_south',
+                                             'StackNarrative_north', 'StackNarrative_south'}
+        assert oryxflow.core._requires_groups(Collide()) == {
+            'StackNarrative': {'StackNarrative_north': 'north', 'StackNarrative_south': 'south'},
+            'StackChart': {'StackChart_north': 'north', 'StackChart_south': 'south'}}
+
+        # the same task twice over the same values still has nothing to tell them apart
+        @oryxflow.requires_each(StackChart, region=regions)
+        @oryxflow.requires_each(StackChart, region=regions)
+        class Twice(oryxflow.tasks.TaskPqPandas):
+            pass
+
         with pytest.raises(ValueError) as e:
-            Collide().requires()
+            Twice().requires()
         assert 'north' in str(e.value)
 
         # naming one of them resolves it: its keys carry the name
