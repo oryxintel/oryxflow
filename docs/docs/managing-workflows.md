@@ -157,7 +157,7 @@ class LoadMaster(oryxflow.tasks.TaskPqPandas):
         self.save(pd.read_parquet('//share/published/master.parquet'))
 ```
 
-When the published file changes, `LoadMaster` and everything downstream recompute on the next run, and so do they when you edit `run()`. A synced or network folder that rewrites the file with the same bytes does nothing. `hash_files` only re-reads a file when its size or modification time changed, so a large file costs a read only after it actually changed.
+When the published file changes, `LoadMaster` and everything downstream recompute on the next run, and so do they when you edit `run()`. A synced or network folder that rewrites the file with the same bytes does nothing. Within one Python session, `hash_files` re-reads a file only when its size or modification time changed, so a large file costs a read only after it changed (each new session reads it once).
 
 Files are just the common case; return anything the result depends on. A rendered template is often the better value, because one string carries the whole include chain, the helper that assembled it, *and* the parameter that chose the branch:
 

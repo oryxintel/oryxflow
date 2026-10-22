@@ -45,7 +45,7 @@ flow_dev = oryxflow.Workflow(TaskTrain, env='dev')
 flow_dev.run()      # output under data/env=dev/
 ```
 
-Because each environment is its own directory, you can share just the one you mean to — commit `data/env=prod/` and leave `data/env=dev/` out — without the environments overwriting each other or leaking. When you later read these outputs (an imported task, below), pass the same `env=` to point at the environment you want:
+Because each environment is its own directory, you can share just the one you mean to — commit `data/env=prod/` and leave `data/env=dev/` out — without the environments overwriting each other or leaking. When you later read these outputs with a `Workflow`, pass the same `env=` to point at the environment you want:
 
 ```python
 flow_prod = oryxflow.Workflow(TaskTrain, env='prod')
@@ -68,7 +68,7 @@ class SectorReturns(oryxflow.tasks.TaskPqPandas):
         self.save(...)   # your logic -- NOT exported
 ```
 
-Every `flow.run()` that includes an exported task rewrites `tasks_export.py` at the project root (next to `data/`). For each exported task it holds a read-only copy: the docstring, the output format, `persists`, the parameters with their defaults, `external = True` (never run, only read) and the data path, written relative to the file so it works wherever the folders live. `built` lists the parameter values whose output exists:
+Every `flow.run()` that includes an exported task rewrites `tasks_export.py` at the project root -- the folder that holds `data/`, so run your flow from there, as usual. For each exported task it holds a read-only copy: the docstring, the output format, `persists`, the parameters with their defaults, `external = True` (never run, only read) and the data path, written relative to the file so it works wherever the folders live. `built` lists the parameter values whose output exists:
 
 ```python
 class SectorReturns(oryxflow.tasks.TaskPqPandas):
@@ -108,9 +108,10 @@ oryxflow.Workflow(SectorReport, {'sector': 'retail'}).run()
 What that gets you:
 
 - **Parameters pass through the flow.** `SectorReport` takes on `sector` from `SectorReturns`, so you choose the sector the way you choose any parameter, including one flow per sector with `WorkflowMulti`. `exported.SectorReturns.built` lists what `project1` has built.
-- **Reruns follow upstream.** When `project1` recomputes `SectorReturns`, `SectorReport` reruns on its next run; when nothing changed there, nothing reruns here.
+- **Reruns follow upstream.** When `project1` recomputes `SectorReturns`, `SectorReport` reruns on its next run; when nothing changed there, nothing reruns here. (This uses `project1`'s code tracking, which is on by default.)
+- **Your flow's settings don't move them.** Imported tasks read `project1`'s data folder even when your `Workflow` sets `path=` or `env=`.
 - **No side effects on the other project.** Imported tasks never run from here. If an output isn't there, the run stops with `external missing output (looked for <path>); built: ...` -- pick a built value, or have `project1` build the one you need.
-- **No path work.** The export knows where `project1` keeps its files, and two projects whose files share a name (`tasks.py`, `cfg.py`) don't mix: the export imports nothing from `project1`.
+- **No path work.** The export knows where `project1` keeps its files, and two projects whose files share a name (`tasks.py`, `cfg.py`) don't mix: the export imports nothing from `project1`. Task names must differ from your own tasks' names, though: a run that meets two different tasks with the same name and parameters stops with an error naming both.
 
 **Don't read another project's outputs by file path or run id.** Output file names come from the task's name and parameters, and the format has changed between releases, so a hard-coded path breaks silently, skips the file-format handling and never notices when the upstream project recomputes. A run id names one build in the event log, not an output -- the cache keeps the latest output per task, so there is no "that run's output" to fetch. A file path is fine for a consumer *outside* oryxflow (Excel, a BI tool); hand it `flow.outputPath(...)`, not a typed-in path.
 

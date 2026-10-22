@@ -20,6 +20,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(oryxflow.settings, 'eventspath', tmp_path / '.oryxflow')
     monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', tmp_path)
     monkeypatch.setattr(oryxflow.state, '_REPLACE_DELAYS', (0,) * 8)
+    monkeypatch.setattr(oryxflow.state, '_replace_gave_up_at', None)
     oryxflow.state.clear_cache()
     oryxflow.core._code_warned.clear()
     yield tmp_path
@@ -201,3 +202,22 @@ class TestHashFiles:
         st = os.stat(f)
         os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 5 * 10**9))
         assert oryxflow.hash_files('q/*.sql', root=str(tmp_path)) != first
+
+
+class TestRetryBudget:
+
+    def test_after_a_failed_retry_sequence_writes_fail_fast(self, env, monkeypatch):
+        calls = []
+
+        def locked(src, dst):
+            calls.append(dst)
+            raise PermissionError(13, 'Access is denied')
+        monkeypatch.setattr(oryxflow.state.os, 'replace', locked)
+        monkeypatch.setattr(oryxflow.state, '_replace_gave_up_at', None)
+        with pytest.raises(PermissionError):
+            oryxflow.state.put_record(oryxflow.settings.dirpath, 'T_1', {'v': 1})
+        first = len(calls)
+        assert first == len(oryxflow.state._REPLACE_DELAYS) + 1
+        with pytest.raises(PermissionError):
+            oryxflow.state.put_record(oryxflow.settings.dirpath, 'T_2', {'v': 1})
+        assert len(calls) == first + 1

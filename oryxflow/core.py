@@ -1303,6 +1303,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         tasks = [tasks]
 
     visited = {}          # task_id -> bool (success)
+    classes_by_tid = {}   # task_id -> the class first seen with it
     ran = []              # tasks executed this build
     already_complete = []  # tasks already complete
     failed = []           # TaskFailure for tasks that failed (run error, failed dep, missing external)
@@ -1330,6 +1331,14 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
 
     def _process(task):
         tid = task.task_id
+        cls = type(task)
+        prev = classes_by_tid.setdefault(tid, cls)
+        if prev is not cls and (prev.__module__, prev.__qualname__) != (cls.__module__, cls.__qualname__):
+            # the engine would treat them as one task and run (or read) only one of them
+            raise ValueError(
+                'two different tasks have the same task id {}: {}.{} and {}.{} -- rename one '
+                '(a task imported from another project shares its name with one of yours)'.format(
+                    tid, prev.__module__, prev.__qualname__, cls.__module__, cls.__qualname__))
         if tid in visited:
             return visited[tid]
 

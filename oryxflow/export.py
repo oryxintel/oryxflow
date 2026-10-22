@@ -9,12 +9,19 @@ parameter values whose output exists. The consumer loads that file with
 ``FlowImport('<project dir>')`` and ``@requires`` its classes like any other dependency, so
 parameters pass through the flow and downstream tasks rerun when the producer recomputes.
 
+The file is rewritten from three sources: the exported tasks the run just used (their data
+dir wins), the exported classes defined in project modules loaded right now, and the previous
+file -- a class whose module this process never imported is carried over from it (its
+``built`` re-checked on disk), so a run that imports only some task modules keeps the others'
+exports. A class is dropped only when its module is loaded and no longer exports it.
+
 A generated export imports only ``oryxflow``, which is what makes loading it from another
 project safe: a module that imports its own project's files (``import cfg``) would resolve
 those against the importing project instead.
 """
 
 import ast
+import datetime
 import hashlib
 import importlib.util
 import inspect
@@ -47,6 +54,10 @@ import oryxflow
 {extra_imports}
 _HERE = pathlib.Path(__file__).resolve().parent
 '''
+
+# methods that decide where a task's files live: overriding one outside oryxflow means the
+# export can't describe the location
+_LOCATION_METHODS = ('output', '_getpath', '_resolved_dirpath')
 
 
 def default_export_path():
@@ -86,64 +97,109 @@ def _key(values):
     return json.dumps(values, sort_keys=True)
 
 
-def _previous_built(path):
-    """``{class name: [param dicts]}`` from the ``built`` lists of an existing export file."""
+def _module_name(path):
+    return 'oryxflow_import_{}'.format(
+        hashlib.md5(str(Path(path).resolve()).encode('utf-8')).hexdigest()[:12])
+
+
+def _exec_export(path, register=False):
+    """Execute an export file in isolation; returns the module."""
+    path = Path(path).resolve()
+    name = _module_name(path)
+    spec = importlib.util.spec_from_file_location(name, str(path))
+    mod = importlib.util.module_from_spec(spec)
+    if register:
+        sys.modules[name] = mod      # inspect / pickling look classes up here
     try:
-        tree = ast.parse(Path(path).read_text(encoding='utf-8'))
-    except (OSError, SyntaxError, ValueError):
+        spec.loader.exec_module(mod)
+    except BaseException:
+        if register:
+            sys.modules.pop(name, None)
+        raise
+    return mod
+
+
+def _export_classes(mod):
+    from oryxflow.tasks import TaskData
+    return {k: v for k, v in vars(mod).items()
+            if inspect.isclass(v) and issubclass(v, TaskData) and v.__module__ == mod.__name__}
+
+
+def _previous_classes(path):
+    """The classes of the previous export file, or {} when there is none or it won't load."""
+    try:
+        if not Path(path).is_file():
+            return {}
+        return _export_classes(_exec_export(path))
+    except Exception:
         return {}
-    out = {}
-    for node in tree.body:
-        if not isinstance(node, ast.ClassDef):
-            continue
-        for stmt in node.body:
-            if (isinstance(stmt, ast.Assign) and len(stmt.targets) == 1
-                    and isinstance(stmt.targets[0], ast.Name) and stmt.targets[0].id == 'built'):
-                try:
-                    out[node.name] = list(ast.literal_eval(stmt.value))
-                except ValueError:
-                    pass
-    return out
 
 
 def _project_classes(root):
-    """Exported classes defined in modules under the project root that are loaded right now
-    (a flow that ran only some tasks still writes the project's other exports)."""
+    """(exported classes, names of all task classes) defined in modules under the project root
+    that are loaded right now."""
     from oryxflow.tasks import TaskData
     root = Path(root).resolve()
-    found, stack = [], list(TaskData.__subclasses__())
+    exported, names, stack = [], set(), list(TaskData.__subclasses__())
     while stack:
         cls = stack.pop()
         stack.extend(cls.__subclasses__())
-        if not _is_exported(cls):
-            continue
         mod = sys.modules.get(cls.__module__)
         f = getattr(mod, '__file__', None)
-        if not f:
-            continue
+        if not f or getattr(mod, cls.__name__, None) is not cls:
+            continue     # gone from its module (redefined) or not a module-level class
         try:
             Path(f).resolve().relative_to(root)
         except ValueError:
             continue
-        found.append(cls)
-    return found
+        names.add(cls.__name__)
+        if _is_exported(cls):
+            exported.append(cls)
+    return exported, names
 
 
 def _base_class(cls):
     return next(c for c in cls.__mro__[1:] if c.__module__.startswith('oryxflow.tasks'))
 
 
+def _not_exportable(cls):
+    """Why ``cls`` can't be described in an export, or None."""
+    for name in _LOCATION_METHODS:
+        owner = next((c for c in cls.__mro__ if name in c.__dict__), None)
+        if owner is not None and not owner.__module__.startswith('oryxflow'):
+            return 'it overrides {}(), so its file location cannot be exported'.format(name)
+    target = getattr(cls, 'target_class', None)
+    if target is not None and not target.__module__.startswith('oryxflow.targets'):
+        return 'its target_class {} is not an oryxflow target'.format(target.__name__)
+    if getattr(cls, 'keep_versions', False) and getattr(cls, 'code_version', None) is not None:
+        return 'keep_versions puts outputs under a code-version folder another project cannot locate'
+    return None
+
+
+def _loads_back(src, value):
+    try:
+        return eval(src, {'datetime': datetime}) == value
+    except Exception:
+        return False
+
+
 def _param_source(name, p):
     from oryxflow import parameter as P
     kind = type(p)
     native = kind.__module__ == 'oryxflow.parameter' and kind is not P.EnumParameter
+    default = None
+    if p.has_task_value():
+        default = p._default
+        if not (native and _loads_back(repr(default), default)):
+            # enums, custom parameter types and defaults with no literal form (a Path, a
+            # numpy scalar) are exported as plain strings in their serialized form, which
+            # gives the same task_id
+            native = False
+            default = p.serialize(p.task_value())
     args = []
-    if isinstance(p, P.ChoiceParameter):
+    if native and isinstance(p, P.ChoiceParameter):
         args.append('choices={!r}'.format(p._choices))
     if p.has_task_value():
-        # non-native types (enums, custom parameters) are exported as plain strings in
-        # their serialized form, which gives the same task_id
-        default = p._default if native else p.serialize(p.task_value())
         args.append('default={!r}'.format(default))
     if not p.significant:
         args.append('significant=False')
@@ -172,7 +228,7 @@ def _docstring(cls):
     return '    """{}\n{}\n    """'.format(lines[0], body)
 
 
-def _class_source(cls, instance, built, export_dir):
+def _class_source(cls, dirpath, built, export_dir):
     from oryxflow import settings
     base = _base_class(cls)
     lines = ['class {}({}.{}):'.format(cls.__name__, base.__module__, base.__name__)]
@@ -182,12 +238,16 @@ def _class_source(cls, instance, built, export_dir):
     lines.append('    external = True')
     persist = getattr(cls, 'persists', None) or getattr(cls, 'persist', ['data'])
     lines.append('    persists = {!r}'.format(list(persist)))
-    dirpath = instance._resolved_dirpath() if instance is not None else (
-        getattr(cls, 'path', None) or settings.dirpath)
     lines.append('    ' + _path_source(dirpath, export_dir))
-    for attr in ('task_group', 'target_dir'):
-        if getattr(cls, attr, None) is not None:
-            lines.append('    {} = {!r}'.format(attr, getattr(cls, attr)))
+    if getattr(cls, 'target_ext', None) != getattr(base, 'target_ext', None):
+        lines.append('    target_ext = {!r}'.format(cls.target_ext))
+    target = getattr(cls, 'target_class', None)
+    if target is not None and target is not getattr(base, 'target_class', None):
+        lines.append('    target_class = {}.{}'.format(target.__module__, target.__name__))
+    if hasattr(cls, 'task_group'):
+        lines.append('    task_group = {!r}'.format(getattr(cls, 'task_group')))
+    if getattr(cls, 'target_dir', None) is not None:
+        lines.append('    target_dir = {!r}'.format(cls.target_dir))
     if not (settings.save_with_param and getattr(cls, 'save_attrib', True)):
         lines.append('    save_attrib = False')
     for name, p in cls.get_params():
@@ -199,6 +259,28 @@ def _class_source(cls, instance, built, export_dir):
         lines.extend('        {!r},'.format(b) for b in built)
         lines.append('    ]')
     return '\n'.join(lines)
+
+
+def _same_dir(a, b):
+    try:
+        return Path(a).resolve() == Path(b).resolve()
+    except Exception:
+        return False
+
+
+def _still_built(old, values_list, dirpath):
+    """The previous file's built values that still have output, checked with its own class
+    (which knows where those files are) -- only when that is the directory being written."""
+    if old is None or not _same_dir(getattr(old, 'path', None) or '', dirpath):
+        return []
+    out = []
+    for values in values_list:
+        try:
+            if _outputs_exist(_from_str_params(old, values)):
+                out.append(values)
+        except Exception:
+            continue      # parameters changed since: that value set is gone
+    return out
 
 
 class FlowExport:
@@ -232,40 +314,40 @@ class FlowExport:
         self.path_export = Path(path_export) if path_export is not None else default_export_path()
 
     def _collect(self):
-        """``{class name: (cls, an instance or None)}`` for every class to export."""
+        """``({class name: cls}, names of loaded project task classes)``."""
         chosen = {}
 
-        def add(cls, inst):
+        def add(cls):
             prev = chosen.get(cls.__name__)
-            if prev is not None and prev[0] is not cls:
-                same_def = (prev[0].__module__, prev[0].__qualname__) == (cls.__module__, cls.__qualname__)
-                if not same_def:
+            if prev is not None and prev is not cls:
+                if (prev.__module__, prev.__qualname__) != (cls.__module__, cls.__qualname__):
                     raise ValueError(
                         'two exported tasks are named {}: {}.{} and {}.{} -- task names must be '
                         'unique within a project (they name the output files)'.format(
-                            cls.__name__, prev[0].__module__, prev[0].__qualname__,
+                            cls.__name__, prev.__module__, prev.__qualname__,
                             cls.__module__, cls.__qualname__))
-                if inst is None:
-                    return       # keep the instance-backed (just-run) definition
-            if prev is None or prev[1] is None or prev[0] is not cls:
-                chosen[cls.__name__] = (cls, inst)
+            chosen[cls.__name__] = cls   # a redefinition (same module + name): latest wins
 
-        for cls in _project_classes(self.path_export.parent):
-            add(cls, None)
+        exported, names = _project_classes(self.path_export.parent)
+        for cls in exported:
+            add(cls)
         for t in self.tasks:
             if _is_exported(type(t)):
-                add(type(t), t)
-        return chosen
+                add(type(t))
+                names.add(type(t).__name__)
+        return chosen, names
 
     def generate(self):
-        chosen = self._collect()
-        previous = _previous_built(self.path_export) if self.path_export.exists() else {}
-        blocks, extra = [], set()
-        for name in sorted(chosen):
-            cls, inst = chosen[name]
-            if getattr(cls, 'keep_versions', False) and getattr(cls, 'code_version', None) is not None:
-                warnings.warn('{}: not exported -- keep_versions puts outputs under a code-version '
-                              'folder another project cannot locate'.format(name), UserWarning)
+        from oryxflow import settings
+        chosen, loaded = self._collect()
+        previous = _previous_classes(self.path_export)
+        export_dir = self.path_export.parent
+        entries, extra = {}, set()
+
+        for name, cls in chosen.items():
+            why = _not_exportable(cls)
+            if why:
+                warnings.warn('{}: not exported -- {}'.format(name, why), UserWarning)
                 continue
             if 'built' in dict(cls.get_params()):
                 raise ValueError("{}: a parameter named 'built' clashes with the export's list of "
@@ -274,27 +356,45 @@ class FlowExport:
                 warnings.warn('{}: exported as a pickle, which another project may not be able to '
                               'load without this project\'s code -- prefer parquet, csv or json for '
                               'exported tasks'.format(name), UserWarning)
-            candidates = [_str_params(t) for t in self.tasks if type(t) is cls]
-            candidates += previous.get(name, [])
-            built, seen = [], set()
-            for values in candidates:
-                k = _key(values)
-                if k in seen:
-                    continue
-                seen.add(k)
-                try:
-                    if _outputs_exist(_from_str_params(cls, values)):
-                        built.append(values)
-                except Exception:
-                    continue      # parameters changed since: that value set is gone
-            built.sort(key=_key)
-            base = _base_class(cls)
-            if base.__module__ != 'oryxflow.tasks':
-                extra.add('import {}'.format(base.__module__))
-            blocks.append(_class_source(cls, inst, built, self.path_export.parent))
+            old = previous.get(name)
+            ran = [t for t in self.tasks if type(t) is cls]
+            if ran:
+                dirpath = ran[0]._resolved_dirpath()
+            elif cls.__dict__.get('path') is not None or any(
+                    c.__dict__.get('path') is not None for c in cls.__mro__[1:]):
+                dirpath = getattr(cls, 'path')
+            elif old is not None:
+                dirpath = old.path        # e.g. written by a Workflow(path=...) run
+            else:
+                dirpath = settings.dirpath
+            built = {_key(_str_params(t)): _str_params(t) for t in ran
+                     if _same_dir(t._resolved_dirpath(), dirpath) and _outputs_exist(t)}
+            for values in _still_built(old, getattr(old, 'built', []), dirpath):
+                built.setdefault(_key(values), values)
+            entries[name] = (cls, dirpath, [built[k] for k in sorted(built)])
+
+        for name, old in previous.items():
+            if name in entries or name in loaded:
+                continue      # rewritten above, or its module is loaded and no longer exports it
+            built = _still_built(old, getattr(old, 'built', []), old.path)
+            entries[name] = (old, old.path, sorted(built, key=_key))
+
+        blocks = []
+        for name in sorted(entries):
+            cls, dirpath, built = entries[name]
+            for mod in {_base_class(cls).__module__, getattr(getattr(cls, 'target_class', None), '__module__', None)}:
+                if mod and mod not in ('oryxflow.tasks', 'oryxflow.targets'):
+                    extra.add('import {}'.format(mod))
+            blocks.append(_class_source(cls, dirpath, built, export_dir))
         source = _HEADER.format(marker=GENERATED_MARKER,
                                 extra_imports=''.join(i + '\n' for i in sorted(extra)))
         source += ''.join('\n\n' + b + '\n' for b in blocks)
+        try:
+            exec(compile(source, str(self.path_export), 'exec'),
+                 {'__file__': str(self.path_export), '__name__': 'oryxflow_export_check'})
+        except Exception as e:
+            raise ValueError('the generated {} would not load ({}: {}); not written'.format(
+                EXPORT_FILENAME, type(e).__name__, e))
         if self.save:
             try:
                 current = self.path_export.read_text(encoding='utf-8')
@@ -361,21 +461,10 @@ class FlowImport:
             warnings.warn(
                 '{} was not generated by oryxflow: its own imports resolve against this '
                 'project, not its folder'.format(p), UserWarning, stacklevel=2)
-        resolved = p.resolve()
-        name = 'oryxflow_import_{}'.format(hashlib.md5(str(resolved).encode('utf-8')).hexdigest()[:12])
-        spec = importlib.util.spec_from_file_location(name, str(resolved))
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[name] = mod      # inspect / pickling look classes up here
-        try:
-            spec.loader.exec_module(mod)
-        except BaseException:
-            sys.modules.pop(name, None)
-            raise
-        from oryxflow.tasks import TaskData
+        mod = _exec_export(p, register=True)
         self.path = p
         self.module_obj = mod
-        self.tasks = {k: v for k, v in vars(mod).items()
-                      if inspect.isclass(v) and issubclass(v, TaskData) and v.__module__ == name}
+        self.tasks = _export_classes(mod)
 
     def __getattr__(self, name):
         tasks = self.__dict__.get('tasks')

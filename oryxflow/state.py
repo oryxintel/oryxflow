@@ -69,13 +69,28 @@ def _load(dirpath):
 _REPLACE_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1, 1, 1)
 
 
+# monotonic time of the last write that failed after all retries: for a minute after, writes
+# try once -- a read-only data dir must not stall every record write by ~4.5 s
+_replace_gave_up_at = None
+
+
 def _replace(src, dst):
-    for delay in _REPLACE_DELAYS:
+    global _replace_gave_up_at
+    recent = (_replace_gave_up_at is not None
+              and time.monotonic() - _replace_gave_up_at < 60)
+    for delay in () if recent else _REPLACE_DELAYS:
         try:
-            return os.replace(src, dst)
+            os.replace(src, dst)
+            _replace_gave_up_at = None
+            return
         except PermissionError:
             time.sleep(delay)
-    return os.replace(src, dst)
+    try:
+        os.replace(src, dst)
+    except PermissionError:
+        _replace_gave_up_at = time.monotonic()
+        raise
+    _replace_gave_up_at = None
 
 
 def _write(dirpath, records):
