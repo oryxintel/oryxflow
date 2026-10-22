@@ -134,6 +134,41 @@ def _string_keys_used(fn):
     return keys
 
 
+def _dynamic_key_reason(fn):
+    """Why the keyed set difference can't prove a dependency unused, or None. A ``task=`` that is
+    not a string literal (``{n: self.inputLoad(task=n) for n in names}``) or a whole-input load
+    used other than through ``data['literal']`` subscripts can reach any dependency."""
+    parents = {}
+    for node in ast.walk(fn):
+        for child in ast.iter_child_nodes(node):
+            parents[child] = node
+    bound = set()
+    for node in ast.walk(fn):
+        if not _is_self_load(node, _LOAD_ATTRS + ('input',)):
+            continue
+        task = _call_kw(node, 'task')
+        if task is not None:
+            if not (isinstance(task, ast.Constant) and isinstance(task.value, str)):
+                return 'dynamic task= key'
+            continue
+        parent = parents.get(node)
+        if isinstance(parent, ast.Subscript) and parent.value is node:
+            continue       # self.inputLoad()['a'] names its key
+        if (isinstance(parent, ast.Assign) and len(parent.targets) == 1
+                and isinstance(parent.targets[0], ast.Name)):
+            bound.add(parent.targets[0].id)
+            continue
+        return 'whole-input load not tracked'
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Name) and node.id in bound and isinstance(node.ctx, ast.Load):
+            parent = parents.get(node)
+            if not (isinstance(parent, ast.Subscript) and parent.value is node
+                    and isinstance(parent.slice, ast.Constant)
+                    and isinstance(parent.slice.value, str)):
+                return 'whole-input load not tracked'
+    return None
+
+
 def _uses_self_input(fn):
     """True if run() calls ``self.input(`` (the target accessor) -- positional use through it is
     not tracked, so a positional-unpack dep that looks unused is downgraded to ``unanalyzed``."""
@@ -226,11 +261,18 @@ def _analyze(cls):
     # and there is no positional full-unpack to analyze instead.
     if (keyed_decl or keyed_load) and load_assign is None:
         named = _string_keys_used(run)
+        # a key we can't read as a literal may name any dependency: no proof of 'unused'
+        dynamic = _dynamic_key_reason(run)
         out = []
         for i, (fam, key) in enumerate(deps):
             tag = key if key is not None else fam
             hit = (tag in named) or (fam in named)
-            out.append(finding(i, 'clean' if hit else 'unused', binding=key))
+            if hit:
+                out.append(finding(i, 'clean', binding=key))
+            elif dynamic:
+                out.append(finding(i, 'unanalyzed', binding=key, reason=dynamic))
+            else:
+                out.append(finding(i, 'unused', binding=key))
         return out
 
     if load_assign is None:

@@ -611,7 +611,7 @@ class TestAutoInvalidation:
         assert oryxflow.run(TR()).ran == []
 
     def test_auto_record_migration(self, env, monkeypatch):
-        # pre-auto (v1-schema) record or interpreter change: silent re-stamp, never a rerun
+        # older record format: silent re-stamp, never a rerun
         monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
         mod, _ = _make_module(env, 'codemod_mig', AUTO_V1)
         t = mod.TaskAuto()
@@ -628,11 +628,9 @@ class TestAutoInvalidation:
         assert rec2['fingerprint'] == t._code_fingerprint
 
         rec3 = dict(rec2)
-        rec3['py'] = '0.0'                           # interpreter changed
+        rec3['py'] = '0.0'                           # pre-v5 interpreter tag: ignored
         oryxflow.state.put_record(oryxflow.settings.dirpath, t.task_id, rec3)
         assert oryxflow.run(t).ran == []
-        assert oryxflow.state.get_record(
-            oryxflow.settings.dirpath, t.task_id)['py'] == oryxflow.codehash.PY_TAG
 
     def test_auto_blind_spot_inert(self, env, monkeypatch):
         # module not under the project root -> unhashable -> auto degrades to inert

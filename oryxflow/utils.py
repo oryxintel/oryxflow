@@ -245,13 +245,39 @@ def hash_files(*patterns, root=None):
             key = f.as_posix()
         keyed.append((key, f))
 
+    keyed.sort(key=lambda kv: kv[0])
+    # runs on every completeness check: an unchanged file set (same names, sizes, mtimes) is
+    # not re-read -- a large data file would otherwise be read in full every time
+    stamp = []
+    for key, f in keyed:
+        st = f.stat()
+        stamp.append((key, str(f.resolve()), st.st_size, st.st_mtime_ns))
+    stamp = tuple(stamp)
+    cached = _hash_files_cache.get(stamp)
+    if cached is not None:
+        return cached
     h = hashlib.md5()
-    for key, f in sorted(keyed, key=lambda kv: kv[0]):
+    for key, f in keyed:
         h.update(key.encode('utf-8'))  # the name is part of the digest: a rename is a change
         h.update(b'\0')
-        h.update(f.read_bytes())
+        for chunk in _file_chunks(f):
+            h.update(chunk)
         h.update(b'\0')
-    return h.hexdigest()
+    digest = h.hexdigest()
+    if len(_hash_files_cache) > 256:
+        _hash_files_cache.clear()
+    _hash_files_cache[stamp] = digest
+    return digest
+
+
+# (key, abspath, size, mtime_ns) per file -> digest (see hash_files)
+_hash_files_cache = {}
+
+
+def _file_chunks(f, size=1 << 20):
+    with open(f, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(size), b''):
+            yield chunk
 
 
 # resolved output directories already reported, so a re-entrant flow (a task's run()

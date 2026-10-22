@@ -78,6 +78,42 @@ class Suppressed(oryxflow.tasks.TaskCachePandas):
         self.save(df_a)
 
 
+@oryxflow.requires({'a': SrcA, 'b': SrcB})
+class KeyedDictComprehension(oryxflow.tasks.TaskCachePandas):
+    def run(self):
+        frames = {n: self.inputLoad(task=n) for n in ['a', 'b']}   # keys are not literals here
+        self.save(pd.concat(frames.values()))
+
+
+@oryxflow.requires(SrcA, SrcB)
+class KeyedLoop(oryxflow.tasks.TaskCachePandas):
+    def run(self):
+        frames = []
+        for name in ['SrcA', 'SrcB']:
+            frames.append(self.inputLoad(task=name))
+        self.save(pd.concat(frames))
+
+
+@oryxflow.requires({'a': SrcA, 'b': SrcB})
+class KeyedWholeLoad(oryxflow.tasks.TaskCachePandas):
+    def run(self):
+        self.save(pd.concat(self.inputLoad().values()))
+
+
+@oryxflow.requires({'a': SrcA, 'b': SrcB})
+class KeyedWholeLoadIterated(oryxflow.tasks.TaskCachePandas):
+    def run(self):
+        data = self.inputLoad(flatten=False)
+        self.save(pd.concat([df for _, df in data.items()]))
+
+
+@oryxflow.requires({'a': SrcA, 'b': SrcB})
+class KeyedSubscriptOnlyA(oryxflow.tasks.TaskCachePandas):
+    def run(self):
+        data = self.inputLoad(flatten=False)
+        self.save(data['a'])                              # 'b' never named
+
+
 def _verdicts(cls):
     return {f.dep_family: f.verdict for f in inputcheck.check_class(cls)}
 
@@ -112,6 +148,16 @@ class TestInputCheck:
     def test_keyed_loads(self):
         assert _verdicts(KeyedNamesOne) == {'SrcA': 'clean', 'SrcB': 'unused'}
         assert _verdicts(KeyedNamesBoth) == {'SrcA': 'clean', 'SrcB': 'clean'}
+
+    def test_dynamic_keys_are_unanalyzed_not_unused(self):
+        for cls in (KeyedDictComprehension, KeyedLoop, KeyedWholeLoad, KeyedWholeLoadIterated):
+            findings = inputcheck.check_class(cls)
+            assert findings, cls
+            assert all(f.verdict == 'unanalyzed' for f in findings), (cls, findings)
+            assert all(f.reason for f in findings)
+
+    def test_literal_subscripts_still_report_unused(self):
+        assert _verdicts(KeyedSubscriptOnlyA) == {'SrcA': 'clean', 'SrcB': 'unused'}
 
     def test_suppression_comment(self):
         # marker turns the otherwise-unused SrcB into clean

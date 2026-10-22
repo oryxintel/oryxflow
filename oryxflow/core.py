@@ -16,6 +16,7 @@ import itertools
 import traceback
 import contextlib
 import threading
+import warnings as _stdwarnings
 
 from oryxflow.log import logger, TaskLogger
 from oryxflow.parameter import (
@@ -1397,7 +1398,12 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
                                   _codecheck.make_record(task, hashes, uuid.uuid4().hex[:16],
                                                          duration=duration))
             except Exception as e:
-                logger.debug("state record write failed for {}: {}", tid, e)
+                # the output is saved; the old record stays, so this task reruns next build
+                # and downstream may not see this rerun until then -- say so, don't fail
+                msg = ('oryxflow: could not write the code-status record for {}: {}: {} -- it '
+                       'reruns on the next build').format(tid, type(e).__name__, e)
+                logger.warning("{}", msg)
+                _stdwarnings.warn(msg, UserWarning)
         try:
             from oryxflow import __version__ as _version
         except Exception:

@@ -91,7 +91,7 @@ def make_record(task, hashes, output_id, duration=None):
             'source_hashes': hashes, 'output_id': output_id,
             'dep_state': task._dep_state() if hasattr(task, '_dep_state') else None,
             'duration_s': duration,
-            'py': codehash.PY_TAG, 'v': state.RECORD_V,
+            'v': state.RECORD_V,
             'ts': datetime.now(timezone.utc).isoformat()}
 
 
@@ -132,6 +132,16 @@ class Advisor:
                    'changed_files': changed_files,
                    'code_version': _resolve_code_version(task)},
                   msg=msg if fresh else None, level='warning')
+
+    def _put(self, dirpath, tid, record):
+        # bookkeeping only: the next build writes it again, so a locked status file (Windows
+        # sync/antivirus) must never abort a build that is otherwise fine
+        try:
+            state.put_record(dirpath, tid, record)
+        except Exception as e:
+            _stdwarnings.warn('oryxflow: could not write the code-status record for {}: {}: {} '
+                              '-- the next build writes it'.format(tid, type(e).__name__, e),
+                              UserWarning)
 
     def advise(self, task):
         # advisory sweep over a complete subtree, POST-ORDER (deps first, so re-stamped
@@ -176,17 +186,17 @@ class Advisor:
                     "baseline record)").format(task.task_family),
                     sorted(hashes))
             else:
-                state.put_record(dirpath, tid,
-                                 make_record(task, hashes, uuid.uuid4().hex[:16]))
+                self._put(dirpath, tid,
+                          make_record(task, hashes, uuid.uuid4().hex[:16]))
             return
-        if rec.get('v') != state.RECORD_V or rec.get('py') != codehash.PY_TAG:
-            # schema/interpreter changed -> stored hashes aren't comparable; converge
+        if rec.get('v') != state.RECORD_V:
+            # record format changed -> stored hashes aren't comparable; converge
             # silently at grandfather trust level, PRESERVING output_id (and the
             # recorded run cost) so downstream dep_state folds don't move
-            state.put_record(dirpath, tid,
-                             make_record(task, hashes_of(task),
-                                         rec.get('output_id') or uuid.uuid4().hex[:16],
-                                         duration=rec.get('duration_s')))
+            self._put(dirpath, tid,
+                      make_record(task, hashes_of(task),
+                                  rec.get('output_id') or uuid.uuid4().hex[:16],
+                                  duration=rec.get('duration_s')))
             return
         stored = rec.get('source_hashes') or {}
         current = hashes_of(task)
@@ -237,10 +247,10 @@ class Advisor:
             # hashes match but the record predates a mode flip (pin added/removed with
             # unchanged code) or an upstream toggle -- converge silently, preserving
             # output_id and run cost
-            state.put_record(dirpath, tid,
-                             make_record(task, current,
-                                         rec.get('output_id') or uuid.uuid4().hex[:16],
-                                         duration=rec.get('duration_s')))
+            self._put(dirpath, tid,
+                      make_record(task, current,
+                                  rec.get('output_id') or uuid.uuid4().hex[:16],
+                                  duration=rec.get('duration_s')))
 
     def reason_for(self, task, ran, reasons):
         # why is this (incomplete) task about to run? deps were processed first, so a
@@ -318,7 +328,7 @@ def accept_code(task=None):
         if dep_state is not None:
             rec['dep_state'] = dep_state
         rec['source_hashes'] = hashes
-        rec['py'] = codehash.PY_TAG
+        rec.pop('py', None)   # pre-v5 interpreter tag
         rec['v'] = state.RECORD_V
         rec['ts'] = now
         state.put_record(dirpath, task_id, rec)

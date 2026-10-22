@@ -151,13 +151,13 @@ class TaskData(core.Task):
         fp = self._code_fingerprint
         if fp is None:
             return True
-        from oryxflow import state, codehash
+        from oryxflow import state
         rec = state.get_record(self._resolved_dirpath(), self.task_id)
         if rec is None:
             return True          # grandfathered; build() stamps it
-        if rec.get('v') != state.RECORD_V or rec.get('py') != codehash.PY_TAG:
-            # record schema or interpreter changed -> not comparable; treat as complete
-            # (grandfather trust level), build()'s advisory sweep re-stamps
+        if rec.get('v') != state.RECORD_V:
+            # record format changed -> not comparable; treat as complete (grandfather
+            # trust level), build()'s advisory sweep re-stamps
             return True
         if not self._own_code_ok(rec):
             return False

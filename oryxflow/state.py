@@ -14,6 +14,7 @@ Top-level imports are stdlib only; ``settings`` is lazy-imported (import-cycle-s
 import os
 import json
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 
 # record schema version, stamped as 'v' in every record. Bump when the fingerprint
@@ -24,7 +25,9 @@ from pathlib import Path, PurePosixPath
 # v3: symbol-level source_hashes ('<relpath>::<symbol>' keys, codehash.task_hashes) --
 #     v2 file-level records converge silently via the mismatch path above.
 # v4: code_version may be a method; records store the RESOLVED token.
-RECORD_V = 4
+# v5: interpreter-stable AST dump (codehash._dump), so hashes compare across Python minor
+#     versions; the per-record 'py' tag is gone.
+RECORD_V = 5
 
 # str(store path) -> dict of records, invalidated on write
 _cache = {}
@@ -61,6 +64,20 @@ def _load(dirpath):
     return records
 
 
+# Windows refuses os.replace (WinError 5) while a sync client or virus scanner briefly holds
+# the target -- seen on OneDrive-synced data dirs. Retry with backoff (~4.5 s) before raising.
+_REPLACE_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1, 1, 1)
+
+
+def _replace(src, dst):
+    for delay in _REPLACE_DELAYS:
+        try:
+            return os.replace(src, dst)
+        except PermissionError:
+            time.sleep(delay)
+    return os.replace(src, dst)
+
+
 def _write(dirpath, records):
     path = _store_path(dirpath)
     try:
@@ -76,7 +93,7 @@ def _write(dirpath, records):
         try:
             with os.fdopen(fd, 'w') as fh:
                 fh.write(payload)
-            os.replace(tmp, str(path))
+            _replace(tmp, str(path))
         except Exception:
             try:
                 os.unlink(tmp)

@@ -145,6 +145,20 @@ class RunQuery(oryxflow.tasks.TaskCachePandas):
 
 Edit `queries/monthly.sql` and `RunQuery` reruns on the next `flow.run()` — no reset, no version string to bump, and the rerun cascades downstream like any other code change. Re-saving the file without changing a byte does nothing, because the value follows the content, not the timestamp. `hash_files` takes any number of glob patterns, and raises if a pattern matches no files at all — a typo'd path that quietly reported "nothing changed" forever is the one outcome worse than no check.
 
+**A `code_version()` method replaces automatic tracking of the task's own Python.** Once a task declares one, an edit to its `run()` only warns; it no longer reruns the task. To keep both, return the task's code hash alongside the files. This is the recipe for a task that reads a shared data file another team publishes (a data master, a lookup map):
+
+```python
+class LoadMaster(oryxflow.tasks.TaskPqPandas):
+    def code_version(self):
+        return {'data': oryxflow.hash_files('//share/published/master.parquet'),
+                'code': oryxflow.codehash.task_code_hash(self)}
+
+    def run(self):
+        self.save(pd.read_parquet('//share/published/master.parquet'))
+```
+
+When the published file changes, `LoadMaster` and everything downstream recompute on the next run, and so do they when you edit `run()`. A synced or network folder that rewrites the file with the same bytes does nothing. `hash_files` only re-reads a file when its size or modification time changed, so a large file costs a read only after it actually changed.
+
 Files are just the common case; return anything the result depends on. A rendered template is often the better value, because one string carries the whole include chain, the helper that assembled it, *and* the parameter that chose the branch:
 
 ```python

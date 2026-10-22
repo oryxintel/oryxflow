@@ -8,7 +8,8 @@ so editing one task never invalidates unrelated siblings in the same file. Refer
 subclasses are excluded (that is dependency *wiring*, tracked via output identity, and
 including their bodies would break pin orthogonality); project-local base classes ARE
 included via the MRO. Each symbol is hashed after AST normalization (parse -> strip
-docstrings and the class-body ``code_version`` declaration -> ``ast.dump``), so comments,
+docstrings and the class-body ``code_version`` declaration -> ``_dump``, an ``ast.dump`` that is
+stable across Python versions), so comments,
 docstrings, formatting edits and adding/removing/bumping a ``code_version`` produce no hash
 change (it is a token, compared as its own record dimension -- never a source edit). That
 covers both forms: a ``code_version = '3'`` pin line and a ``def code_version(self)`` whose
@@ -41,10 +42,22 @@ PROJECT_ROOT = None
 
 _ROOT_MARKERS = ('.git', 'pyproject.toml', 'setup.py', 'setup.cfg')
 
-# ast.dump output changes across minor Python versions (e.g. 3.12 added type_params),
-# so normalized hashes are only comparable within one interpreter version. Records
-# stamp this tag; a mismatch means "can't compare", never "changed".
-PY_TAG = '{}.{}'.format(sys.version_info.major, sys.version_info.minor)
+
+def _dump(node):
+    """``ast.dump`` that is stable across Python minor versions: fields that are None or empty
+    are left out, since newer versions add such fields to existing nodes (3.12: empty
+    ``type_params``). Unchanged code hashes the same under 3.11 and 3.12."""
+    if isinstance(node, ast.AST):
+        parts = []
+        for field in node._fields:
+            value = getattr(node, field, None)
+            if value is None or value == []:
+                continue
+            parts.append('{}={}'.format(field, _dump(value)))
+        return '{}({})'.format(type(node).__name__, ', '.join(parts))
+    if isinstance(node, list):
+        return '[{}]'.format(', '.join(_dump(x) for x in node))
+    return repr(node)
 
 # Per-file caches are keyed by abspath with the mtime INSIDE the value
 # (mtime_ns, payload), so an edited file replaces its entry instead of leaking one
@@ -209,7 +222,7 @@ def file_hash(path):
         return None
     try:
         tree = _strip_docstrings(ast.parse(src))
-        digest = hashlib.md5(ast.dump(tree).encode('utf-8')).hexdigest()
+        digest = hashlib.md5(_dump(tree).encode('utf-8')).hexdigest()
     except SyntaxError:
         digest = hashlib.md5(src).hexdigest()
     except Exception:
@@ -494,7 +507,7 @@ def _symbol_index(path):
             side.append(stmt)
             names = _bound_names(stmt)
             _bind_imports(stmt)
-        digest = hashlib.md5(ast.dump(stmt).encode('utf-8')).hexdigest()
+        digest = hashlib.md5(_dump(stmt).encode('utf-8')).hexdigest()
         stmt_refs = frozenset(_collect_refs(stmt))
         for n in names:
             # a name bound by SEVERAL statements (`def f` then `f = cache(f)`,
@@ -507,7 +520,7 @@ def _symbol_index(path):
             refs[n] = refs.get(n, frozenset()) | stmt_refs
     side_digest = None
     if side:
-        blob = '|'.join(ast.dump(s) for s in side)
+        blob = '|'.join(_dump(s) for s in side)
         side_digest = hashlib.md5(blob.encode('utf-8')).hexdigest()
     index = {'symbols': symbols, 'refs': refs, 'imports': imports,
              'stars': tuple(stars), 'sideeffect': side_digest}
@@ -584,7 +597,7 @@ def callable_hashes(*fns):
             continue
         rel = os.path.relpath(str(Path(start).resolve()), root).replace(os.sep, '/')
         hashes['{}::{}()'.format(rel, fn.__qualname__)] = hashlib.md5(
-            ast.dump(tree).encode('utf-8')).hexdigest()
+            _dump(tree).encode('utf-8')).hexdigest()
         roots.setdefault(root, []).append(
             (str(Path(start).resolve()), mod.__name__, frozenset(_collect_refs(tree))))
     for root, seeds in roots.items():
