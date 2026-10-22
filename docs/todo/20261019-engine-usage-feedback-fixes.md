@@ -70,36 +70,29 @@ def _dump(node):
 ```
 
 Changes:
-- `codehash`: add `_dump` and use it at the four `ast.dump` sites. Update the `PY_TAG` comment:
-  the tag becomes informational and is still stamped in records.
+- `codehash`: add `_dump` and use it at the four `ast.dump` sites.
   (`oryxflow/evals/task.py:119` also uses `ast.dump` for an eval cache key. Leave it: evals are
   being split out into oryxeval, see `20261018-sys-split-oryxeval.md`.)
 - `state.RECORD_V` 4 -> 5 with a history line ("v5: interpreter-stable AST dump").
-- `_code_ok` and `advise`: only a `v` mismatch is "unverifiable"; a `py` mismatch is compared
-  normally. Equal hashes -> converge silently (re-stamp `py`). Different hashes -> the normal
-  code-change path: rerun, or warn under a pin or the expensive-recompute guard.
-  Grep for every other `rec.get('py')` check: `codecheck.py:182`, `tasks/__init__.py:155`, and the
-  `accept_code` `_restamp` writes `py` (fine).
-- Loud re-baseline: `Advisor` collects the task families it re-stamps because of a `v`
-  mismatch. Add `Advisor.finish()`, called by `core.build` before `RunResult` is built
-  (`core.py:1467`). If any were collected, it emits ONE warning on the same channels as
-  `Advisor.warn` (warnings.warn `StalenessWarning`, loguru, a `code_warning` event, and an entry
-  in `RunResult.warnings`):
-  `"N task(s) had code-status records from an older oryxflow (record format vX); re-stamped
-  without comparing code, so edits made before this run were not detected: <families, first 5>.
-  reset() any you changed since their last run."`
+- Remove the interpreter gate entirely: delete `codehash.PY_TAG`, the `'py'` field in
+  `make_record` and `accept_code`'s `_restamp`, and the `rec.get('py') != codehash.PY_TAG` halves
+  of the checks at `codecheck.py:182` and `tasks/__init__.py:155` (keep the `v` half). Fingerprints
+  are now compared across Python versions like any others. Grep `PY_TAG` and `'py'` for stragglers;
+  old records still carrying a `py` key are harmless (ignored).
 
-Pending decision: the plan above keeps the one-time silent-but-WARNED re-baseline on a `v` bump.
-The alternative is treating `v` mismatch as incomplete, which is safer but forces a one-time full
-recompute of every project. Default to the warning unless the maintainer says otherwise.
+Decision (maintainer, 2026-10-22): **hard cutover, no new migration code.** The existing `v`-mismatch
+path already treats an old record as complete and silently re-stamps it on the first build after
+the upgrade; keep exactly that. No aggregated warning, no `Advisor.finish()`. The one-time gap (an
+edit made before upgrading and never rerun is not detected) is covered by a release note: "after
+upgrading, `reset()` any task you edited but have not rerun since". Small user base, so this beats
+carrying migration code.
 
 Tests (`tests/test_code_invalidation.py`; the existing case at :631 sets `rec['py'] = '0.0'` and
-asserts a silent re-stamp -- it must change):
-- `py` mismatch + unchanged code -> complete, record re-stamped with the current `PY_TAG`,
-  `output_id` preserved, no warning.
-- `py` mismatch + edited task code -> incomplete (reruns) in auto mode.
-- `v` mismatch -> complete, re-stamped, exactly one aggregated warning in
-  `RunResult.warnings` naming the family.
+asserts a re-stamp -- replace it):
+- a record whose stored hashes were made by a different interpreter, simulated by unchanged code
+  with an old/foreign `py` key -> complete, no rerun (the key is ignored).
+- edited task code with an old/foreign `py` key -> incomplete (reruns) in auto mode.
+- `v` mismatch -> complete and re-stamped with `v == 5` (existing behavior, keep a test).
 - `_dump` unit test: a `FunctionDef` with an explicit empty `type_params` attribute dumps
   identically to one without it (simulates the 3.11/3.12 difference on one interpreter).
 
@@ -170,15 +163,16 @@ that working tree is what their projects run.
   debug line.
 - Code-status records from another Python minor version are now compared instead of trusted:
   `codehash` hashes an interpreter-stable AST dump, so an edit made under 3.11 to a task last run
-  under 3.12 reruns it. Records from an older record format are still re-stamped without a
-  comparison, but the build now warns once, listing the tasks (`RunResult.warnings`).
+  under 3.12 reruns it. `codehash.PY_TAG` and the records' `py` field are removed.
 - Unused-input lint (`inputcheck.check_class`, `oryxflow.check_inputs`, `preview()`): a keyed load
   with a non-literal `task=` (`{n: self.inputLoad(task=n) for n in names}`) or a whole-input
   load is reported `unanalyzed`, not `unused`.
 
 ### Changed
-- `state.RECORD_V` is 5. Migration: none -- every existing record is re-stamped once on its next
-  build, with the warning above; `reset()` a task you edited since its last run.
+- BREAKING: `state.RECORD_V` is 5 (new fingerprint formula). On the first build after upgrading,
+  every existing record is trusted and re-stamped without comparing code, so an edit made before
+  the upgrade and not yet rerun is not detected. Migration: before or right after upgrading,
+  `reset()` any task you edited but have not rerun since; after that first build, detection is exact.
 - `hash_files` reads in chunks and caches each file's digest by size and mtime, so a large data
   file is not re-read on every completeness check. Digests are unchanged.
 ```
