@@ -536,3 +536,21 @@ def test_rerun_reason_names_the_changed_file(imports_env):
 
     _template(env / 'imports.ipynb', data_src=IMPORT_SRC + "\nprint('more')")
     assert flow.run().reasons[task.task_id] == 'code change (template cells)'
+
+
+class NbReportMath(NbReport):
+    html_mathjax = True
+
+
+def test_dollar_amounts_stay_text(env):
+    _template(env / 'template.ipynb', extra_cells=[
+        nbformat.v4.new_markdown_cell('Sales rose from $1.2bn to $3bn.'),
+        nbformat.v4.new_code_cell("from IPython.display import Markdown\nMarkdown('Cost $5m vs $7m')")])
+    oryxflow.run(NbReport())
+    text = _html(NbReport())
+    assert 'MathJax.Hub' not in text and 'latest.js' not in text   # no formula rendering
+    assert '$1.2bn to $3bn' in text and '$5m vs $7m' in text
+    assert '<title>NbReport</title>' in text
+
+    oryxflow.run(NbReportMath())                            # opt in for real formulas
+    assert 'MathJax.Hub' in _html(NbReportMath())

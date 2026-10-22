@@ -70,7 +70,7 @@ flow.run()
 html = flow.outputLoad()    # path of the HTML report
 ```
 
-Two files are saved next to your other task outputs: the executed notebook (`.ipynb`, with code, handy for debugging) and the report (`.html`, without code). `outputLoad()` returns the path of the `.html`. To keep the code in the report, set `html_include_code = True` on the task; the cell that oryxflow fills in with your parameters is then shown too, including the local data paths of your inputs.
+Two files are saved next to your other task outputs: the executed notebook (`.ipynb`, with code, handy for debugging) and the report (`.html`, without code). `outputLoad()` returns the path of the `.html`. Dollar amounts such as `$1.2bn` show as typed; to render LaTeX formulas instead, set `html_mathjax = True`. To keep the code in the report, set `html_include_code = True` on the task; the cell that oryxflow fills in with your parameters is then shown too, including the local data paths of your inputs.
 
 If the notebook fails, the error names the cell, the line and the exception, for example ``viz-region-summary.ipynb failed in cell In[4], at `sales['margin']`: KeyError: 'margin'``, and the partly executed copy is kept as `.failed.ipynb` so you can see where it stopped.
 

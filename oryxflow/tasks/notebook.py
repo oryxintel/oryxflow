@@ -283,6 +283,7 @@ class TaskNotebook(TaskData):
     kernel_name = 'python3'
     html_template = 'classic'
     html_include_code = False
+    html_mathjax = False
     template_deps = 'auto'
     publish = None
     report_title = None
@@ -508,4 +509,5 @@ class TaskNotebook(TaskData):
         parts.pop('deps_all', None)
         executed.metadata['oryxflow'] = {'code': parts}
         nbformat.write(executed, str(running))
-        self.save(running, html_template=self.html_template, include_code=self.html_include_code)
+        self.save(running, html_template=self.html_template, include_code=self.html_include_code,
+                  mathjax=self.html_mathjax)

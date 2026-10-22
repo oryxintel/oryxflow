@@ -31,7 +31,7 @@ class NotebookTarget(_LocalPathTarget):
             raise RuntimeError('Target does not exist, make sure task is complete')
         return self.html_path
 
-    def save(self, executed_path, html_template='classic', include_code=False):
+    def save(self, executed_path, html_template='classic', include_code=False, mathjax=False):
         """Export the HTML report, move the executed notebook into place, then copy them to
         the ``publish`` paths."""
         import nbformat
@@ -39,6 +39,13 @@ class NotebookTarget(_LocalPathTarget):
 
         executed_path = pathlib.Path(executed_path)
         exporter = HTMLExporter(template_name=html_template)
+        if not mathjax:
+            # without it "$1.2bn ... $3bn" stays text instead of becoming a formula
+            import jinja2
+            exporter.extra_loaders = [jinja2.DictLoader({'oryxflow_nomath.html.j2': (
+                "{%- extends 'index.html.j2' -%}"
+                "{%- block html_head_js_mathjax -%}{%- endblock html_head_js_mathjax -%}")})]
+            exporter.template_file = 'oryxflow_nomath.html.j2'
         exporter.exclude_input = not include_code
         exporter.exclude_input_prompt = True
         exporter.exclude_output_prompt = True

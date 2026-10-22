@@ -44,6 +44,7 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - `oryxflow.report.table` right-aligns columns of numbers stored with object dtype (a transposed frame), as it does float and int columns.
 - `excel_write` takes an open binary file handle as `path` (the atomic `.tmp` + `os.replace` recipe is in the Excel docs). The reports guide says which Python runs the `python3` kernel, how to pick another with `kernel_name`, and that the task's Python counts only with `code_version_auto` on.
 ### Fixed
+- `TaskNotebook` html reports show dollar amounts as text: `$1.2bn to $3bn` was rendered as a LaTeX formula. The html no longer loads MathJax; set `html_mathjax = True` on the task to render formulas.
 - A task whose dependency check moved without any upstream task running in the build reports `upstream output changed since last run`, or `dependency check re-based (record from an older oryxflow)` on the first run after upgrading (`RunResult.reasons`, the `task_ran` event). Before, both read `upstream rerun`, pointing at an upstream that hadn't run.
 - Imported (`external`) tasks are no longer code-checked by the consumer: no false `StalenessWarning` comparing the export stub with the producer's record (with the expensive-recompute text for a short task), and the consumer's advisory sweep and `accept_code()` never write records into the producer's data dir.
 - The code-change warning for a task with automatic tracking off (`settings.code_version_auto = False`) says so, instead of naming the expensive-recompute guard.
