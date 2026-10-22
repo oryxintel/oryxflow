@@ -14,7 +14,7 @@ and executor all live in `oryxflow/core.py` + `oryxflow/parameter.py`.
 
 ```
 oryxflow/
-  __init__.py        # public API: run, preview, Workflow, WorkflowMulti, FlowExport/Import,
+  __init__.py        # public API: run, preview, Workflow, WorkflowMulti, FlowExport/Import (from export.py),
                      #   invalidate_*, requires/inherits, re-exported Parameter types
   core.py            # the engine: Task, Register metaclass, Target/LocalTarget, flatten,
                      #   getpaths, task_id_str, inherits/requires, find_deps, build()
@@ -30,6 +30,7 @@ oryxflow/
                      #   excel_write (formatted Excel writer; _excel_* helpers, sheet specs)
   report.py          # display-format presets: FORMATS, fmt, excel_code, resolve_formats, format_frame, table, inputs_of, inputLoad
   functional.py      # decorator-based functional Workflow API (uses only oryxflow.requires)
+  export.py          # export = True tasks -> tasks_export.py (FlowExport, auto_export from run()), FlowImport
 tests/               # pytest suite (see tests/setup.md)
 docs/                # examples + docs/todo/ design notes
 ```
@@ -58,7 +59,7 @@ instead of reinventing them.
 
 **Decorators stack** (`@requires` / `@inherits` / `@requires_each`, any order, any number) — the normal combining task needs the fan-out **and** a shared un-fanned dep (the source table, a baseline, labels). Each decorator appends to a per-class `_requires_spec` (core.py) which `_apply_spec` re-resolves from scratch, so order is irrelevant; `_resolve_requires` generates the single `requires()`. The fanned-param exclusion is **global across the whole spec**, not per-decorator — otherwise `@requires(X)` would copy back an `X.region` that `@requires_each` deliberately excluded, silently. `derive=` names join the fanned ones in that same global exclusion set (`_apply_spec`'s `excluded`), for the same reason. Two things that used to be silently wrong now **raise**: declaring a fanned param in the combining task's body (`TypeError` — it would put one branch's value in the combiner's `task_id`), and duplicate dep keys (`ValueError`). Naming a group (`@requires_each({'chart': Chart}, region=...)`) qualifies its dep keys with that name (`chart_north`) — that is how a collision is resolved; unnamed groups keep bare value keys, so single-decorator shapes are unchanged. `_check_requires_not_overwritten` only fires for a genuinely hand-written `requires()` (generated ones carry `_oryxflow_generated`).
 
-**Share / move flows** — `FlowExport(tasks=None, flows=None, save=False, path_export='tasks_export.py')` generates standalone task files; `FlowImport(...)` loads them back. (Generated-text contract — see the FlowExport note under Conventions.)
+**Share between projects** — a task with `export = True` is the project's interface: every `run()` whose DAG includes one rewrites `tasks_export.py` at the project root (parent of `settings.dirpath`; only on change; `run(export=False)` skips; failures only warn) with one `external = True` class per exported task (docstring, base class, persists, params + defaults, path relative to the file, `built` = param sets whose output exists, merged with the previous file and pruned). `FlowExport(tasks=None, flows=None, save=False, path_export=None).generate()` does it by hand. The consumer: `FlowImport('<project dir or file>')` loads it under a unique module name and exposes the classes as attributes; `@requires` them (params pass through, reruns follow the producer via `dep_state`). A missing external output lists the path and `built`.
 
 **Invalidate** — `invalidate_upstream(task, confirm=False)`, `invalidate_downstream(task, task_downstream, confirm=False)`, plus `taskflow_upstream` / `taskflow_downstream`. NB: `invalidate_all` and `invalidate_orphans` are **stubs that raise `NotImplementedError`** — don't point users at them.
 
@@ -253,8 +254,9 @@ baseline: **86 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`,
 - Platform is Windows (PowerShell); tests compare against `pathlib.Path(...)` (not raw strings)
   so they pass cross-OS. Keep new path assertions OS-agnostic.
 - Match surrounding style; the codebase is plain, comment-light, no type annotations.
-- When changing `FlowExport`'s generated-file template, update the exact expected strings in
-  `tests/test_workflow.py::TestFlowExports` (they assert generated text byte-for-byte).
+- `tasks_export.py` is a contract between projects: a change to `FlowExport`'s generated text
+  changes every producer's committed file. Keep `tests/test_external_data.py` (task ids of
+  imported tasks match the producer's, per parameter type) green.
 - Don't commit/push unless asked. Default branch is `main`; feature work is on `decouple*`.
 - **Never commit or push the sibling plugin repo `../oryxflow-claude-plugin` from this
   workspace** — the maintainer commits it themselves. You may *edit* its files (e.g.

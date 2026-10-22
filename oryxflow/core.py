@@ -1115,13 +1115,34 @@ def _task_label(task):
     return "{}({})".format(task.task_family, inner) if inner else task.task_family
 
 
+def _external_missing_reason(task):
+    # name the files looked for: an external task is usually a stand-in for another
+    # project's output, and a wrong path or an unrun upstream project look identical
+    try:
+        missing = [str(o.path) for o in flatten(task.output())
+                   if not o.exists() and getattr(o, 'path', None) is not None]
+    except Exception:
+        missing = []
+    where = ' (looked for {})'.format(', '.join(missing)) if missing else ''
+    built = getattr(task, 'built', None)
+    if isinstance(built, list):
+        # an imported export lists what the producer has on disk
+        shown = ['{' + ', '.join('{}={}'.format(k, v) for k, v in b.items()) + '}' for b in built[:10]]
+        if len(built) > 10:
+            shown.append('... {} more'.format(len(built) - 10))
+        where += '; built: {}'.format('; '.join(s.strip('{}') or '{}' for s in shown) if built else 'nothing')
+    return ('external missing output{} -- this task is produced outside this flow: run the '
+            'project or process that produces it first, and check that path, parameters and '
+            'persists match it').format(where)
+
+
 class TaskFailure:
     """One failed task: the task instance plus why it failed."""
     def __init__(self, task, exception=None, traceback=None, reason=None):
         self.task = task
         self.exception = exception      # the real run() exception, or None
         self.traceback = traceback      # formatted traceback string, or None
-        self.reason = reason            # 'run error' | 'dependency failed' | 'external missing'
+        self.reason = reason            # 'run error' | 'dependency failed' | 'external missing output -- ...'
     def __str__(self):
         if self.exception is not None:
             return "{}: {}: {}".format(_task_label(self.task),
@@ -1337,9 +1358,10 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
                 already_complete.append(task)
                 visited[tid] = True
                 return True
-            logger.warning("external task missing output: {}", tid)
-            failed.append(TaskFailure(task, reason="external missing output"))
-            _emit_failed(task, 'external missing output', None, None)
+            reason = _external_missing_reason(task)
+            logger.warning("external task missing output: {}: {}", tid, reason)
+            failed.append(TaskFailure(task, reason=reason))
+            _emit_failed(task, reason, None, None)
             visited[tid] = False
             return False
 

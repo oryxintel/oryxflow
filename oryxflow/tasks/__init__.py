@@ -54,6 +54,9 @@ class TaskData(core.Task):
     # keep outputs of previous code_versions at readable paths (.../Task/v1/...) instead
     # of overwriting in place; only takes effect when code_version is set
     keep_versions = False
+    # part of this project's interface for other projects: run() writes it to tasks_export.py
+    # (see oryxflow.export); a consumer loads it with FlowImport
+    export = False
 
     def __init__(self, *args, path=None, flows=None, **kwargs):
         kwargs_ = {k: v for k, v in kwargs.items(

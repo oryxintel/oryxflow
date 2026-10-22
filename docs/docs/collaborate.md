@@ -13,7 +13,7 @@ Common cases where you want to do this:
 oryxflow gives you three approaches, from simplest to most advanced — this page covers them in order:
 
 1.  **Share the data folder** — version `data/` with Git LFS (optionally split by `env=` so you hand off only what you mean to). The recipient clones and gets the exact outputs.
-2.  **Share code-free stubs** — `FlowExport` hands over the outputs as loadable tasks *without* the `run()` code that produced them, for when the logic is private.
+2.  **Export and import tasks** — mark tasks `export = True` and every run writes `tasks_export.py`, a code-free, read-only copy of them; another project loads it with `FlowImport` and requires those tasks like its own.
 3.  **Bridge separate flows** — `attach_flow` lets one flow read another flow's outputs at run time, across projects or environments.
 
 ## Sharing the data itself: Git LFS
@@ -29,7 +29,7 @@ The [Claude Code plugin](claude-plugin/index.md) sets this up for you in one ste
 
 Tracking `data/**` also picks up the small `.oryxflow-code-status.json` record oryxflow keeps *inside* the data directory (the code fingerprints behind [Automatic code invalidation](managing-workflows.md#automatic-code-invalidation)), so it travels with the outputs it describes — move or restore a data directory whole and the freshness information comes along. The separate `.oryxflow/` event log (run history) is high-frequency exhaust, not a shared output: keep it gitignored and export history deliberately if a teammate needs it.
 
-The next section refines this — splitting `data/` by `env=` so you share only part of it. The later Export/Import and Attach sections cover the cases Git LFS doesn't: handing off the *task code* to another project, or reading one flow's outputs from inside another flow.
+The next section refines this — splitting `data/` by `env=` so you share only part of it. The later Export/Import and Attach sections cover the cases Git LFS doesn't: reading another project's outputs from your own flow, or one flow's outputs from inside another flow.
 
 ## Separating environments with `env=`
 
@@ -45,7 +45,7 @@ flow_dev = oryxflow.Workflow(TaskTrain, env='dev')
 flow_dev.run()      # output under data/env=dev/
 ```
 
-Because each environment is its own directory, you can share just the one you mean to — commit `data/env=prod/` and leave `data/env=dev/` out — without the environments overwriting each other or leaking. When you later read these outputs (a plain `import` or `FlowImport`, both below), pass the same `env=` to point at the environment you want:
+Because each environment is its own directory, you can share just the one you mean to — commit `data/env=prod/` and leave `data/env=dev/` out — without the environments overwriting each other or leaking. When you later read these outputs (an imported task, below), pass the same `env=` to point at the environment you want:
 
 ```python
 flow_prod = oryxflow.Workflow(TaskTrain, env='prod')
@@ -54,80 +54,65 @@ df = flow_prod.outputLoad()     # reads data/env=prod/
 
 Just make sure the environment you point at is the one whose outputs actually exist — reading `env='prod'` when the shared data was saved without an `env` (plain `data/`) will find the tasks incomplete and rerun them.
 
-## Sharing outputs without the code (`FlowExport`)
+## Exporting tasks for other projects (`export = True`)
 
-The point of exporting is to **share output data without sharing the code that produced it.** Often the `run()` logic is the sensitive part — a proprietary model, a paid data source, an internal cleaning routine — but the *output* is what a colleague, client, or student actually needs. `FlowExport` lets you hand over the results as a first-class oryxflow flow while keeping that logic private.
-
-It works because the exported file contains only **stub** task definitions. For each task it emits the parent class (so the output format is known), the `persists` names, the `path`, the `task_group`, and the parameters — everything needed to *locate and load* the output — plus `external=True`, which tells oryxflow to treat the output as already-produced and never run the task. The original `run()` body is **not** included. The recipient wires the stubs into a `Workflow` (see *Loading shared outputs in your project* below) and calls `outputLoad()` to work with your results through oryxflow — parameter management and all — without ever seeing how they were made.
-
-You can Export your tasks into a new File or print the tasks in the console. All parameters, paths, task_group will be exported.
+Mark each task another project may read with `export = True`. That is the whole producer side:
 
 ```python
-class Task1(oryxflow.tasks.TaskPqPandas):
+class SectorReturns(oryxflow.tasks.TaskPqPandas):
+    """Quarterly total returns by sector. Columns: sector, ret_pct (decimal, 0.05 = 5%)."""
+    export = True
+    sector = oryxflow.Parameter(default='office')
+
     def run(self):
-        self.save(...)   # your private logic — NOT exported
+        self.save(...)   # your logic -- NOT exported
+```
 
-@oryxflow.requires(Task1)
-class Task2(oryxflow.tasks.TaskPqPandas):
+Every `flow.run()` that includes an exported task rewrites `tasks_export.py` at the project root (next to `data/`). For each exported task it holds a read-only copy: the docstring, the output format, `persists`, the parameters with their defaults, `external = True` (never run, only read) and the data path, written relative to the file so it works wherever the folders live. `built` lists the parameter values whose output exists:
+
+```python
+class SectorReturns(oryxflow.tasks.TaskPqPandas):
+    """Quarterly total returns by sector. Columns: sector, ret_pct (decimal, 0.05 = 5%)."""
+    external = True
+    persists = ['data']
+    path = str(_HERE / 'data')
+    sector = oryxflow.parameter.Parameter(default='office')
+    built = [
+        {'sector': 'office'},
+        {'sector': 'retail'},
+    ]
+```
+
+There is no `run()` in the file, so you can hand your outputs to someone without your code: share `tasks_export.py` with the `data/` folder (Git LFS above makes that easy).
+
+Commit `tasks_export.py`. It is your project's interface: when you rename an exported task, change its parameters or its `persists`, the diff shows it, and so does every project reading it. The file is only rewritten when its content changes, and `flow.run(export=False)` skips it for a throwaway run. To write it without running, call `oryxflow.FlowExport(save=True).generate()`.
+
+Export tasks whose output another project can read without your code: parquet, csv or json. A pickled object may need your classes to load.
+
+## Reading another project's outputs (`FlowImport`)
+
+Two separate projects, each with its own flow and its own `data/`: `project2` needs a result `project1` exports. Load `project1`'s export and require its tasks like your own:
+
+```python
+exported = oryxflow.FlowImport('../project1')     # reads ../project1/tasks_export.py
+
+@oryxflow.requires(exported.SectorReturns)
+class SectorReport(oryxflow.tasks.TaskPqPandas):
     def run(self):
-        self.save(...)   # your private logic — NOT exported
+        df = self.inputLoad()                       # project1's output for this sector
+        self.save(df)
 
-flow = oryxflow.Workflow(Task2)
-
-# This will only export Task 2 to console
-e = oryxflow.FlowExport(tasks=Task2())
-e.generate()
-
-# This will export All the flow (Task1, Task2) to a file
-e = oryxflow.FlowExport(flows=flow, save=True, path_export='tasks_export.py')
-e.generate()
+oryxflow.Workflow(SectorReport, {'sector': 'retail'}).run()
 ```
 
-The generated `tasks_export.py` holds stubs like this — note there is no `run()`:
+What that gets you:
 
-```python
-import oryxflow
-import datetime
+- **Parameters pass through the flow.** `SectorReport` takes on `sector` from `SectorReturns`, so you choose the sector the way you choose any parameter, including one flow per sector with `WorkflowMulti`. `exported.SectorReturns.built` lists what `project1` has built.
+- **Reruns follow upstream.** When `project1` recomputes `SectorReturns`, `SectorReport` reruns on its next run; when nothing changed there, nothing reruns here.
+- **No side effects on the other project.** Imported tasks never run from here. If an output isn't there, the run stops with `external missing output (looked for <path>); built: ...` -- pick a built value, or have `project1` build the one you need.
+- **No path work.** The export knows where `project1` keeps its files, and two projects whose files share a name (`tasks.py`, `cfg.py`) don't mix: the export imports nothing from `project1`.
 
-class Task1(oryxflow.tasks.TaskPqPandas):
-    external=True
-    persists=['data']
-
-class Task2(oryxflow.tasks.TaskPqPandas):
-    external=True
-    persists=['data']
-```
-
-Ship this file together with the `data/` directory (the Git-LFS approach above is an easy way), and the recipient can load every output through oryxflow without the source code.
-
-## Loading shared outputs in your project
-
-The simplest way to use `tasks_export.py` is to drop it into your project next to the shared `data/` directory and `import` it like any other module. The stubs are ordinary task classes, so you use them in a standard `Workflow` — point oryxflow at the data directory, then load:
-
-```python
-import oryxflow
-import tasks_export                     # the stub file you were given
-
-oryxflow.set_dir('data/')               # the shared data directory
-
-flow = oryxflow.Workflow(tasks_export.Task2)
-flow.complete()                         # True — external stub sees the existing output file
-df = flow.outputLoad()                  # load the results, no producer code needed
-```
-
-Because the stubs are `external=True`, oryxflow treats their output as already-produced: nothing runs, `complete()` is `True` as long as the output files are in place, and `outputLoad()` just reads them. If the tasks have parameters, pass them as usual to select which output you want (`oryxflow.Workflow(tasks_export.Task2, {'country': 'US'})`) — the same parameter → path resolution applies, so you never chase file paths by hand.
-
-## Loading shared outputs from another project (`FlowImport`)
-
-The plain `import` above assumes `tasks_export.py` and its `data/` sit inside your project. When the file and data live in **another directory or project**, `FlowImport` loads the module and resolves its data path for you, so you don't have to copy anything in:
-
-```python
-scraper = oryxflow.FlowImport(path='../another-project/', module='tasks_export.py', path_data='data/')
-flow_import = oryxflow.Workflow(scraper.tasks.Task2, path=scraper.dirpath)
-df = flow_import.outputLoad()
-```
-
-`FlowImport` returns an object exposing the imported task classes under `.tasks` and the resolved data directory under `.dirpath`; you pass that `dirpath` as the workflow's `path` so the flow reads from the other project's `data/`. It's the same idea as the plain import — just without moving files between projects.
+**Don't read another project's outputs by file path or run id.** Output file names come from the task's name and parameters, and the format has changed between releases, so a hard-coded path breaks silently, skips the file-format handling and never notices when the upstream project recomputes. A run id names one build in the event log, not an output -- the cache keeps the latest output per task, so there is no "that run's output" to fetch. A file path is fine for a consumer *outside* oryxflow (Excel, a BI tool); hand it `flow.outputPath(...)`, not a typed-in path.
 
 ## Reading another flow's outputs (`attach_flow`)
 
@@ -195,20 +180,17 @@ Step by step, here is what actually happens:
 3.  `flow2.run()` propagates that registration onto the task instances just before executing them: every task in `flow2` gets `self.flows = {'flow': flow}`. This is why the attach must come *before* the run — a task created and run without it would have `self.flows` empty.
 4.  Inside `Task3.run()`, `self.flows['flow']` is the attached `flow` object, so `self.flows['flow'].outputLoad()` calls `outputLoad()` on it and returns `Task1`'s DataFrame. `Task3` then saves it as its own output.
 
-The key idea is that the link is between *flows*, resolved lazily at load time — `Task3` never declares `Task1` in its `requires()`. That keeps the two flows independent (separate projects, separate `data/` directories, separate run/reset scopes) while still letting one read the other's results. Crucially, unlike a `requires` edge, the attached flow **keeps its own** `path`/`env`, so `self.flows['flow'].outputLoad()` reads from *that* flow's data root — which may be a different project's `data/` or a different `env=`. That is what makes it the right tool for the cross-project case above: import another project's tasks, wrap them in a `Workflow` pointed at that project's `dirpath`, attach it, and read its outputs by parameter without ever resolving a path.
+The key idea is that the link is between *flows*, resolved lazily at load time — `Task3` never declares `Task1` in its `requires()`. That keeps the two flows independent (separate projects, separate `data/` directories, separate run/reset scopes) while still letting one read the other's results. Crucially, unlike a `requires` edge, the attached flow **keeps its own** `path`/`env`, so `self.flows['flow'].outputLoad()` reads from *that* flow's data root — which may be a different project's `data/` or a different `env=`. For reading another *project's* outputs, prefer `FlowImport` and a plain `@requires` (see [Reading another project's outputs](#reading-another-projects-outputs-flowimport)): it is tracked, and reruns follow upstream. `attach_flow` fits when you want a whole flow configured once — a fixed `env=` or parameter slice — and read on demand:
 
 ```python
-# another project's flow, pointed at ITS data root (see FlowImport above)
-scraper = oryxflow.FlowImport(path='../another-project/', module='tasks_export.py', path_data='data/')
-flow_prod = oryxflow.Workflow(scraper.tasks.Task2, path=scraper.dirpath, env='prod')
+# another project's flow, configured once: its prod environment
+flow_prod = oryxflow.Workflow(exported.Task2, path='../another-project/data', env='prod')
 
 # your flow whose task consumes the scraped data
 flow_mine = oryxflow.Workflow(MyTask)
 flow_mine.attach_flow(flow_prod, 'scraped')
 flow_mine.run()          # inside MyTask.run(): self.flows['scraped'].outputLoad(Task2)
 ```
-
-Why not just `@oryxflow.requires(scraper.tasks.Task2)` on `MyTask`? Because `flow_mine` would push *your* `path` onto the imported task, so it would look for the output under *your* `data/` instead of `../another-project/data/` — find it missing, and try to rebuild it (needing that project's raw inputs and code). `attach_flow` sidesteps that precisely because the attached flow retains its own path.
 
 Two trade-offs to know:
 
@@ -218,4 +200,5 @@ Two trade-offs to know:
 Decision rule:
 
 - **Same project, and the upstream should follow the consumer's parameters** → `@oryxflow.requires` (parameters propagate, tracked, auto-built). Don't reach for `attach_flow` to wire tasks that belong to *one* pipeline.
-- **Separate data root (another project or another** `env` **), or an independently-managed flow** → `attach_flow`, which keeps parameter → path resolution across the boundary — the thing manual DataFrame passing destroys.
+- **Another project's outputs** → `FlowImport` its exported tasks, then `@oryxflow.requires` (tracked; reruns follow upstream).
+- **A fixed slice of an independently-managed flow (a set `env=` or parameter set), read on demand** → `attach_flow`, which keeps parameter → path resolution across the boundary — the thing manual DataFrame passing destroys.
