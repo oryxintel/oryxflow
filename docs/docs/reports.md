@@ -14,7 +14,7 @@ The report runs in the `python3` Jupyter kernel, so that kernel must be the envi
 
 ## 1. Write the template notebook
 
-Make a notebook, for example `reports/summary.ipynb`. It needs one cell tagged `parameters`. In classic Notebook, use View > Cell Toolbar > Tags. In JupyterLab, select the cell and open the property inspector (the gear icon in the right sidebar). List every name your notebook uses, with a default, and add `oryxflow_inputs = None`. A name that is not listed there is still passed in, but Jupyter and papermill warn about it:
+Make a notebook at the project root, for example `viz-region-summary.ipynb` (at the root, `import tasks` and the relative `data/` folder resolve the same way they do for `run.py`). It needs one cell tagged `parameters`. In classic Notebook, use View > Cell Toolbar > Tags. In JupyterLab, select the cell and open the property inspector (the gear icon in the right sidebar). List every name your notebook uses, with a default, and add `oryxflow_inputs = None`. A name that is not listed there is still passed in, but Jupyter and papermill warn about it:
 
 ```python
 # cell tagged "parameters"
@@ -52,7 +52,7 @@ class LoadSales(TaskPqPandas):
 
 @oryxflow.requires({'a': LoadSales})
 class RegionReport(TaskNotebook):
-    notebook = 'reports/summary.ipynb'
+    notebook = 'viz-region-summary.ipynb'
 ```
 
 `@oryxflow.requires` copies `region` from `LoadSales` onto `RegionReport`. The upstream task must save to disk, as `TaskPqPandas` does; an in-memory `TaskCache` output is not reachable from the notebook.
