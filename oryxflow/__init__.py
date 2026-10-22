@@ -534,8 +534,11 @@ def requires_each(task_to_require, /, *extra, derive=None, **grid):
                     ...                                       # every branch, grouped
         ```
 
-    Decorators stack in any order. If two of them would produce the same key, name one:
-    `@oryxflow.requires_each({'chart': RegionChart}, region=REGIONS)`.
+    Decorators stack in any order. Two fan-outs of different tasks over the same values (a
+    chart and a table per region) are keyed by task name, `RegionChart_north` and
+    `RegionTable_north`, and grouped the same way with `flatten=False`
+    (`deps['RegionChart']['north']`). To pick shorter names, name the groups:
+    `@oryxflow.requires_each({'chart': RegionChart}, region=REGIONS)` gives `chart_north`.
 
     **Settings that vary per branch.** When each branch needs something else that follows from
     its value — a per-region source file, a per-model tuning dict — use `derive=` rather than

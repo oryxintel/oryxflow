@@ -650,7 +650,12 @@ def _excel_sheet_specs(data, options):
             if unknown:
                 raise TypeError('sheet {!r} got unexpected options {}'.format(name, sorted(unknown)))
             item = item['df']
-        opts = dict(_EXCEL_DEFAULTS, **options, **own)
+        opts = {**_EXCEL_DEFAULTS, **options, **own}
+        shared = options.get('formats')
+        if isinstance(own.get('formats'), dict) and isinstance(shared, dict):
+            # the sheet's keys first: among globs the first match wins, and the sheet's should
+            opts['formats'] = {**own['formats'],
+                               **{k: v for k, v in shared.items() if k not in own['formats']}}
         if isinstance(opts['notes'], str):
             opts['notes'] = [opts['notes']]
         out.append((name, item, opts))
@@ -661,8 +666,12 @@ def excel_write(path, data, **options):
     '''
     Write one or more dataframes to a formatted Excel file and return path.
 
+    path: a file path, or an open binary file handle (for an atomic publish, write to a
+        temporary file opened with open(tmp, 'wb') and os.replace it over the target).
     data: DataFrame (sheet 'Sheet1') or {sheet_name: df_or_spec}; a spec is
-        {'df': df, **per_sheet_options}, overriding the options below for that sheet.
+        {'df': df, **per_sheet_options}, overriding the options below for that sheet. A sheet's
+        formats dict is merged over the shared one (its keys win; a None value removes a column's
+        format); a sheet's formats=False writes that sheet with no number formats.
     options: formats, index, filters, freeze, widths, width_min, width_max, header_style.
         formats maps column names or globs to a preset name, str.format spec or Excel code;
         formats=False writes no number formats. Formats are display-only: values are unchanged.

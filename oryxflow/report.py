@@ -153,6 +153,16 @@ def format_frame(df, formats=None, na_rep=NA_REP):
     return out
 
 
+def _is_numeric(s):
+    # a transposed frame holds floats in object columns: still numbers, still right-aligned
+    if pd.api.types.is_bool_dtype(s):
+        return False
+    if pd.api.types.is_numeric_dtype(s):
+        return True
+    return s.dtype == object and pd.api.types.infer_dtype(s, skipna=True) in (
+        'floating', 'integer', 'mixed-integer-float', 'decimal')
+
+
 def table(df, formats=None, index='auto', rename=None, columns=None, caption=None, na_rep=NA_REP):
     """Return a pandas Styler showing df with the same ``formats`` dict as the Excel writer.
 
@@ -179,7 +189,7 @@ def table(df, formats=None, index='auto', rename=None, columns=None, caption=Non
     if caption:
         styler = styler.set_caption(caption)
     styler = styler.set_table_styles([{'selector': 'th', 'props': [('font-weight', 'bold')]}])
-    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    numeric = [c for c in df.columns if _is_numeric(df[c])]
     if numeric:
         styler = styler.set_properties(subset=numeric, **{'text-align': 'right'})
     return styler
@@ -224,6 +234,38 @@ def inputs_of(task):
     return {k: _dep_entry(v, k) for k, v in items}
 
 
+def default_inputs(task, **params):
+    """The inputs a report notebook should use: the ``oryxflow_inputs`` injected by
+    ``TaskNotebook``, or, when the notebook is run by hand, those of ``task``.
+
+    task is a report task instance, or its class plus the parameters to build it with (pass
+    ``**flow.params`` too when the task carries flow parameters). Put it right after the
+    parameters cell, so the same template runs under the flow and by hand in Jupyter::
+
+        oryxflow_inputs = rpt.default_inputs(tasks.RegionReport, region=region)
+    """
+    injected = _injected_inputs()
+    if injected is not None:
+        return injected
+    if isinstance(task, type):
+        task = task(**params)
+    elif params:
+        raise TypeError('default_inputs: pass parameters with the task class, not an instance')
+    missing = [str(t.path) for t in _flat_targets(task.input()) if not t.exists()]
+    if missing:
+        raise FileNotFoundError('{} inputs are not built yet ({}); run the flow first'.format(
+            task.task_id, ', '.join(missing[:3])))
+    return inputs_of(task)
+
+
+def _flat_targets(inp):
+    if isinstance(inp, dict):
+        return [t for v in inp.values() for t in _flat_targets(v)]
+    if isinstance(inp, (list, tuple)):
+        return [t for v in inp for t in _flat_targets(v)]
+    return [inp]
+
+
 def _injected_inputs():
     import sys
     try:
@@ -247,12 +289,40 @@ def _load_entry(entry, keys=None):
     return target.load()
 
 
+class Outputs(list):
+    """The outputs of a multi-output dependency, in its ``persists`` order. A list, so
+    ``a, b = rpt.inputLoad(task='x')`` unpacks the data as ``self.inputLoad`` does, that also
+    takes an output's name: ``out['train']``, ``out.keys()``, ``out.items()``."""
+
+    def __init__(self, items):
+        items = list(items)
+        super().__init__(v for _, v in items)
+        self._names = [k for k, _ in items]
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            try:
+                return list.__getitem__(self, self._names.index(key))
+            except ValueError:
+                raise KeyError('{!r}; outputs are {}'.format(key, ', '.join(self._names))) from None
+        return list.__getitem__(self, key)
+
+    def keys(self):
+        return list(self._names)
+
+    def values(self):
+        return list(self)
+
+    def items(self):
+        return list(zip(self._names, self))
+
+
 def _load_dep(entry, keys):
     if 'persists' not in entry:
         return _load_entry(entry, keys)
     persists = entry['persists']
     if keys is None:
-        return {k: _load_entry(v) for k, v in persists.items()}
+        return Outputs((k, _load_entry(v)) for k, v in persists.items())
     if isinstance(keys, str):
         return _load_entry(persists[keys])
     return [_load_entry(persists[k]) for k in keys]
@@ -264,17 +334,18 @@ def inputLoad(spec=None, task=None, keys=None):
     spec defaults to the ``oryxflow_inputs`` variable injected into the notebook. task picks one
     dependency by name (or position); with none, one dependency is loaded directly and several
     come back as ``{name: data}``. keys picks outputs of a multi-output dependency: a string gives
-    one value, a list gives a list in that order, None gives a dict (unlike ``self.inputLoad``,
-    which returns a list for a multi-output dependency). A single-file target that selects by key
-    itself, such as the sheets of a ``TaskExcelPandas`` file, gets ``keys`` passed through. task takes a name or an index, not a class.
+    one value, a list gives a list in that order, None gives all of them as ``Outputs``: a list in
+    ``persists`` order, as ``self.inputLoad`` returns, that also takes a name (``out['train']``).
+    A single-file target that selects by key itself, such as the sheets of a ``TaskExcelPandas``
+    file, gets ``keys`` passed through. task takes a name or an index, not a class.
     """
     if spec is None:
         spec = _injected_inputs()
     if spec is None:
         raise ValueError(
             'no inputs available: a report notebook run by TaskNotebook gets oryxflow_inputs '
-            'injected; when running by hand, set\n'
-            '    oryxflow_inputs = rpt.inputs_of(MyReportTask(...))\n'
+            'injected; to run it by hand, add after the parameters cell\n'
+            '    oryxflow_inputs = rpt.default_inputs(tasks.MyReport, param=value, ...)\n'
             'or pass the spec: rpt.inputLoad(spec, task=...)')
     if task is not None:
         return _load_dep(spec[str(task)], keys)

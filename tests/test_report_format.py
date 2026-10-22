@@ -1,3 +1,4 @@
+import re
 import sys
 import pandas as pd, pytest
 import oryxflow.report as rpt
@@ -123,3 +124,16 @@ def test_table_missing_jinja2(monkeypatch):
     monkeypatch.setitem(sys.modules, 'jinja2', None)
     with pytest.raises(ImportError, match='format_frame'):
         rpt.table(pd.DataFrame({'a': [1.0]}))
+
+
+def test_table_right_aligns_object_numbers():
+    pytest.importorskip('jinja2')
+    df = pd.DataFrame({'office': {'ret': 0.05, 'n': 3, 'label': 'a'},
+                       'retail': {'ret': 0.02, 'n': 4, 'label': 'b'}}).T
+    assert df['ret'].dtype == object                       # transposed: floats in object columns
+    html = rpt.table(df, formats={'ret': 'pct'}).to_html()
+    css = rpt.table(df).to_html().split('</style>')[0]
+    aligned = {df.columns[int(j)] for sel, props in re.findall(r'([^{}]*)\{([^}]*)\}', css)
+               if 'text-align: right' in props for j in re.findall(r'_col(\d+)', sel)}
+    assert aligned == {'ret', 'n'}
+    assert '5.0%' in html
