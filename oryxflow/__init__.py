@@ -176,7 +176,7 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
                     invalidate.append(oryxflow.taskflow_downstream(tf, tup))
 
             invalidate = set().union(*invalidate)
-            invalidate = {t for t in invalidate if t.complete()}
+            invalidate = {t for t in invalidate if _has_output(t)}
         if len(invalidate) > 0:
             if confirm:
                 print('Forced tasks', invalidate)
@@ -195,7 +195,15 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
     opts['detailed_summary'] = execution_summary       # gates the summary LOG, not a print
     result = core.build(tasks, **opts)
     if export:
-        _export.auto_export(tasks)
+        for msg in _export.auto_export(tasks):
+            # a stale export is read by other projects: as visible as a code warning
+            logger.warning("{}", msg)
+            result.warnings.append(msg)
+            try:
+                from oryxflow import events as _events
+                _events.append('export_failed', {'error': msg}, run_id=result.run_id)
+            except Exception:
+                pass
     success = result.scheduling_succeeded
     if abort and not success:
         # name the failing task(s) AND their params in the message: with a fan-out over a
@@ -249,8 +257,18 @@ def taskflow_downstream(task, task_downstream, only_complete=False):
     with core.traversal_scope():
         tasks = core.find_deps(task_downstream, task.task_family)
         if only_complete:
-            tasks = {t for t in tasks if t.complete()}
+            tasks = {t for t in tasks if _has_output(t)}
         return tasks
+
+
+def _has_output(task):
+    # what a reset can delete: output on disk. Not complete(): that cascades, so a task whose
+    # upstream output is missing reads incomplete and its own stale files were kept
+    try:
+        outputs = core.flatten(task.output())
+        return bool(outputs) and all(o.exists() for o in outputs)
+    except Exception:
+        return False
 
 
 def invalidate_all(confirm=False):
@@ -579,10 +597,16 @@ def requires_each(task_to_require, /, *extra, derive=None, **grid):
 class Workflow(object):
     """
     The class is used to orchestrate tasks and define a task pipeline
+
+    Args:
+        export (bool): ``False`` makes this flow's runs never update ``tasks_export.py``
+            (an experiment flow, whose results other projects must not pick up); default:
+            each ``run()`` decides (``run(export=...)``, on by default)
     """
 
-    def __init__(self, task=None, params=None, path=None, env=None):
-        # Set Env 
+    def __init__(self, task=None, params=None, path=None, env=None, export=None):
+        self.export = export
+        # Set Env
         if path is not None and env is not None:
             path = str(path) + f"/env={env}"
         # Will overide other tasks with this task's main path
@@ -653,6 +677,8 @@ class Workflow(object):
         # Attach to tasks
         self._attach_to_tasks(tasks, flows=flow_param, path=path_param)
 
+        if self.export is False:
+            kwargs['export'] = False
         return run(tasks_inst, forced=forced, forced_all=forced_all, forced_all_upstream=forced_all_upstream,
                    confirm=confirm, workers=workers, abort=abort, execution_summary=execution_summary, **kwargs)
 
@@ -933,7 +959,9 @@ class Workflow(object):
         Get task with the workflow parameters
 
         Args:
-            task(class)
+            task(class, obj): a task class, or an instance whose own parameter values win
+                over the flow's (``flow.outputLoad(tasks.X(segment='a'))`` for a task with a
+                parameter the flow doesn't set)
 
         Retuns: An instance of task class with the workflow parameters
         """
@@ -942,6 +970,8 @@ class Workflow(object):
                 raise RuntimeError('no default tasks set')
             else:
                 task = self.default_task
+        if isinstance(task, core.Task):
+            return type(task)(**{**self.params, **task.param_kwargs})
         return task(**self.params)
 
     # Add a Flow to the Params of the Workflow
@@ -976,7 +1006,7 @@ class WorkflowMulti(object):
 
     """
 
-    def __init__(self, task=None, params=None, path=None, env=None):
+    def __init__(self, task=None, params=None, path=None, env=None, export=None):
         self.params = params
         self._task_name = task.task_family if task else 'WorkflowMulti default task'
         if params is not None and type(params) not in [dict, list]:
@@ -996,7 +1026,8 @@ class WorkflowMulti(object):
             raise Exception("Need to pass task parameters or use oryxflow.Workflow")
         self.default_task = task
         if params is not None:
-            self.workflow_objs = {k: Workflow(task=task, params=v, path=path, env=env) for k, v in self.params.items()}
+            self.workflow_objs = {k: Workflow(task=task, params=v, path=path, env=env, export=export)
+                                 for k, v in self.params.items()}
 
     def run(self, tasks=None, flow=None, forced=None, forced_all=False, forced_all_upstream=False, confirm=False,
             workers=1, abort=True, execution_summary=None, **kwargs):

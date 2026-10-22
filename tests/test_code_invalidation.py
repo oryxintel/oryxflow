@@ -987,9 +987,9 @@ class TestPerTaskGranularity:
             r = oryxflow.run(dn)
         assert r.ran == []                           # neither TaskUp nor TaskDn
 
-    def test_v2_record_migrates_silently(self, env, monkeypatch):
-        # a stored file-level (v2) record isn't comparable to symbol keys: it must
-        # converge silently at grandfather trust (no rerun, output_id preserved)
+    def test_v2_record_migrates_with_one_warning(self, env, monkeypatch):
+        # a stored file-level (v2) record isn't comparable to symbol keys: it converges at
+        # grandfather trust (no rerun, output_id preserved) and the build names it once
         monkeypatch.setattr(oryxflow.codehash, 'PROJECT_ROOT', env)
         mod, path = _make_module(env, 'codemod_v2mig', AUTO_V1)
         t = mod.TaskAuto()
@@ -1001,7 +1001,7 @@ class TestPerTaskGranularity:
         oryxflow.state.put_record(oryxflow.settings.dirpath, t.task_id, rec)
 
         r = oryxflow.run(t)
-        assert r.ran == [] and r.warnings == []
+        assert r.ran == [] and len(r.warnings) == 1 and t.task_id in r.warnings[0]
         rec2 = oryxflow.state.get_record(oryxflow.settings.dirpath, t.task_id)
         assert rec2['v'] == oryxflow.state.RECORD_V
         assert rec2['output_id'] == oid

@@ -21,6 +21,7 @@ those against the importing project instead.
 """
 
 import ast
+import copy
 import datetime
 import hashlib
 import importlib.util
@@ -91,9 +92,29 @@ def _str_params(task):
     return task.to_str_params(only_significant=True)
 
 
-def _from_str_params(cls, values):
+def _native(p):
+    """Whether a parameter is exported as its own type (else as a plain string Parameter)."""
+    from oryxflow import parameter as P
+    return type(p).__module__ == 'oryxflow.parameter' and type(p) is not P.EnumParameter
+
+
+def _built_values(task):
+    """A ``built`` entry: the task's significant parameter values, sorted by name, as Python
+    literals where they load back exactly (``built[0]['debug'] is False``), else in their
+    serialized string form. Either form gives the same task_id."""
+    params = dict(task.get_params())
+    out = {}
+    for name, text in sorted(_str_params(task).items()):
+        value = getattr(task, name)
+        out[name] = value if _native(params[name]) and _loads_back(repr(value), value) else text
+    return out
+
+
+def _from_values(cls, values):
+    """``cls`` instantiated from a ``built`` entry (literal or serialized-string values)."""
     params = dict(cls.get_params())
-    return cls(**{k: params[k].parse(v) for k, v in values.items() if k in params})
+    return cls(**{k: params[k].parse(v) if isinstance(v, str) else v
+                  for k, v in values.items() if k in params})
 
 
 def _key(values):
@@ -284,7 +305,9 @@ def _class_source(cls, dirpath, built, export_dir, source=None):
         lines.append('    target_dir = {!r}'.format(cls.target_dir))
     if not (settings.save_with_param and getattr(cls, 'save_attrib', True)):
         lines.append('    save_attrib = False')
-    for name, p in cls.get_params():
+    # by name: get_params() follows Parameter creation order, which for copied (@requires)
+    # parameters is module import order -- so it differed by entry point and churned the file
+    for name, p in sorted(cls.get_params(), key=lambda item: item[0]):
         lines.append('    ' + _param_source(name, p))
     if len(built) <= 1:
         lines.append('    built = {!r}'.format(built))
@@ -303,17 +326,48 @@ def _same_dir(a, b):
 
 
 def _still_built(old, values_list, dirpath):
-    """The previous file's built values that still have output, checked with its own class
-    (which knows where those files are) -- only when that is the directory being written."""
+    """Instances of the previous file's built values that still have output, checked with its
+    own class (which knows where those files are) -- only when that is the directory being
+    written."""
     if old is None or not _same_dir(getattr(old, 'path', None) or '', dirpath):
         return []
     out = []
     for values in values_list:
         try:
-            if _outputs_exist(_from_str_params(old, values)):
-                out.append(values)
+            task = _from_values(old, values)
+            if _outputs_exist(task):
+                out.append(task)
         except Exception:
             continue      # parameters changed since: that value set is gone
+    return out
+
+
+def _marks_export(node):
+    return isinstance(node, ast.ClassDef) and any(
+        isinstance(s, ast.Assign) and len(s.targets) == 1 and isinstance(s.targets[0], ast.Name)
+        and s.targets[0].id == 'export' and isinstance(s.value, ast.Constant)
+        and s.value.value is True for s in node.body)
+
+
+def _unloaded_exports(root, loaded, listed):
+    """``{module file: [class names]}``: classes marked ``export = True`` in project modules
+    this process never imported (top level and one folder down) that the file doesn't list."""
+    root = Path(root)
+    out = {}
+    for f in sorted(list(root.glob('*.py')) + list(root.glob('*/*.py'))):
+        rel = f.relative_to(root).as_posix()
+        if rel in loaded or f.name == EXPORT_FILENAME or rel.startswith('.'):
+            continue
+        try:
+            text = f.read_text(encoding='utf-8')
+            if 'export' not in text:
+                continue
+            tree = ast.parse(text)
+        except (OSError, SyntaxError, ValueError, UnicodeDecodeError):
+            continue
+        names = [n.name for n in tree.body if _marks_export(n) and n.name not in listed]
+        if names:
+            out[rel] = names
     return out
 
 
@@ -333,10 +387,16 @@ class FlowExport:
         path_export (str): where to write; default ``tasks_export.py`` next to the data dir
 
     Returns (``generate()``): the file's source code.
+
+    Attributes:
+        unloaded (dict): after ``generate()``, ``{module file: [class names]}`` of classes
+            marked ``export = True`` in project modules this process never imported, which
+            the file therefore doesn't list yet
     """
 
     def __init__(self, tasks=None, flows=None, save=False, path_export=None):
         import oryxflow
+        self.unloaded = {}
         tasks = [] if tasks is None else tasks
         tasks = list(tasks) if isinstance(tasks, (list, tuple)) else [tasks]
         flows = [] if flows is None else flows
@@ -413,10 +473,10 @@ class FlowExport:
                     'the new location, delete the {} class from {} and run again.'.format(
                         name, moved[0]._resolved_dirpath(), EXPORT_FILENAME, Path(dirpath),
                         name, EXPORT_FILENAME), UserWarning)
-            built = {_key(_str_params(t)): _str_params(t) for t in ran
+            built = {_key(_str_params(t)): _built_values(t) for t in ran
                      if _same_dir(t._resolved_dirpath(), dirpath) and _outputs_exist(t)}
-            for values in _still_built(old, getattr(old, 'built', []), dirpath):
-                built.setdefault(_key(values), values)
+            for t in _still_built(old, getattr(old, 'built', []), dirpath):
+                built.setdefault(_key(_str_params(t)), _built_values(t))
             entries[name] = (cls, dirpath, [built[k] for k in sorted(built)],
                              _source_of(cls, export_dir))
 
@@ -430,8 +490,10 @@ class FlowExport:
                     continue  # its module is loaded and no longer exports it, or is gone
             elif name in loaded:
                 continue      # no recorded module: a loaded class of that name doesn't export
-            built = _still_built(old, getattr(old, 'built', []), old.path)
-            entries[name] = (old, old.path, sorted(built, key=_key), source)
+            built = {_key(_str_params(t)): _built_values(t)
+                     for t in _still_built(old, getattr(old, 'built', []), old.path)}
+            entries[name] = (old, old.path, [built[k] for k in sorted(built)], source)
+        self.unloaded = _unloaded_exports(export_dir, files, set(entries))
 
         blocks = []
         for name in sorted(entries):
@@ -461,10 +523,11 @@ class FlowExport:
 
 def auto_export(tasks):
     """Called by ``run()``: rewrite ``tasks_export.py`` when the run included an exported task.
-    Never fails the run -- a problem is a warning."""
+    Never fails the run: returns the problems (``run()`` puts them in ``RunResult.warnings``,
+    the log and the event stream) and warns."""
     from oryxflow import settings, utils
     if settings.cloud_fs_enabled:
-        return
+        return []
     try:
         dag = []
         for t in tasks:
@@ -475,13 +538,85 @@ def auto_export(tasks):
             try:
                 text = path.read_text(encoding='utf-8')
             except OSError:
-                return
+                return []
             if not any('\nclass {}('.format(type(t).__name__) in text for t in dag):
-                return
-        FlowExport(tasks=dag, save=True).generate()
+                return []
+        export = FlowExport(tasks=dag, save=True)
+        export.generate()
+        for module, names in export.unloaded.items():
+            if ('unloaded', module) not in _warned:
+                _warned.add(('unloaded', module))
+                warnings.warn(
+                    '{}: {} marked export = True, but this run did not import {}, so {} does not '
+                    'list {} yet -- run an entry point that imports it once'.format(
+                        module, ', '.join(names), module, EXPORT_FILENAME,
+                        'it' if len(names) == 1 else 'them'), UserWarning)
+        return []
     except Exception as e:
-        warnings.warn('oryxflow: could not update {}: {}: {}'.format(
-            EXPORT_FILENAME, type(e).__name__, e), UserWarning)
+        msg = ('oryxflow: could not update {} -- consumers still read the previous one: '
+               '{}: {}').format(EXPORT_FILENAME, type(e).__name__, e)
+        warnings.warn(msg, UserWarning)
+        return [msg]
+
+
+class _Bound:
+    """Mixin of a class made by ``bind()``: the bound values always win -- even over a
+    same-named parameter of the task that requires it, which ``clone()`` would pass on."""
+
+    @classmethod
+    def get_param_values(cls, params, args, kwargs):
+        kwargs = {k: v for k, v in kwargs.items() if k not in cls._oryxflow_bound}
+        return super().get_param_values(params, args, kwargs)
+
+
+def bind(cls, **values):
+    """``cls`` with some parameters fixed: ``@requires(exported.X.bind(refresh='2026-10-18'))``.
+
+    A bound parameter is not copied onto the task that requires it, so it does not enter
+    that task's parameters or the task_id of anything downstream. The imported task still
+    has it, so it reads the producer's file for exactly those values, and your task reruns
+    when the value you bind changes. Unbound parameters pass through as usual."""
+    params = dict(cls.get_params())
+    unknown = sorted(set(values) - set(params))
+    if unknown:
+        raise TypeError('{}.bind(): no parameter {} -- it has: {}'.format(
+            cls.__name__, ', '.join(unknown), ', '.join(sorted(params)) or 'none'))
+    attrs = {'__module__': cls.__module__, '__doc__': cls.__doc__,
+             '_oryxflow_bound': frozenset(getattr(cls, '_oryxflow_bound', ())) | set(values)}
+    for name, value in values.items():
+        p = copy.copy(params[name])      # keeps its declaration order
+        p._default = p.parse(value) if isinstance(value, str) else value
+        p.task_value()                   # validates now, not at a far-away instantiation
+        attrs[name] = p
+    return type(cls)(cls.__name__, (_Bound, cls), attrs)
+
+
+def latest(cls, **match):
+    """``cls`` bound to the ``built`` parameter values written most recently (by output file
+    time), among those matching ``match`` when given:
+    ``@requires(exported.X.latest())`` follows the producer's refreshes without editing
+    your parameters, and ``exported.X.latest(model='prod')`` picks only among production
+    builds. Resolved when called (at import), so each run reads what is newest then; the
+    exact input a task ran with is in its ``task_ran`` event (``deps``)."""
+    from oryxflow.tasks import _output_mtime
+    newest, chosen = None, None
+    for values in getattr(cls, 'built', None) or []:
+        try:
+            task = _from_values(cls, values)
+            if match and _from_values(cls, {**values, **match}).task_id != task.task_id:
+                continue
+            if not _outputs_exist(task):
+                continue
+        except Exception:
+            continue
+        mtime = _output_mtime(task)
+        if mtime != '' and (newest is None or mtime > newest):
+            newest, chosen = mtime, values
+    if chosen is None:
+        raise ValueError('{}.latest({}): no built output{} -- built: {}'.format(
+            cls.__name__, ', '.join('{}={!r}'.format(k, v) for k, v in sorted(match.items())),
+            ' matches' if match else '', getattr(cls, 'built', None) or 'nothing'))
+    return bind(cls, **chosen)
 
 
 class FlowImport:
@@ -499,6 +634,12 @@ class FlowImport:
     other project keeps them, and ``MyTask`` reruns when the other project recomputes. The
     imported tasks are ``external``: they never run from here; a missing output stops the
     run and names what is built.
+
+    To keep the other project's parameters out of your own tasks, fix them where you
+    require the task: ``exported.SectorReturns.bind(refresh='2026-10-18')`` for exact
+    values, ``exported.SectorReturns.latest()`` for its newest build (see :func:`bind`,
+    :func:`latest`). Bound parameters are not copied onto your task, so they don't enter
+    your flow parameters or any downstream task_id; your task still reruns when they change.
 
     Args:
         path (str): the other project's folder, or the export file itself
@@ -526,6 +667,11 @@ class FlowImport:
         self.path = p
         self.module_obj = mod
         self.tasks = _export_classes(mod)
+        for cls in self.tasks.values():
+            params = dict(cls.get_params())
+            for name, fn in (('bind', bind), ('latest', latest)):
+                if name not in params:       # never shadow a producer parameter
+                    setattr(cls, name, classmethod(fn))
 
     def __getattr__(self, name):
         tasks = self.__dict__.get('tasks')

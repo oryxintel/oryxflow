@@ -507,7 +507,27 @@ class Task(metaclass=Register):
         for name in names:
             values = grid[name]
             if callable(values):
-                values = values(self)
+                try:
+                    values = values(self)
+                except AttributeError as e:
+                    missing = getattr(e, 'name', None)
+                    if (missing in grid and getattr(e, 'obj', None) is self
+                            and not hasattr(self, missing)):
+                        # @requires_each keeps fanned parameters off this task by design (it
+                        # would carry one branch's value), so a grid computed from this task's
+                        # own value of that parameter -- "the same loader, previous quarter"
+                        # -- can't read it
+                        raise TypeError(
+                            "{0}: the {1!r} values for {2} are computed from this task's own "
+                            "'{1}', but a task that fans out over '{1}' with @requires_each "
+                            "does not have that parameter. To depend on {2} at another value of "
+                            "your own '{1}' (e.g. the previous period): replace the decorators "
+                            "with @oryxflow.inherits(<the same tasks>) so {0} keeps '{1}', and "
+                            "write requires() by hand -- {{'current': self.clone(<Task>), "
+                            "'prior': self.clone({2}, {1}=prior(self.{1}))}}, or "
+                            "self.requires_grid({2}, {1}=[...]) for several values.".format(
+                                self.task_family, missing, cls.__name__)) from e
+                    raise
             if not isinstance(values, (list, tuple)):
                 raise ValueError(
                     '{}: requires_grid values must be a list of values to fan out over, got {} for {}'.format(
@@ -773,10 +793,12 @@ def _apply_spec(cls):
     # (c) copy parameters from every entry, skipping every fanned/derived name GLOBALLY (not
     # per-decorator): @requires(X) copying an 'X.region' that @requires_each deliberately
     # excluded is the exact bug @requires_each exists to prevent, and it would be silent.
+    # Parameters fixed with an imported task's bind()/latest() stay on that task only.
     for entry in spec:
         for src in _entry_sources(entry):
+            bound = getattr(src, '_oryxflow_bound', ())
             for pname, pobj in src.get_params():
-                if pname in excluded or hasattr(cls, pname):
+                if pname in excluded or pname in bound or hasattr(cls, pname):
                     continue
                 setattr(cls, pname, pobj)
                 injected.add(pname)
@@ -1322,6 +1344,26 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
     _advisor = _codecheck.Advisor(_emit)
     warned = _advisor.warned   # unacknowledged code-change warning strings (RunResult)
 
+    upstream_ran = {}   # task_id -> True, or len(ran) when last found False
+
+    def _upstream_ran(task):
+        # complete() cascades over deps (check_dependencies), so whether a task looked complete
+        # depended on visit order: of two tasks sharing a missing upstream, the first visited
+        # ran it and reran, the second then found it complete and was skipped -- stale, with
+        # a green run (an untracked task keeps no record, so _dep_state can't catch it). A
+        # task whose upstream ran in this build is out of date, whichever order got there.
+        if not ran or not _settings.check_dependencies:
+            return False
+        tid = task.task_id
+        known = upstream_ran.get(tid)
+        if known is True or known == len(ran):
+            return known is True          # True is final; False holds until more tasks run
+        ran_ids = {t.task_id for t in ran}
+        hit = any(dep.task_id in ran_ids or _upstream_ran(dep)
+                  for dep in flatten(task.requires()))
+        upstream_ran[tid] = True if hit else len(ran)
+        return hit
+
     def _emit_failed(task, error, tb, duration):
         _emit('task_failed',
               {'task_id': task.task_id, 'family': task.task_family,
@@ -1342,7 +1384,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         if tid in visited:
             return visited[tid]
 
-        if task.complete():
+        if task.complete() and not _upstream_ran(task):
             _advisor.advise(task)
             logger.debug("task skipped (already complete): {}", tid)
             already_complete.append(task)
@@ -1425,6 +1467,9 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
                'source_hashes': hashes, 'reason': reason, 'duration_s': duration,
                'git_sha': git_sha, 'git_dirty': git_dirty,
                'oryxflow_version': _version,
+               # the exact inputs, so a run is reproducible when a dep was picked at import
+               # time (an imported task bound with .latest())
+               'deps': [d.task_id for d in flatten(task.requires())],
                'dirpath': str(dirpath if dirpath is not None else _settings.dirpath)},
               msg="task complete: {} in {:.3f}s".format(tid, duration))
         _code_warned.pop(tid, None)   # condition resolved; a future recurrence re-warns
@@ -1487,6 +1532,7 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         with traversal_scope():
             for task in tasks:
                 _process(task)
+        _advisor.finish()
     finally:
         _codehash.unfreeze()
         _log.set_task_log_capture(previous_capture)
