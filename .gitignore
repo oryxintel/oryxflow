@@ -134,3 +134,5 @@ utest/
 
 # machine-local agent notes (private paths)
 CLAUDE.local.md
+# client names for scripts/check_private_terms.py (machine-local, never commit)
+.private-terms

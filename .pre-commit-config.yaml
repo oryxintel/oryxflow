@@ -25,3 +25,13 @@ repos:
         # and front-matter validation covers every page, so trigger on all docs Markdown
         # plus the generator itself.
         files: ^(docs/.*\.md|scripts/build_docs\.py)$
+
+      # Public repo: no client names or local paths in the lines a commit adds. The names
+      # live in ~/.oryx-private-terms or a gitignored .private-terms (see CLAUDE.md
+      # Conventions), never in this repo.
+      - id: private-terms
+        name: no client names or local paths
+        entry: python scripts/check_private_terms.py
+        language: system
+        pass_filenames: false
+        always_run: true
