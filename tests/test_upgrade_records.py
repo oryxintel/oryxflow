@@ -120,6 +120,62 @@ class TestOldRecords:
         assert oryxflow.run(mod.Down()).warnings == []
 
 
+
+class TestRecordCompat:
+    """Record-format compatibility both ways: every older version this library has written
+    since v4 stays comparable, and a record from a NEWER oryxflow is never re-stamped."""
+
+    def test_every_previous_version_keeps_its_hashing_rules(self):
+        # bumping RECORD_V without keeping the previous version's hashing rules makes every
+        # existing record uncomparable, so the first build trusts them all (the v4 -> v5
+        # cutover blessed edits in 4 of 5 projects). Keep the old rules in
+        # codehash.rules_of and add the version to LEGACY_VERSIONS.
+        assert set(range(4, oryxflow.state.RECORD_V)) <= set(oryxflow.codehash.LEGACY_VERSIONS)
+
+    def test_record_shape_is_stable(self, env):
+        mod, _ = _load(env, 'compat_shape', SRC)
+        oryxflow.run(mod.Down())
+        rec = oryxflow.state.get_record(oryxflow.settings.dirpath, mod.Down().task_id)
+        # a new or renamed field needs a RECORD_V decision (and older libraries' behavior on
+        # it): update this set only together with state.RECORD_V's history comment
+        assert set(rec) == {'fingerprint', 'code_version', 'source_hashes', 'output_id',
+                            'dep_state', 'dep_ids', 'duration_s', 'v', 'ts'}
+        assert rec['v'] == oryxflow.state.RECORD_V
+
+    def _as_newer(self, task):
+        dirpath = oryxflow.settings.dirpath
+        rec = dict(oryxflow.state.get_record(dirpath, task.task_id))
+        rec['v'] = oryxflow.state.RECORD_V + 1
+        rec['source_hashes'] = {'future.py::Up': 'from-a-newer-oryxflow'}
+        rec['field_from_the_future'] = 1
+        oryxflow.state.put_record(dirpath, task.task_id, rec)
+        return rec
+
+    def test_newer_record_is_kept_untouched_with_a_warning(self, env):
+        mod, _ = _load(env, 'compat_newer', SRC)
+        oryxflow.run(mod.Down())
+        newer = self._as_newer(mod.Up())
+
+        with pytest.warns(oryxflow.StalenessWarning, match='NEWER oryxflow'):
+            r = oryxflow.run(mod.Down())
+        assert r.ran == []
+        assert len(r.warnings) == 1 and mod.Up().task_id in r.warnings[0]
+        oryxflow.state.clear_cache()
+        assert oryxflow.state.get_record(oryxflow.settings.dirpath,
+                                         mod.Up().task_id) == newer
+        assert [w['kind'] for w in oryxflow.events.warnings()] == ['newer_record']
+
+    def test_accept_code_leaves_newer_records_alone(self, env, capsys):
+        mod, _ = _load(env, 'compat_accept', SRC)
+        oryxflow.run(mod.Down())
+        newer = self._as_newer(mod.Up())
+        oryxflow.accept_code(mod.Down())
+        oryxflow.state.clear_cache()
+        assert oryxflow.state.get_record(oryxflow.settings.dirpath,
+                                         mod.Up().task_id) == newer
+        assert 'newer oryxflow' in capsys.readouterr().out
+
+
 class TestMetadataIsNotCode:
 
     def test_adding_export_does_not_rerun(self, env):

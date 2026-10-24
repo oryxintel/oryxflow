@@ -32,6 +32,16 @@ from pathlib import Path, PurePosixPath
 # v6: class-body metadata attributes (export, export_source, built) are left out of the hash.
 RECORD_V = 6
 
+
+def is_newer(rec):
+    """True when ``rec`` was written by a NEWER oryxflow (record version above RECORD_V).
+    This library can't read it in that version's terms, so it must neither compare nor
+    re-stamp it: rewriting it as RECORD_V would throw away what the newer version recorded
+    and silently bless any edit made since (the re-stamp risk of running an older oryxflow
+    on a data folder a newer one built)."""
+    v = rec.get('v') if rec else None
+    return isinstance(v, int) and v > RECORD_V
+
 # str(store path) -> dict of records, invalidated on write
 _cache = {}
 

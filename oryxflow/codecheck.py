@@ -177,6 +177,11 @@ class Advisor:
                 "kept without rerunning: {ids}. If you edited one since its last run, rerun "
                 "it: flow.reset(<Task>) (flow.reset_downstream(<Task>) for everything after "
                 "it)."),
+            'newer_record': (
+                "{n} task(s) have code-status records from a NEWER oryxflow (record version "
+                "above " + str(state.RECORD_V) + "), so this oryxflow can't compare them with "
+                "the code; they were kept as they are, without rerunning or re-stamping: "
+                "{ids}. Run this data folder with the newer oryxflow."),
         }
         for why, ids in self.unverified.items():
             shown = ', '.join(ids[:10]) + (' ... and {} more'.format(len(ids) - 10)
@@ -277,6 +282,13 @@ class Advisor:
             else:
                 self._put(dirpath, tid,
                           make_record(task, hashes, uuid.uuid4().hex[:16]))
+            return
+        if state.is_newer(rec):
+            # written by a newer oryxflow: keep it as it is (no compare, no re-stamp) and
+            # say so -- the newer library compares it on its next run
+            self._unverified(task, 'newer_record',
+                             '<not compared: record from a newer oryxflow (v{})>'
+                             .format(rec.get('v')))
             return
         old_version = rec.get('v') != state.RECORD_V
         if old_version:
@@ -449,6 +461,9 @@ def accept_code(task=None):
 
     def _restamp(dirpath, task_id, rec, hashes, family, fingerprint=None, dep_state=None,
                  dep_ids=None):
+        if state.is_newer(rec):
+            newer.append(task_id)   # a newer oryxflow's record: never rewritten here
+            return
         rec = dict(rec)   # preserves output_id: accepting must not ripple downstream
         if fingerprint is not None:
             rec['fingerprint'] = fingerprint
@@ -473,6 +488,7 @@ def accept_code(task=None):
 
     skipped = []
     unverified = []
+    newer = []
     # one shared walk across a list of roots: multi-final pipelines overlap upstream,
     # each shared task is visited and stamped once
     seen = set()
@@ -580,6 +596,10 @@ def accept_code(task=None):
         print('accept_code: skipped {} task(s) that errored while walking the tree: {} '
               '-- accept them individually with a task instance'.format(
                   len(skipped), shown))
+    if newer:
+        shown = ', '.join(newer[:5]) + ('...' if len(newer) > 5 else '')
+        print('accept_code: left {} record(s) from a newer oryxflow as they are: {} '
+              '-- accept them with that oryxflow'.format(len(newer), shown))
     if unverified:
         shown = ', '.join(unverified[:5]) + ('...' if len(unverified) > 5 else '')
         print('accept_code: {} record(s) reference symbols or files that no longer '
