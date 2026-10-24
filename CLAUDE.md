@@ -256,6 +256,11 @@ baseline: **86 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`,
   A plan must stay executable after sanitizing: keep the *shape* of the real example (task names,
   param sets, the failure it exhibits) and drop only the identity. If sanitizing would gut the
   point, the example belongs in an external note, not in `docs/todo/`.
+
+  The pre-commit hook `private-terms` (`scripts/check_private_terms.py`) blocks a commit whose
+  added lines hold a local path or a listed client name. The names stay off the repo: list
+  them, one per line, in `~/.oryx-private-terms` or a gitignored `.private-terms` at the repo
+  root (without either, only paths are checked). `--all` audits every tracked file.
 - **User docs (`docs/docs/*.md`) are written for data scientists, not library developers.**
   They were deliberately rewritten from a user-benefits perspective (commit 316a9fb): say what
   the reader gets and what to type ("lists each distinct warning once, so its length answers
