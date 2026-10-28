@@ -170,6 +170,13 @@ oryxflow.utils.excel_write('report.xlsx', {'summary': df_perf})
 | `datetime` | `2026-01-01 09:30` |
 | `text` | shown as typed |
 
+To change how decimal columns look across a whole sheet, set `format_float`: a sheet that holds only rates reads best with `format_float='pct'`, and a column named in `formats` still gets its own format. Like the other options, it can be set for the whole workbook or per sheet:
+
+<!--phmdoctest-share-names-->
+```python
+oryxflow.utils.excel_write('report.xlsx', {'summary': df_perf}, format_float='pct')
+```
+
 You can also pass a Python format such as `'{:,.0f}'` or an Excel number format such as `'0.000'`. A misspelled name (`'pctt'`) raises an error that lists the valid names, instead of writing a file Excel would offer to "repair".
 
 ### A finished deliverable
@@ -218,15 +225,7 @@ Other sheet options: `colorscale` shades a column from low to high, `banded=True
 
 Options given to the whole save apply to every sheet, and a sheet's own options override them. A column named in a whole-workbook `highlight`, `colorscale`, `wrap_columns`, `group_starts` or `id_columns` applies to the sheets that have it; a name that no sheet has is an error, and so is a name missing from the sheet whose own spec lists it. A sheet's `formats` adds to the shared `formats` rather than replacing it: shared `formats={'*_pct': 'pct'}` plus a sheet's `{'*': 'num1'}` formats that sheet's percent columns as percents and the rest with one decimal. Set a column to `None` in the sheet's `formats` to drop a shared format for it, or `formats=False` for no number formats on that sheet.
 
-`excel_write` also takes an open file instead of a path. To replace a shared file without anyone ever opening a half-written one, write to a temporary file and swap it in:
-
-```python
-import os
-
-with open('report.xlsx.tmp', 'wb') as f:
-    oryxflow.utils.excel_write(f, {'summary': df_perf})
-os.replace('report.xlsx.tmp', 'report.xlsx')
-```
+`excel_write` also takes an open file instead of a path.
 
 Formatting styles each cell, so very large frames (hundreds of thousands of rows) write noticeably slower than an unformatted save; column widths are sized from the first 1,000 rows. Excel may show a small green "number stored as text" marker on ID columns; that is expected and harmless.
 

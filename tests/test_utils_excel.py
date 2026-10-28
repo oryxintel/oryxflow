@@ -592,3 +592,48 @@ def test_shared_column_options_skip_sheets_without_the_column(tmp_path):
         excel_write(tmp_path / 'b.xlsx', {'a': df, 'b': other}, wrap_columns=['name', 'nope'])
     with pytest.raises(KeyError, match='note'):                # a sheet's own option stays strict
         excel_write(tmp_path / 'c.xlsx', {'a': {'df': df, 'wrap_columns': ['note']}, 'b': other})
+
+
+def test_format_float(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, make_df(), format_float='pct')
+    ws = sheet(p)
+    assert ws['C2'].number_format == '0.0%'
+    assert ws['D2'].number_format == '0.0%'
+    assert ws['B2'].number_format == 'General'
+    assert ws['A2'].number_format == 'General'
+    assert ws['E2'].number_format == 'yyyy-mm-dd'
+
+
+def test_format_float_formats_win(tmp_path):
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, make_df(), format_float='pct', formats={'value': 'num1', 'year': 'int'})
+    ws = sheet(p)
+    assert ws['C2'].number_format == '#,##0.0'
+    assert ws['B2'].number_format == '#,##0'
+    assert ws['D2'].number_format == '0.0%'
+    p2 = tmp_path / 'b.xlsx'
+    excel_write(p2, make_df(), format_float='pct', formats=False)
+    assert sheet(p2)['D2'].number_format == 'General'
+
+
+def test_format_float_sheet_override(tmp_path):
+    df = make_df()
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, {'a': df, 'b': {'df': df, 'format_float': 'float'},
+                    'c': {'df': df, 'format_float': '0.000'}}, format_float='pct')
+    wb = openpyxl.load_workbook(p)
+    assert wb['a']['C2'].number_format == '0.0%'
+    assert wb['b']['C2'].number_format == '#,##0.00'
+    assert wb['c']['C2'].number_format == '0.000'
+    with pytest.raises(KeyError):
+        excel_write(tmp_path / 'd.xlsx', df, format_float='pctt')
+
+
+def test_format_float_none_is_default(tmp_path):
+    p, p2 = tmp_path / 'a.xlsx', tmp_path / 'b.xlsx'
+    excel_write(p, make_df())
+    excel_write(p2, make_df(), format_float=None)
+    a, b = sheet(p), sheet(p2)
+    for c in 'ABCDEF':
+        assert a[c + '2'].number_format == b[c + '2'].number_format
