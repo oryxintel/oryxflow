@@ -65,12 +65,12 @@ class TestProducer:
         SectorReturns, _ = _producer(p1)
         oryxflow.Workflow(SectorReturns, {'sector': 'office'}).run()
         oryxflow.Workflow(SectorReturns, {'sector': 'retail'}).run()
-        assert ("    built = [\n        {'sector': 'office'},\n        {'sector': 'retail'},\n    ]"
+        assert ("    built = [\n        {'sector': 'office', 'prod': True},\n        {'sector': 'retail'},\n    ]"
                 in _export_file(p1).read_text())
 
         os.remove(SectorReturns(sector='retail').output().path)
         oryxflow.Workflow(SectorReturns, {'sector': 'office'}).run()
-        assert "built = [{'sector': 'office'}]" in _export_file(p1).read_text()
+        assert "built = [{'sector': 'office', 'prod': True}]" in _export_file(p1).read_text()
 
     def test_flow_without_exported_tasks_writes_nothing(self, projects):
         p1, _ = projects
@@ -151,10 +151,11 @@ class TestParameterTypes:
 
 class TestConsumer:
 
-    def _consumer(self, p1, p2):
+    def _consumer(self, p1, p2, **values):
         exported = oryxflow.FlowImport(p1)
 
-        @oryxflow.requires(exported.SectorReturns)
+        @oryxflow.requires(exported.SectorReturns.bind(**values) if values
+                           else exported.SectorReturns)
         class UsesReturns(oryxflow.tasks.TaskPqPandas):
             path = str(p2 / 'data')
 
@@ -171,15 +172,16 @@ class TestConsumer:
         assert oryxflow.FlowImport(_export_file(p1)).SectorReturns.external is True
         assert set(oryxflow.FlowImport(p1).tasks) == {'SectorReturns'}
 
-    def test_params_pass_through_the_flow(self, projects):
+    def test_params_are_the_exported_defaults(self, projects):
         p1, p2 = projects
         SectorReturns, _ = _producer(p1)
         oryxflow.Workflow(SectorReturns, {'sector': 'office'}).run()
-        oryxflow.Workflow(SectorReturns, {'sector': 'retail'}).run()
+        oryxflow.Workflow(SectorReturns, {'sector': 'retail'}, export=False).run()
 
-        UsesReturns = self._consumer(p1, p2)
-        for sector in ['office', 'retail']:
-            flow = oryxflow.Workflow(UsesReturns, {'sector': sector})
+        for sector, values in [('office', {}), ('retail', {'sector': 'retail'})]:
+            UsesReturns = self._consumer(p1, p2, **values)
+            assert UsesReturns.get_param_names() == []
+            flow = oryxflow.Workflow(UsesReturns)
             flow.run()
             assert flow.outputLoad().sector.tolist() == [sector]
 
@@ -203,13 +205,13 @@ class TestConsumer:
         p1, p2 = projects
         SectorReturns, _ = _producer(p1)
         oryxflow.Workflow(SectorReturns, {'sector': 'office'}).run()
-        UsesReturns = self._consumer(p1, p2)
+        UsesReturns = self._consumer(p1, p2, sector='hotel')
         with pytest.raises(RuntimeError) as e:
-            oryxflow.Workflow(UsesReturns, {'sector': 'hotel'}).run()
+            oryxflow.Workflow(UsesReturns).run()
         msg = str(e.value)
         assert 'external missing output' in msg
         assert 'SectorReturns' in msg and 'hotel' in msg
-        assert "built: sector=office" in msg
+        assert "built: sector=office (prod)" in msg
         assert 'produced outside this flow' in msg
 
     def test_two_projects_with_same_file_name_do_not_collide(self, tmp_path, monkeypatch):
@@ -311,7 +313,7 @@ class TestExportAcrossProcesses:
         """)
         exported = oryxflow.FlowImport(p1)
         assert set(exported.tasks) == {'A', 'B'}
-        assert exported.A.built == [{'s': 'x'}]
+        assert exported.A.built == [{'s': 'x', 'prod': True}]
         assert 'Exported from module a.' in (exported.A.__doc__ or '')
 
     def test_a_task_no_longer_exported_is_dropped(self, p1):
@@ -338,7 +340,7 @@ class TestExportAcrossProcesses:
             oryxflow.Workflow(tasks_b.B).run()
         """)
         A = oryxflow.FlowImport(p1).A
-        assert A.built == [{'s': 'x'}, {'s': 'y'}]
+        assert A.built == [{'s': 'x', 'prod': True}, {'s': 'y'}]
         out = Path(A(s='y').output().path).resolve()
         assert out.is_file()
         assert (p1 / 'data2').resolve() in out.parents
@@ -349,7 +351,7 @@ class TestReviewFixes:
     def test_consumer_env_does_not_repoint_imported_tasks(self, projects):
         p1, p2 = projects
         SectorReturns, _ = _producer(p1)
-        oryxflow.Workflow(SectorReturns, {'sector': 'retail'}).run()
+        oryxflow.Workflow(SectorReturns).run()
         exported = oryxflow.FlowImport(p1)
 
         @oryxflow.requires(exported.SectorReturns)
@@ -357,9 +359,9 @@ class TestReviewFixes:
             def run(self):
                 self.save(self.inputLoad())
 
-        flow = oryxflow.Workflow(UsesReturnsEnv, {'sector': 'retail'}, path=str(p2 / 'data'), env='dev')
+        flow = oryxflow.Workflow(UsesReturnsEnv, path=str(p2 / 'data'), env='dev')
         flow.run()
-        assert flow.outputLoad().sector.tolist() == ['retail']
+        assert flow.outputLoad().sector.tolist() == ['office']
 
     def test_non_literal_default_still_imports(self, projects):
         p1, _ = projects
@@ -392,7 +394,7 @@ class TestReviewFixes:
         oryxflow.Workflow(CustomExt).run()
         imported = oryxflow.FlowImport(p1).CustomExt
         assert imported().output().path == CustomExt().output().path
-        assert imported.built == [{}]
+        assert imported.built == [{'prod': True}]
 
     def test_overridden_output_is_not_exported(self, projects):
         p1, _ = projects
@@ -497,7 +499,7 @@ class TestExportLifecycle:
             assert any('keeps pointing consumers' in str(x.message) for x in w), [str(x.message) for x in w]
         """)
         A = oryxflow.FlowImport(p1).A
-        assert A.built == [{'s': 'x'}]
+        assert A.built == [{'s': 'x', 'prod': True}]
         assert 'env=prod' in Path(A().output().path).as_posix()
 
     def test_package_named_like_oryxflow_is_not_library_code(self, projects):

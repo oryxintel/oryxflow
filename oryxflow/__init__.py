@@ -157,6 +157,8 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
 
     if not isinstance(tasks, (list,)):
         tasks = [tasks]
+    if export:
+        _export.check_exported_defaults(tasks)
 
     # if forced_all_upstream is true we are going to force run tasks anyway
     # in the second if condition.

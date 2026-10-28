@@ -1,4 +1,4 @@
-"""Export / import follow-ups: deterministic file, literal `built`, bind() / latest(), external
+"""Export / import follow-ups: deterministic file, literal `built`, bind(), external
 tasks are never code-checked here, export problems reach RunResult, Workflow(export=False)."""
 import datetime
 import os
@@ -31,7 +31,7 @@ def _producer(p1, scale=1):
         export = True
         path = str(p1 / 'data')
         sector = oryxflow.Parameter(default='office')
-        refresh = oryxflow.DateParameter()
+        refresh = oryxflow.DateParameter(default=D10)
         debug = oryxflow.BoolParameter(default=False)
 
         def run(self):
@@ -72,7 +72,7 @@ class TestExportFile:
         oryxflow.Workflow(Returns, {'refresh': D10}).run()
         code = (p1 / 'tasks_export.py').read_text()
         assert ("built = [{'debug': False, 'refresh': datetime.date(2026, 10, 18), "
-                "'sector': 'office'}]") in code
+                "'sector': 'office', 'prod': True}]") in code
         built = oryxflow.FlowImport(p1).Returns.built
         assert built[0]['debug'] is False
 
@@ -82,7 +82,7 @@ class TestExportFile:
         oryxflow.Workflow(Returns, {'refresh': D10}).run()
         path = p1 / 'tasks_export.py'
         path.write_text(path.read_text().replace(
-            "{'debug': False, 'refresh': datetime.date(2026, 10, 18), 'sector': 'office'}",
+            "{'debug': False, 'refresh': datetime.date(2026, 10, 18), 'sector': 'office', 'prod': True}",
             "{'debug': 'False', 'refresh': '2026-10-18', 'sector': 'office'}"))   # 26.10.22 form
         oryxflow.Workflow(Returns, {'refresh': D10, 'sector': 'retail'}).run()
         built = oryxflow.FlowImport(p1).Returns.built
@@ -122,10 +122,8 @@ class TestBind:
 
     def _built(self, p1, scale=1):
         Returns = _producer(p1, scale)
-        oryxflow.Workflow(Returns, {'refresh': D7}).run()
-        oryxflow.Workflow(Returns, {'refresh': D10}).run()
-        _set_mtime(Returns(refresh=D7), 1_000_000_000_000_000_000)
-        _set_mtime(Returns(refresh=D10), 2_000_000_000_000_000_000)
+        oryxflow.Workflow(Returns, {'refresh': D7}, export=False).run()
+        oryxflow.Workflow(Returns).run()
         return Returns
 
     def test_bound_parameters_stay_off_the_consumer(self, projects):
@@ -140,13 +138,12 @@ class TestBind:
             def run(self):
                 self.save(self.inputLoad())
 
-        assert {'sector', 'debug'} == set(Uses.get_param_names())     # no 'refresh'
-        flow = oryxflow.Workflow(Uses, {'sector': 'office'})
+        assert Uses.get_param_names() == []
+        flow = oryxflow.Workflow(Uses)
         flow.run()
         assert flow.outputLoad().refresh.tolist() == ['2026-07-18']
-        assert Uses(sector='office').requires().task_id == \
-            exported.Returns(refresh=D7).task_id
-        assert 'Returns[bound: refresh=2026-07-18]' in flow.preview(print_it=False)
+        assert Uses().requires().task_id == exported.Returns(refresh=D7).task_id
+        assert 'refresh=2026-07-18' in flow.preview(print_it=False)
 
     def test_bound_value_wins_over_a_same_named_consumer_parameter(self, projects):
         p1, p2 = projects
@@ -166,45 +163,14 @@ class TestBind:
         with pytest.raises(TypeError, match='no parameter nope'):
             oryxflow.FlowImport(p1).Returns.bind(nope=1)
 
-    def test_latest_picks_the_newest_build_and_follows_refreshes(self, projects):
-        p1, p2 = projects
-        Returns = _producer(p1)
-        oryxflow.Workflow(Returns, {'refresh': D7}).run()
-
-        def consumer():
-            exported = oryxflow.FlowImport(p1)
-
-            @oryxflow.requires(exported.Returns.latest())
-            class Uses(oryxflow.tasks.TaskPqPandas):
-                path = str(p2 / 'data')
-
-                def run(self):
-                    self.save(self.inputLoad())
-            return Uses
-
-        Uses = consumer()
-        flow = oryxflow.Workflow(Uses)
-        flow.run()
-        tid = Uses().task_id
-        assert flow.outputLoad().refresh.tolist() == ['2026-07-18']
-        assert oryxflow.Workflow(Uses).run().ran == []
-
-        oryxflow.Workflow(Returns, {'refresh': D10}).run()     # producer refresh
-        _set_mtime(Returns(refresh=D10), 2_000_000_000_000_000_000)
-        Uses = consumer()
-        assert Uses().task_id == tid                    # the consumer's identity is unchanged
-        r = oryxflow.Workflow(Uses).run()
-        assert [t.task_family for t in r.ran] == ['Uses']
-        assert oryxflow.Workflow(Uses).outputLoad().refresh.tolist() == ['2026-10-18']
-
-    def test_latest_follows_a_producer_without_code_records(self, projects):
+    def test_follows_a_producer_without_code_records(self, projects):
         p1, p2 = projects
         Returns = self._built(p1)
         os.remove(p1 / 'data' / oryxflow.settings.state_filename)
         oryxflow.state.clear_cache()
         exported = oryxflow.FlowImport(p1)
 
-        @oryxflow.requires(exported.Returns.latest())
+        @oryxflow.requires(exported.Returns)
         class Uses(oryxflow.tasks.TaskPqPandas):
             path = str(p2 / 'data')
 
@@ -213,17 +179,8 @@ class TestBind:
         oryxflow.Workflow(Uses).run()
         assert oryxflow.Workflow(Uses).run().ran == []
         # the producer rewrites the same build: no record there, the file time says so
-        _set_mtime(Returns(refresh=D10), 3_000_000_000_000_000_000)
+        _set_mtime(Returns(), 3_000_000_000_000_000_000)
         assert oryxflow.Workflow(Uses).run().did_run(Uses)
-
-    def test_latest_with_a_filter_and_with_nothing_built(self, projects):
-        p1, _ = projects
-        self._built(p1)
-        exported = oryxflow.FlowImport(p1)
-        assert str(exported.Returns.latest(refresh='2026-07-18')().refresh) == '2026-07-18'
-        assert str(exported.Returns.latest()().refresh) == '2026-10-18'
-        with pytest.raises(ValueError, match='no built output matches'):
-            exported.Returns.latest(sector='hotel')
 
 
 class TestImportedTasksAreNotCodeChecked:
@@ -243,13 +200,13 @@ class TestImportedTasksAreNotCodeChecked:
             def run(self):
                 self.save(self.inputLoad())
 
-        flow = oryxflow.Workflow(Uses, {'refresh': D10})
+        flow = oryxflow.Workflow(Uses)
         with warnings.catch_warnings():
             warnings.simplefilter('error', oryxflow.StalenessWarning)
             flow.run()
             r = flow.run()
         assert r.ran == [] and r.warnings == []
-        oryxflow.accept_code(Uses(refresh=D10))
+        oryxflow.accept_code(Uses())
         assert status.read_text() == before
 
 

@@ -6,8 +6,10 @@ The producer marks the tasks other projects may read with ``export = True``. Eve
 of the data dir): one external task per exported class, with its docstring, parameters and
 defaults, ``persists``, the data path (relative to the export file) and ``built``, the
 parameter values whose output exists. The consumer loads that file with
-``FlowImport('<project dir>')`` and ``@requires`` its classes like any other dependency, so
-parameters pass through the flow and downstream tasks rerun when the producer recomputes.
+``FlowImport('<project dir>')`` and ``@requires`` its classes like any other dependency. An
+exported task's defaults are its prod values: every exported parameter must have one, the
+import binds each parameter to it (``bind()`` overrides), and downstream tasks rerun when the
+producer changes a default or recomputes.
 
 The file is rewritten from three sources: the exported tasks the run just used (their data
 dir wins), the exported classes defined in project modules loaded right now, and the previous
@@ -46,7 +48,9 @@ Load them from another project and require them like your own tasks:
     class MyTask(oryxflow.tasks.TaskPqPandas):
         ...
 
-`built` lists the parameter values whose output exists.
+Each parameter is fixed to its default (the producer's prod build); override with
+exported.<TaskName>.bind(<param>=...). `built` lists the parameter values whose output
+exists; 'prod': True marks the defaults.
 """
 import datetime
 import pathlib
@@ -111,10 +115,59 @@ def _built_values(task):
 
 
 def _from_values(cls, values):
-    """``cls`` instantiated from a ``built`` entry (literal or serialized-string values)."""
+    """``cls`` instantiated from a ``built`` entry (literal or serialized-string values; the
+    ``prod`` mark is not a parameter)."""
     params = dict(cls.get_params())
     return cls(**{k: params[k].parse(v) if isinstance(v, str) else v
                   for k, v in values.items() if k in params})
+
+
+def _defaults(cls):
+    """The significant parameters' defaults, serialized (``_str_params`` form), or None when
+    one has no default."""
+    out = {}
+    for name, p in cls.get_params():
+        if not p.has_task_value():
+            return None
+        if p.significant:
+            out[name] = p.serialize(p.task_value())
+    return out
+
+
+def _check_defaults(cls):
+    for name, p in sorted(cls.get_params(), key=lambda item: item[0]):
+        if not p.has_task_value():
+            raise ValueError('{}.{}: exported parameters need a default -- the value consumers '
+                             'should get (prod)'.format(cls.__name__, name))
+
+
+def check_exported_defaults(tasks):
+    """Called by ``run()`` before building: an exported task in the DAG without a default for
+    every parameter stops the run, so it never publishes a build consumers can't select."""
+    from oryxflow import settings, utils
+    if settings.cloud_fs_enabled:
+        return
+    seen = set()
+    for t in tasks:
+        for task in utils.traverse(t):
+            cls = type(task)
+            if cls not in seen and _is_exported(cls):
+                seen.add(cls)
+                _check_defaults(cls)
+
+
+def _entry(task, defaults):
+    """A ``built`` entry, marked ``'prod': True`` when its values are the defaults."""
+    values = _built_values(task)
+    if defaults is not None and _str_params(task) == defaults:
+        values['prod'] = True
+    return values
+
+
+def _env_of(path, dirpath):
+    """Whether ``path`` is an ``env=`` folder of ``dirpath`` (a ``Workflow(env=...)`` run)."""
+    p = Path(path).resolve()
+    return p.name.startswith('env=') and _same_dir(p.parent, dirpath)
 
 
 def _key(values):
@@ -399,6 +452,7 @@ class FlowExport:
     def __init__(self, tasks=None, flows=None, save=False, path_export=None):
         import oryxflow
         self.unloaded = {}
+        self._roots = None       # the run's own tasks (auto_export): for the experiment guard
         tasks = [] if tasks is None else tasks
         tasks = list(tasks) if isinstance(tasks, (list, tuple)) else [tasks]
         flows = [] if flows is None else flows
@@ -447,9 +501,11 @@ class FlowExport:
                     _warned.add(cls)
                     warnings.warn('{}: not exported -- {}'.format(name, why), UserWarning)
                 continue
-            if {'built', 'export_source'} & set(dict(cls.get_params())):
-                raise ValueError("{}: parameters named 'built' or 'export_source' clash with the "
-                                 "export's own attributes -- rename them".format(name))
+            if {'built', 'export_source', 'bind', 'prod'} & set(dict(cls.get_params())):
+                raise ValueError("{}: parameters named 'built', 'export_source', 'bind' or 'prod' "
+                                 "clash with the export's own attributes -- rename them".format(name))
+            _check_defaults(cls)
+            defaults = _defaults(cls)
             if getattr(cls, 'target_ext', None) in ('pkl', 'pickle'):
                 warnings.warn('{}: exported as a pickle, which another project may not be able to '
                               'load without this project\'s code -- prefer parquet, csv or json for '
@@ -467,7 +523,10 @@ class FlowExport:
                 dirpath = ran[0]._resolved_dirpath()
             else:
                 dirpath = settings.dirpath
-            moved = [t for t in ran if not _same_dir(t._resolved_dirpath(), dirpath)]
+            # an env= run (Workflow(..., env='dev')) is an experiment beside the published
+            # folder: kept out of built, and not a move
+            moved = [t for t in ran if not _same_dir(t._resolved_dirpath(), dirpath)
+                     and not _env_of(t._resolved_dirpath(), dirpath)]
             if moved and (name, str(moved[0]._resolved_dirpath())) not in _warned:
                 _warned.add((name, str(moved[0]._resolved_dirpath())))
                 warnings.warn(
@@ -475,10 +534,12 @@ class FlowExport:
                     'the new location, delete the {} class from {} and run again.'.format(
                         name, moved[0]._resolved_dirpath(), EXPORT_FILENAME, Path(dirpath),
                         name, EXPORT_FILENAME), UserWarning)
-            built = {_key(_str_params(t)): _built_values(t) for t in ran
-                     if _same_dir(t._resolved_dirpath(), dirpath) and _outputs_exist(t)}
+            published = [t for t in ran
+                         if _same_dir(t._resolved_dirpath(), dirpath) and _outputs_exist(t)]
+            self._guard(name, published, defaults)
+            built = {_key(_str_params(t)): _entry(t, defaults) for t in published}
             for t in _still_built(old, getattr(old, 'built', []), dirpath):
-                built.setdefault(_key(_str_params(t)), _built_values(t))
+                built.setdefault(_key(_str_params(t)), _entry(t, defaults))
             entries[name] = (cls, dirpath, [built[k] for k in sorted(built)],
                              _source_of(cls, export_dir))
 
@@ -492,7 +553,8 @@ class FlowExport:
                     continue  # its module is loaded and no longer exports it, or is gone
             elif name in loaded:
                 continue      # no recorded module: a loaded class of that name doesn't export
-            built = {_key(_str_params(t)): _built_values(t)
+            defaults = _defaults(old)
+            built = {_key(_str_params(t)): _entry(t, defaults)
                      for t in _still_built(old, getattr(old, 'built', []), old.path)}
             entries[name] = (old, old.path, [built[k] for k in sorted(built)], source)
         self.unloaded = _unloaded_exports(export_dir, files, set(entries))
@@ -522,6 +584,30 @@ class FlowExport:
                 _write_text(self.path_export, source)
         return source
 
+    def _guard(self, name, published, defaults):
+        """Warn when the run wrote a non-default build of an exported task into the published
+        folder because the run itself was asked for those values (an experiment), not because
+        a task in the producer needs that build (an aggregator over every sector)."""
+        if not self._roots or defaults is None:
+            return
+        asked = {}
+        for root in self._roots:
+            own = _defaults(type(root)) or {}
+            for k, v in _str_params(root).items():
+                if k in own and v != own[k]:
+                    asked[k] = v
+        for t in published:
+            names = sorted(k for k, v in _str_params(t).items()
+                           if v != defaults.get(k) and asked.get(k) == v)
+            key = ('experiment', name, tuple(names))
+            if names and key not in _warned:
+                _warned.add(key)
+                warnings.warn(
+                    "{}: experiment written to the prod data folder (non-default {}); run "
+                    "experiments with Workflow(..., env='dev')".format(
+                        name, ', '.join('{}={}'.format(k, _str_params(t)[k]) for k in names)),
+                    UserWarning)
+
 
 def auto_export(tasks):
     """Called by ``run()``: rewrite ``tasks_export.py`` when the run included an exported task.
@@ -545,6 +631,7 @@ def auto_export(tasks):
                        if not getattr(t, 'external', False)):
                 return []
         export = FlowExport(tasks=dag, save=True)
+        export._roots = tasks
         export.generate()
         for module, names in export.unloaded.items():
             if ('unloaded', module) not in _warned:
@@ -562,24 +649,16 @@ def auto_export(tasks):
         return [msg]
 
 
-class _Bound:
-    """Mixin of a class made by ``bind()``: the bound values always win -- even over a
-    same-named parameter of the task that requires it, which ``clone()`` would pass on."""
-
-    @classmethod
-    def get_param_values(cls, params, args, kwargs):
-        kwargs = {k: v for k, v in kwargs.items() if k not in cls._oryxflow_bound}
-        return super().get_param_values(params, args, kwargs)
-
-
 def bind(cls, **values):
-    """``cls`` with some parameters fixed: ``@requires(exported.X.bind(refresh='2026-10-18'))``.
+    """``cls`` with some parameters set to other values than its exported defaults:
+    ``@requires(exported.X.bind(refresh='2026-07-18'))`` (compare with last quarter).
 
-    A bound parameter is not copied onto the task that requires it, so it does not enter
-    that task's parameters or the task_id of anything downstream. The imported task still
-    has it, so it reads the producer's file for exactly those values, and your task reruns
-    when the value you bind changes. Unbound parameters pass through as usual."""
+    Every parameter of an imported task is already fixed to the producer's default (its prod
+    build); ``bind()`` overrides the ones you name. None is copied onto the task that requires
+    it, so they don't enter that task's parameters or any downstream task_id, and your task
+    reruns when a value changes. A ``built`` entry works as is: ``X.bind(**X.built[0])``."""
     params = dict(cls.get_params())
+    values = {k: v for k, v in values.items() if not (k == 'prod' and k not in params)}
     unknown = sorted(set(values) - set(params))
     if unknown:
         raise TypeError('{}.bind(): no parameter {} -- it has: {}'.format(
@@ -591,37 +670,7 @@ def bind(cls, **values):
         p._default = p.parse(value) if isinstance(value, str) else value
         p.task_value()                   # validates now, not at a far-away instantiation
         attrs[name] = p
-    return type(cls)(cls.__name__, (_Bound, cls), attrs)
-
-
-def latest(cls, **match):
-    """``cls`` bound to the ``built`` parameter values written most recently (by output file
-    time), among those matching ``match`` when given:
-    ``@requires(exported.X.latest())`` follows the producer's refreshes without editing
-    your parameters, and ``exported.X.latest(model='prod')`` picks only among production
-    builds. Resolved when called (at import), so each run reads what is newest then; the
-    exact input a task ran with is in its ``task_ran`` event (``deps``). Only as good as the
-    producer's ``built``: it should run experiments with ``Workflow(..., export=False)``; for
-    a reviewable production pin, prefer ``bind()``."""
-    from oryxflow.tasks import _output_mtime
-    newest, chosen = None, None
-    for values in getattr(cls, 'built', None) or []:
-        try:
-            task = _from_values(cls, values)
-            if match and _from_values(cls, {**values, **match}).task_id != task.task_id:
-                continue
-            if not _outputs_exist(task):
-                continue
-        except Exception:
-            continue
-        mtime = _output_mtime(task)
-        if mtime != '' and (newest is None or mtime > newest):
-            newest, chosen = mtime, values
-    if chosen is None:
-        raise ValueError('{}.latest({}): no built output{} -- built: {}'.format(
-            cls.__name__, ', '.join('{}={!r}'.format(k, v) for k, v in sorted(match.items())),
-            ' matches' if match else '', getattr(cls, 'built', None) or 'nothing'))
-    return bind(cls, **chosen)
+    return type(cls)(cls.__name__, (cls,), attrs)
 
 
 class FlowImport:
@@ -635,16 +684,16 @@ class FlowImport:
         class MyTask(oryxflow.tasks.TaskPqPandas):
             ...
 
-    Parameters pass through the flow as with any dependency, the files are read where the
-    other project keeps them, and ``MyTask`` reruns when the other project recomputes. The
+    Every parameter of an imported task is fixed to its exported default, which is the other
+    project's prod build: nothing is copied onto ``MyTask``, so its parameters and task_id
+    don't change, and it reruns when the other project changes a default (a new quarter) or
+    recomputes that build. The files are read where the other project keeps them. The
     imported tasks are ``external``: they never run from here; a missing output stops the
     run and names what is built.
 
-    To keep the other project's parameters out of your own tasks, fix them where you
-    require the task: ``exported.SectorReturns.bind(refresh='2026-10-18')`` for exact
-    values, ``exported.SectorReturns.latest()`` for its newest build (see :func:`bind`,
-    :func:`latest`). Bound parameters are not copied onto your task, so they don't enter
-    your flow parameters or any downstream task_id; your task still reruns when they change.
+    Other values: ``exported.SectorReturns.bind(sector='retail')`` where you require it (see
+    :func:`bind`), or an instance in your own ``requires()`` for a value that varies with your
+    task, ``exported.SectorReturns(sector=self.sector)``.
 
     Args:
         path (str): the other project's folder, or the export file itself
@@ -674,9 +723,10 @@ class FlowImport:
         self.tasks = _export_classes(mod)
         for cls in self.tasks.values():
             params = dict(cls.get_params())
-            for name, fn in (('bind', bind), ('latest', latest)):
-                if name not in params:       # never shadow a producer parameter
-                    setattr(cls, name, classmethod(fn))
+            # the exported defaults are prod: no parameter passes through from a consumer
+            cls._oryxflow_bound = frozenset(params)
+            if 'bind' not in params:         # never shadow a producer parameter (old files)
+                cls.bind = classmethod(bind)
 
     def __getattr__(self, name):
         tasks = self.__dict__.get('tasks')
