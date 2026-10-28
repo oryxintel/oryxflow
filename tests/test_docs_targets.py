@@ -101,7 +101,14 @@ def test_code_152(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_181(managenamespace):
+def test_code_177(managenamespace):
+    oryxflow.utils.excel_write('report.xlsx', {'summary': df_perf}, format_float='pct')
+
+    # Caution- no assertions.
+    managenamespace(operation="update", additions=locals())
+
+
+def test_code_188(managenamespace):
     df_rank = pd.DataFrame({
         'name': ['Alpha County', 'Beta County'],
         'rating': ['Green', 'Red'],
@@ -133,19 +140,9 @@ def test_code_181(managenamespace):
     managenamespace(operation="update", additions=locals())
 
 
-def test_code_213(managenamespace):
+def test_code_220(managenamespace):
     path_rank = flow_rank.outputPath()
     back = pd.read_excel(path_rank, sheet_name='retail', skiprows=3, dtype={'fips': str})
 
     # Caution- no assertions.
     managenamespace(operation="update", additions=locals())
-
-
-def test_code_224():
-    import os
-
-    with open('report.xlsx.tmp', 'wb') as f:
-        oryxflow.utils.excel_write(f, {'summary': df_perf})
-    os.replace('report.xlsx.tmp', 'report.xlsx')
-
-    # Caution- no assertions.

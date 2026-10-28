@@ -347,7 +347,7 @@ def warn_if_nested_data_dir(dirpath):
 # Excel output
 # ---------------------------------------------------------------------------
 
-_EXCEL_DEFAULTS = dict(formats=None, index=False, filters=True, freeze=True, widths='auto',
+_EXCEL_DEFAULTS = dict(formats=None, format_float=None, index=False, filters=True, freeze=True, widths='auto',
                        width_min=8, width_max=60, header_style=True,
                        title=None, notes=(), highlight={}, colorscale=(), banded=False,
                        wrap_columns=(), group_starts=(), id_columns=())
@@ -391,7 +391,7 @@ def _excel_flatten_columns(df):
     return df
 
 
-def _excel_specs(df, index, formats):
+def _excel_specs(df, index, formats, format_float=None):
     '''
     Resolved format spec of each written column as [(header, values, spec)], index levels first.
     Raises KeyError for a mistyped preset name.
@@ -400,14 +400,16 @@ def _excel_specs(df, index, formats):
     if isinstance(formats, dict):
         for spec in formats.values():
             report.excel_code(spec)
+    if format_float is not None:
+        report.excel_code(format_float)
     out = []
     if index:
         idx = df.index.to_frame()
-        res = report.resolve_formats(idx, formats)
+        res = report.resolve_formats(idx, formats, float_default=format_float)
         for i, col in enumerate(idx.columns):
             name = df.index.names[i]
             out.append(('' if name is None else str(name), idx.iloc[:, i], res.get(col)))
-    res = report.resolve_formats(df, formats)
+    res = report.resolve_formats(df, formats, float_default=format_float)
     for j, col in enumerate(df.columns):
         out.append((str(col), df.iloc[:, j], res.get(col)))
     for _, _, spec in out:
@@ -506,10 +508,10 @@ def _excel_widths(cols, filters, widths, width_min, width_max):
     return out
 
 
-def _excel_format_sheet(ws, df, row_header, index=False, formats=None, filters=True, freeze=True,
-                        widths='auto', width_min=8, width_max=60, header_style=True, title=None,
-                        notes=(), highlight={}, colorscale=(), banded=False, wrap_columns=(),
-                        group_starts=(), id_columns=()):
+def _excel_format_sheet(ws, df, row_header, index=False, formats=None, format_float=None,
+                        filters=True, freeze=True, widths='auto', width_min=8, width_max=60,
+                        header_style=True, title=None, notes=(), highlight={}, colorscale=(),
+                        banded=False, wrap_columns=(), group_starts=(), id_columns=()):
     '''
     Style a worksheet written from df (as written, columns already flattened).
     row_header is the 1-based sheet row holding the column headers; a title and notes
@@ -520,7 +522,7 @@ def _excel_format_sheet(ws, df, row_header, index=False, formats=None, filters=T
     from openpyxl.utils import get_column_letter
     from oryxflow import report
 
-    cols = _excel_specs(df, index, formats)
+    cols = _excel_specs(df, index, formats, format_float)
     nidx = df.index.nlevels if index else 0
     ncols = len(cols)
     nrows = df.shape[0]
@@ -695,15 +697,17 @@ def excel_write(path, data, **options):
     '''
     Write one or more dataframes to a formatted Excel file and return path.
 
-    path: a file path, or an open binary file handle (for an atomic publish, write to a
-        temporary file opened with open(tmp, 'wb') and os.replace it over the target).
+    path: a file path, or an open binary file handle.
     data: DataFrame (sheet 'Sheet1') or {sheet_name: df_or_spec}; a spec is
         {'df': df, **per_sheet_options}, overriding the options below for that sheet. A sheet's
         formats dict is merged over the shared one (its keys win; a None value removes a column's
         format); a sheet's formats=False writes that sheet with no number formats.
-    options: formats, index, filters, freeze, widths, width_min, width_max, header_style.
+    options: formats, format_float, index, filters, freeze, widths, width_min, width_max,
+        header_style.
         formats maps column names or globs to a preset name, str.format spec or Excel code;
         formats=False writes no number formats. Formats are display-only: values are unchanged.
+        format_float is the format of float columns no formats key matches (None: 'float';
+        e.g. 'pct' for a sheet of rates).
     deliverable options: title (str) and notes (list of str) go above the table, so the
         header row moves down (read back with pd.read_excel(skiprows=len(notes) + 3));
         highlight {col: {value: fill}} with fill a name
@@ -721,7 +725,7 @@ def excel_write(path, data, **options):
     seen = {}
     for name, df, opts, shared in sheets:
         df = _excel_flatten_columns(df)
-        _excel_specs(df, opts['index'], opts['formats'])  # fail on a bad format before any write
+        _excel_specs(df, opts['index'], opts['formats'], opts['format_float'])  # fail on a bad format before any write
         opts = _excel_shared_columns(df, opts, shared, seen)
         _excel_check_styling(name, df, opts)
         if opts['id_columns']:

@@ -106,12 +106,13 @@ def fmt(value, spec='num1', na_rep=NA_REP):
         return str(value)
 
 
-def resolve_formats(df, formats=None, defaults=True):
+def resolve_formats(df, formats=None, defaults=True, float_default=None):
     """Resolve the format of each column of df as ``{column: spec}``.
 
     formats: ``{column_or_glob: spec}``; False disables all formatting. An exact column key
     beats a glob key (``*``, ``?``, ``[``). With defaults=True, columns without a match get
-    ``'float'`` (float dtype), ``'date'`` or ``'datetime'`` (datetime dtype).
+    float_default (float dtype; None means ``'float'``), ``'date'`` or ``'datetime'``
+    (datetime dtype).
     """
     if formats is False:
         return {}
@@ -131,7 +132,7 @@ def resolve_formats(df, formats=None, defaults=True):
             continue
         s = df[col]
         if pd.api.types.is_float_dtype(s):
-            out[col] = 'float'
+            out[col] = float_default or 'float'
         elif pd.api.types.is_datetime64_any_dtype(s):
             nn = s.dropna()
             out[col] = 'date' if (nn.dt.normalize() == nn).all() else 'datetime'
