@@ -25,6 +25,8 @@ and executor all live in `oryxflow/core.py` + `oryxflow/parameter.py`.
 
 ## Layout
 
+LLM evals live in the oryxeval repo (`../oryxeval`), not here.
+
 ```
 oryxflow/
   __init__.py        # public API: run, preview, Workflow, WorkflowMulti, FlowExport/Import (from export.py),
