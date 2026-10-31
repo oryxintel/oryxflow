@@ -94,6 +94,8 @@ instead of reinventing them.
 
 Outputs are declared with **`persists`** (plural) — e.g. `persists = ['x', 'y']`. `persist` (singular) is a backwards-compatible alias folded into the internal `self.persist` in `TaskData.__init__`; engine code reads `self.persist`, but docs/examples standardize on `persists`.
 
+**Used by oryxeval** — the separate `oryxeval` package (the LLM-eval harness; eval work happens in its repo) imports `codehash.callable_code_hash` / `task_code_hash` / `strip_docstrings`, `hash_files`, the `Parameter` classes, `tasks.TaskJson` / `TaskPqPandas`, `WorkflowMulti`, `runIterConcat`, `state.clear_cache`, `core._code_warned` and `settings.eventspath`. Changing their output moves every oryxeval cache key (users re-pay for model calls); `tests/test_oryxeval_contract.py` guards their existence.
+
 ## Architecture notes that bite
 
 Read `docs/todo/20260606-sys-param-global.md` before changing the engine — it captures the

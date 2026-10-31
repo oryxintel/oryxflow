@@ -266,6 +266,9 @@ def _strip_docstrings(tree):
     return tree
 
 
+strip_docstrings = _strip_docstrings  # public: oryxeval hashes eval sources with it
+
+
 def file_hash(path):
     """Normalized hash of one source file; raw-bytes fallback on SyntaxError.
 
