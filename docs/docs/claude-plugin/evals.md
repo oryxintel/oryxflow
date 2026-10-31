@@ -170,7 +170,7 @@ class PromptEval(ev.TaskEval):
     """One line: the question this eval answers."""
 
     prompt_version = ev.ChoiceParameter(default='live',
-                                              choices=['live', 'baseline'])
+                                        choices=['live', 'baseline'])
 
     dataset = Dataset(name='cases', cases=CASES, evaluators=[OutputOk()])
 

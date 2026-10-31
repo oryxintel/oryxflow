@@ -8,11 +8,14 @@ description: Run an LLM eval as a cached parameter sweep — one cached cell per
 !!! note "The harness is the `oryxeval` package"
 
     The harness is the `oryxeval` package (it shipped as `oryxflow.evals` until oryxflow 26.11).
-    **Migrating an existing eval:** change only the import line (`import oryxflow.evals as ev` ->
-    `import oryxeval as ev`, `from oryxflow.evals.X import Y` -> `from oryxeval.X import Y`). Leave
-    `oryxflow.hash_files` and other `oryxflow.*` calls inside `code_version()` as they are: editing
-    that body changes its hash and re-runs every arm. Expect StalenessWarnings after migrating until
-    you run `oryxflow.accept_code(...)` once.
+    **Migrating an existing eval:** change only the import lines (`import oryxflow.evals as ev` ->
+    `import oryxeval as ev`, `from oryxflow.evals.X import Y` -> `from oryxeval.X import Y`). Keep
+    `import oryxflow` and leave every function body as it is: `code_version()`, `case()` and their
+    helpers are hashed into the cache key, so any edit there (even `oryxflow.hash_files` ->
+    `ev.hash_files`) re-runs every arm. The next run reuses the cache but prints StalenessWarnings;
+    clear them once, from `evals/`: `python -c "import oryxflow; oryxflow.accept_code()"` (the
+    `accept_code(<Eval>)` the warning names covers only the scoring stage). New evals use
+    `ev.hash_files`.
 
 You changed a prompt. Is it better?
 

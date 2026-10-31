@@ -96,7 +96,7 @@ instead of reinventing them.
 
 Outputs are declared with **`persists`** (plural) — e.g. `persists = ['x', 'y']`. `persist` (singular) is a backwards-compatible alias folded into the internal `self.persist` in `TaskData.__init__`; engine code reads `self.persist`, but docs/examples standardize on `persists`.
 
-**Used by oryxeval** — the separate `oryxeval` package (the LLM-eval harness; eval work happens in its repo) imports `codehash.callable_code_hash` / `task_code_hash` / `strip_docstrings`, `hash_files`, the `Parameter` classes, `tasks.TaskJson` / `TaskPqPandas`, `WorkflowMulti`, `runIterConcat`, `state.clear_cache`, `core._code_warned` and `settings.eventspath`. Changing their output moves every oryxeval cache key (users re-pay for model calls); `tests/test_oryxeval_contract.py` guards their existence.
+**Used by oryxeval** — the separate `oryxeval` package (the LLM-eval harness; eval work happens in its repo) imports `codehash.callable_code_hash` / `task_code_hash` / `strip_docstrings`, `hash_files`, the `Parameter` classes (also from `oryxflow.parameter`), `tasks.TaskJson` / `TaskPqPandas`, `WorkflowMulti`, `runIterConcat`, `state.clear_cache`, `core._code_warned` and `settings.dir` / `dirpath` / `eventspath`. Changing their output moves every oryxeval cache key (users re-pay for model calls); `tests/test_oryxeval_contract.py` guards their existence and pins `strip_docstrings` output.
 
 ## Architecture notes that bite
 
@@ -237,6 +237,8 @@ Only `test_*.py` are collected (see `tests/setup.md` for what each covers). A be
 `UserWarning: datatable failed` and sklearn convergence warnings are expected. Current
 baseline: **86 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`, `jinja2`,
 `tables`; `datatable` is optional (soft-fails).
+`tests/test_evals_removed.py` fails if an old checkout left an untracked
+`oryxflow/evals/__pycache__`: delete it.
 
 ## Conventions
 
