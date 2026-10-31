@@ -455,15 +455,18 @@ class Task(metaclass=Register):
         Create a new task instance from this one, overriding some args.
 
         Parameters common to this task and ``cls`` are carried over; ``kwargs`` take precedence.
+        Parameters ``cls`` has bound (an imported task: its exported defaults, or ``bind()``)
+        are not carried over -- only ``kwargs`` override them.
         """
         if cls is None:
             cls = self.__class__
 
+        bound = getattr(cls, '_oryxflow_bound', ())
         new_k = {}
         for param_name, param_class in cls.get_params():
             if param_name in kwargs:
                 new_k[param_name] = kwargs[param_name]
-            elif hasattr(self, param_name):
+            elif param_name not in bound and hasattr(self, param_name):
                 new_k[param_name] = getattr(self, param_name)
 
         return cls(**new_k)
@@ -793,7 +796,8 @@ def _apply_spec(cls):
     # (c) copy parameters from every entry, skipping every fanned/derived name GLOBALLY (not
     # per-decorator): @requires(X) copying an 'X.region' that @requires_each deliberately
     # excluded is the exact bug @requires_each exists to prevent, and it would be silent.
-    # Parameters fixed with an imported task's bind()/latest() stay on that task only.
+    # Parameters bound on an imported task (its exported defaults, or bind()) stay on that
+    # task only.
     for entry in spec:
         for src in _entry_sources(entry):
             bound = getattr(src, '_oryxflow_bound', ())
@@ -1163,10 +1167,11 @@ def _external_missing_reason(task):
     built = getattr(task, 'built', None)
     if isinstance(built, list):
         # an imported export lists what the producer has on disk
-        shown = ['{' + ', '.join('{}={}'.format(k, v) for k, v in b.items()) + '}' for b in built[:10]]
+        shown = [(', '.join('{}={}'.format(k, v) for k, v in b.items() if k != 'prod') or '{}')
+                 + (' (prod)' if b.get('prod') else '') for b in built[:10]]
         if len(built) > 10:
             shown.append('... {} more'.format(len(built) - 10))
-        where += '; built: {}'.format('; '.join(s.strip('{}') or '{}' for s in shown) if built else 'nothing')
+        where += '; built: {}'.format('; '.join(shown) if built else 'nothing')
     return ('external missing output{} -- this task is produced outside this flow: run the '
             'project or process that produces it first, and check that path, parameters and '
             'persists match it').format(where)

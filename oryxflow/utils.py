@@ -28,8 +28,8 @@ def print_tree(task, indent='', last=True, show_params=True, clip_params=False):
     if show_params:
         params = task.to_str_params(only_significant=True)
         if bound:
-            # fixed with an imported task's bind()/latest(): shown apart from the values that
-            # came through the flow
+            # fixed on an imported task (its exported defaults or bind()): shown apart from
+            # the values that came through the flow
             name += '[bound: {}]'.format(', '.join(
                 '{}={}'.format(k, params.pop(k)) for k in bound if k in params))
         if len(params)>1 and clip_params:
