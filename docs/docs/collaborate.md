@@ -142,7 +142,7 @@ class MarketReportPinned(oryxflow.tasks.TaskPqPandas):
 ```
 
 - `bind(**values)` fixes those parameters. They aren't copied onto your task, so they don't enter your flow parameters or any of your task names, and the ones you don't bind still pass through.
-- `latest()` binds every parameter to the most recently written entry in `built`; `latest(model='prod')` picks only among builds with that value. It is decided when your script imports the tasks, so each run reads what is newest at that moment, and the event log records the exact input each task ran with (`deps` in its `task_ran` event).
+- `latest()` binds every parameter to the most recently written entry in `built`; `latest(model='prod')` picks only among builds with that value. It is decided when your script imports the tasks, so each run reads what is newest at that moment, and the event log records the exact input each task ran with (`inputs` in its `task_ran` event).
 - Either way your task reruns when the input changes: a new build picked by `latest()`, a new value in `bind()`, or the other project recomputing that build.
 
 Switching an existing pipeline from passed-through parameters to `bind()`/`latest()` (or from reading a published file to `FlowImport`) changes your tasks' names, so they recompute once.

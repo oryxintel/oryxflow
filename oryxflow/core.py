@@ -1311,6 +1311,78 @@ def _git_info():
     return sha, dirty
 
 
+def _project_root(task):
+    # an imported task lives in its producer's project: the folder of the tasks_export.py
+    # it was loaded from; every other task in this project, the parent of the data dir
+    import sys
+    import pathlib
+    from oryxflow import settings as _settings
+    module = getattr(type(task), '__module__', '') or ''
+    if module.startswith('oryxflow_import_'):
+        f = getattr(sys.modules.get(module), '__file__', None)
+        if f:
+            return pathlib.Path(f).resolve().parent
+    return pathlib.Path(_settings.dirpath).resolve().parent
+
+
+def _output_paths(task, root):
+    # the task's output files relative to its project root (posix), so a run log reads the
+    # same on every machine; absolute when outside it; in-memory outputs have no path
+    import pathlib
+    out = []
+    for o in flatten(task.output()):
+        p = getattr(o, 'path', None)
+        if p is None:
+            continue
+        p = pathlib.Path(p).resolve()
+        try:
+            out.append(p.relative_to(root).as_posix())
+        except ValueError:
+            out.append(p.as_posix())
+    return out
+
+
+def _datasets(task, root, version, extra=None):
+    # one flat OpenLineage-named dataset per output file: namespace = project, name =
+    # root-relative path, datasetVersion = the output_id of that materialization. A task
+    # without file outputs (in-memory, DB) still yields one entry, name None, so the edge
+    # itself is never lost
+    names = _output_paths(task, root) or [None]
+    return [dict({'namespace': root.name, 'name': n, 'datasetVersion': version}, **(extra or {}))
+            for n in names]
+
+
+def _lineage(task, version=None, outputs=True):
+    """What a task wrote and read, for the run log, in OpenLineage vocabulary but flat:
+    ``project`` (the job namespace), ``outputs`` and ``inputs``, each a list of
+    ``{namespace, name, datasetVersion}`` (inputs also carry the dep's ``task_id`` and
+    ``family``). An input's ``datasetVersion`` is the output_id the dep had, which equals the
+    ``datasetVersion`` in the dep's own ``task_ran`` outputs, across ``FlowImport`` too.
+    Best-effort, never raises."""
+    try:
+        root = _project_root(task)
+        try:
+            dep_ids = task._dep_ids() if hasattr(task, '_dep_ids') else {}
+        except Exception:
+            dep_ids = {}
+        inputs = []
+        for d in flatten(task.requires()):
+            ident = {'task_id': d.task_id, 'family': d.task_family}
+            try:
+                inputs.extend(_datasets(d, _project_root(d), dep_ids.get(d.task_id) or None,
+                                        ident))
+            except Exception:
+                inputs.append(dict({'namespace': None, 'name': None, 'datasetVersion': None},
+                                   **ident))
+        out = {'project': root.name, 'inputs': inputs}
+        if outputs:
+            out['outputs'] = _datasets(task, root, version)
+        return out
+    except Exception as e:
+        logger.debug("lineage for {} failed: {}", getattr(task, 'task_id', '?'), e)
+        return {}
+
+
 def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
     """
     Run ``tasks`` and their dependencies sequentially, in dependency order.
@@ -1382,7 +1454,10 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
               {'task_id': task.task_id, 'family': task.task_family,
                'params': task.to_str_params(only_significant=False),
                'error': error, 'traceback': tb[-4096:] if tb else None,
-               'duration_s': duration})
+               'duration_s': duration,
+               # what it read; nothing was written, so no outputs
+               **(_lineage(task, outputs=False) if getattr(_settings, 'events', True)
+                  else {})})
 
     def _process(task):
         tid = task.task_id
@@ -1454,16 +1529,19 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         fp, dirpath = _codecheck.code_state(task)
         hashes = _codecheck.hashes_of(task) if (fp is not None
                                                 or getattr(_settings, 'events', True)) else {}
+        output_id = None
         if fp is not None:
+            # fresh output_id: this task actually rematerialized, downstream
+            # dep_state folds must move
+            output_id = uuid.uuid4().hex[:16]
             try:
-                # fresh output_id: this task actually rematerialized, downstream
-                # dep_state folds must move
                 _state.put_record(dirpath, tid,
-                                  _codecheck.make_record(task, hashes, uuid.uuid4().hex[:16],
+                                  _codecheck.make_record(task, hashes, output_id,
                                                          duration=duration))
             except Exception as e:
                 # the output is saved; the old record stays, so this task reruns next build
                 # and downstream may not see this rerun until then -- say so, don't fail
+                output_id = None   # never recorded: nothing downstream will ever fold it
                 msg = ('oryxflow: could not write the code-status record for {}: {}: {} -- it '
                        'reruns on the next build').format(tid, type(e).__name__, e)
                 logger.warning("{}", msg)
@@ -1480,10 +1558,12 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
                'source_hashes': hashes, 'reason': reason, 'duration_s': duration,
                'git_sha': git_sha, 'git_dirty': git_dirty,
                'oryxflow_version': _version,
-               # the exact inputs, so a run is reproducible when a dep was picked at import
-               # time (an imported task bound with .latest())
-               'deps': [d.task_id for d in flatten(task.requires())],
-               'dirpath': str(dirpath if dirpath is not None else _settings.dirpath)},
+               'dirpath': str(dirpath if dirpath is not None else _settings.dirpath),
+               # lineage: the exact datasets read and written, each with its datasetVersion
+               # (this materialization's output_id; None when untracked), so a run is
+               # reproducible and the log converts to OpenLineage without re-running
+               **(_lineage(task, version=output_id) if getattr(_settings, 'events', True)
+                  else {})},
               msg="task complete: {} in {:.3f}s".format(tid, duration))
         _code_warned.pop(tid, None)   # condition resolved; a future recurrence re-warns
         ran.append(task)
