@@ -50,6 +50,8 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - `oryxflow.report.table` right-aligns columns of numbers stored with object dtype (a transposed frame), as it does float and int columns.
 - `excel_write` takes an open binary file handle as `path` (the atomic `.tmp` + `os.replace` recipe is in the Excel docs). The reports guide says which Python runs the `python3` kernel, how to pick another with `kernel_name`, and that the task's Python counts only with `code_version_auto` on.
 - `pip install "oryxflow[evals]"` installs `oryxeval` (Python 3.10+; nothing on 3.9).
+### Removed
+- BREAKING: `oryxflow.evals` moved to its own package, `oryxeval` (same names; existing eval caches stay valid). Migration: `pip install oryxeval`, then `import oryxflow.evals as ev` -> `import oryxeval as ev` and `from oryxflow.evals.<module> import X` -> `from oryxeval.<module> import X`. Change only the import line: leave `oryxflow.hash_files` and other `oryxflow.*` calls inside `code_version()` as they are (editing that body re-runs every arm), and expect StalenessWarnings until you run `oryxflow.accept_code(...)` once.
 ### Fixed
 - Code-status records written by a NEWER oryxflow (record `v` above `oryxflow.state.RECORD_V`) are no longer re-stamped: the build's advisory sweep and `accept_code` leave them as they are, the task is kept without rerunning, and one `StalenessWarning` (event kind `newer_record`) names the tasks. Before, an older library rewrote them in its own format and silently blessed any edit made since. `oryxflow.state.is_newer(rec)` is the check. Releases up to 26.10.22 still re-stamp newer records: do not run a data folder a newer oryxflow built with them.
 - `TaskNotebook` html reports show dollar amounts as text: `$1.2bn to $3bn` was rendered as a LaTeX formula. The html no longer loads MathJax; set `html_mathjax = True` on the task to render formulas.
@@ -64,8 +66,6 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - `TaskNotebook` runs a template that has no kernelspec in its metadata (one written with `nbformat`), using `kernel_name`. Before, papermill failed with `AttributeError: kernelspec`.
 - `excel_write` with the same option both shared and on a sheet spec (`excel_write(p, {'a': {'df': df, 'formats': {...}}}, formats={...})`) raised `TypeError: dict() got multiple values for keyword argument`.
 
-### Removed
-- BREAKING: `oryxflow.evals` moved to its own package, `oryxeval` (same names; existing eval caches stay valid). Migration: `pip install oryxeval`, then `import oryxflow.evals as ev` -> `import oryxeval as ev` and `from oryxflow.evals.<module> import X` -> `from oryxeval.<module> import X`.
 
 ## [26.10.22] - 2026-10-22
 ### Added

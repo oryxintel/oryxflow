@@ -13,16 +13,16 @@ looking at is real. Nothing is hidden in a base class you have to go read — ev
 decides the number is on this page.
 
 ```text
-pip install "oryxflow[evals]>=26.10.5"
+pip install oryxeval
 ```
 
 That pulls pydantic-evals 2.x, the case runner and scorers this is built on.
 
-Nothing in `oryxflow.evals` is loaded by `import oryxflow`, so if you never run evals it costs
-you nothing. Import it on purpose:
+`oryxeval` is its own package (Python 3.10+), so if you never run evals it costs you nothing.
+Import it on purpose (migrating an existing eval? See [the note](llm-evals.md)):
 
 ```python
-import oryxflow.evals as ev
+import oryxeval as ev
 ```
 
 ## The whole thing
@@ -42,7 +42,7 @@ Then the eval:
 
 ```python title="eval.py"
 import oryxflow
-import oryxflow.evals as ev
+import oryxeval as ev
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_evals.evaluators import LLMJudge
@@ -214,7 +214,7 @@ the plugin writes one. Nothing you learn here stops applying at the next level u
 
 - **[LLM evals](llm-evals.md)** — the full guide: case files, arms and baselines, what caching is
   keyed on, reading the verdict, and the rules about your own code that matter most.
-- **[Classes and functions](llm-evals-api.md)** — everything `oryxflow.evals` exports, in the
+- **[Classes and functions](llm-evals-api.md)** — everything `oryxeval` exports, in the
   order you'll meet it.
 - **[What an eval plan must contain](llm-evals-checklist.md)** — the six sections a plan needs
   before anyone can run it, for when you are building an eval from someone else's.

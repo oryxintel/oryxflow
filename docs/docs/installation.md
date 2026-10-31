@@ -43,6 +43,7 @@ The core install keeps dependencies light. Enable the pieces you need with pip *
 | Cloud storage (base) | `pip install "oryxflow[cloud-base]"` | fsspec/`universal_pathlib` backend without a specific provider |
 | Report notebooks | `pip install "oryxflow[notebook]"` | Run report notebooks as tasks (papermill + nbconvert) |
 | Dask | `pip install "oryxflow[dask]"` | Dask DataFrame task types |
+| LLM evals | `pip install "oryxflow[evals]"` | Installs [`oryxeval`](llm-evals.md); needs Python 3.10+ |
 
 After installing a cloud extra, point the engine at remote storage with
 `oryxflow.enable_gcs(bucket, prefix=None)` or the generic

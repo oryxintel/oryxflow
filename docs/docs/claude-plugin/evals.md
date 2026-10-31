@@ -16,10 +16,10 @@ case file worth reviewing, a baseline that stays honest, and a guardrail nobody 
 add. Four commands build exactly that.
 
 ```text
-/oryxflow:eval-plan     # 1. decide what is measured — writes the plan, no code
-/oryxflow:eval-init     # 2. scaffold the eval from that plan, ending in a smoke run
-/oryxflow:eval-cases    # 3. grow 3 placeholder cases into a real 15-25
-/oryxflow:eval-run      # 4. run it, print the verdict, interpret the result
+/oryxeval:eval-plan     # 1. decide what is measured — writes the plan, no code
+/oryxeval:eval-init     # 2. scaffold the eval from that plan, ending in a smoke run
+/oryxeval:eval-cases    # 3. grow 3 placeholder cases into a real 15-25
+/oryxeval:eval-run      # 4. run it, print the verdict, interpret the result
 ```
 
 They are **one pipeline, in that order** — each command reads what the one before it wrote. You
@@ -27,16 +27,19 @@ can stop after any of them and pick up later. Nothing runs on its own: two of th
 and `eval-run` bills you for API calls, so you invoke each one deliberately.
 
 They work in **any Python repo** — a web app's backend is the usual home — not only in an oryxflow
-data project. The plugin's `oryxflow-evals` skill activates on its own when an agent plans or edits
+data project. The `oryxeval` plugin's skill activates on its own when an agent plans or edits
 an LLM prompt, and suggests the commands; it never runs one.
 
-Evals need the library, with its extra, in the environment that runs your production code:
+Install the plugin, and the library in the environment that runs your production code:
 
 ```text
-pip install "oryxflow[evals]>=26.10.5"
+/plugin install oryxeval@oryxflow
+pip install oryxeval
 ```
 
-## 1. `/oryxflow:eval-plan` — decide what is measured
+Migrating an existing eval? See [the note on the guide page](../llm-evals.md).
+
+## 1. `/oryxeval:eval-plan` — decide what is measured
 
 The command that saves you the most money is the one that spends none. It settles six questions
 before any code exists:
@@ -63,7 +66,7 @@ list before saving, recording anything it cannot answer as a known gap. That che
 hands over as something a fresh session can execute, rather than a description of an eval somebody
 still has to design.
 
-## 2. `/oryxflow:eval-init` — scaffold it
+## 2. `/oryxeval:eval-init` — scaffold it
 
 Copies the eval template into `evals/` and wires it to the plan. The first eval in a repo also
 gets `evals/_env.py`, which records once how this repo loads credentials and imports production
@@ -73,7 +76,7 @@ It finishes with a **three-call smoke run** — enough to prove the wiring end t
 bill. Anything still unfilled raises an error at that point, which is deliberate: a half-wired
 eval that returned an empty result would otherwise cache as a measurement.
 
-## 3. `/oryxflow:eval-cases` — grow the case set
+## 3. `/oryxeval:eval-cases` — grow the case set
 
 The scaffold ships three placeholder rows. This command replaces them with 15-25 cases harvested
 from real material — your tickets, transcripts, logs — rather than invented ones, and it works
@@ -83,7 +86,7 @@ list of whatever came to mind first.
 Invented cases aren't banned, they're **marked**: `synthetic=1`. The headline number is harvested
 cases only, with the invented ones reported beside it.
 
-## 4. `/oryxflow:eval-run` — run it and read the verdict
+## 4. `/oryxeval:eval-run` — run it and read the verdict
 
 Prints the projected bill — how many calls, how many are already cached, what it will cost — and
 waits for you before spending anything. Then it runs and interprets the result: which arm won,
@@ -166,7 +169,7 @@ Two things about `run_case` that are easy to get wrong and expensive to discover
 class PromptEval(ev.TaskEval):
     """One line: the question this eval answers."""
 
-    prompt_version = oryxflow.ChoiceParameter(default='live',
+    prompt_version = ev.ChoiceParameter(default='live',
                                               choices=['live', 'baseline'])
 
     dataset = Dataset(name='cases', cases=CASES, evaluators=[OutputOk()])
@@ -185,7 +188,7 @@ class PromptEval(ev.TaskEval):
     def code_version(self):
         if self.prompt_version == 'baseline':
             return ev.git_sha(agent.BASELINE_REF, repo=agent.ROOT)
-        return oryxflow.hash_files(*agent.PROMPT_GLOBS, root=agent.ROOT)
+        return ev.hash_files(*agent.PROMPT_GLOBS, root=agent.ROOT)
 ```
 
 What each part is for:
@@ -239,7 +242,7 @@ judge at all, [check it against human labels](../llm-evals.md#check-the-judge-be
 ## `run_eval_<name>.py` — the command line
 
 ```python
-import oryxflow.evals as ev
+import oryxeval as ev
 from my_eval.eval import MyEval
 
 if __name__ == '__main__':
@@ -306,7 +309,7 @@ right order, before the first API call.
   complete eval in one file.
 - **[LLM evals](../llm-evals.md)** — the guide: `ev.sweep`, `ev.TaskEval`, metrics, guardrails,
   intervals, and the verdict.
-- **[Classes and functions](../llm-evals-api.md)** — everything `oryxflow.evals` exports.
+- **[Classes and functions](../llm-evals-api.md)** — everything `oryxeval` exports.
 - **[Prompts as files](../llm-evals-prompts.md)** — getting a prompt out of a Python string, and
   why versions are commits rather than filenames.
 - **[What an eval plan must contain](../llm-evals-checklist.md)** — the six sections behind the

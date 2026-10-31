@@ -321,6 +321,6 @@ has not been thought about.
 - **[LLM eval quickstart](llm-evals-quickstart.md)** — a complete eval in one file.
 - **[LLM evals](llm-evals.md)** — the guide: cases, metrics, guardrails, baselines, intervals,
   and reading the verdict.
-- **[Classes and functions](llm-evals-api.md)** — everything `oryxflow.evals` exports.
+- **[Classes and functions](llm-evals-api.md)** — everything `oryxeval` exports.
 - **[Scaffold an LLM eval](claude-plugin/evals.md)** — the plugin writes these six sections for
   you, then scaffolds an eval from them.
