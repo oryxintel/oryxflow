@@ -12,6 +12,11 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - **Name the actual symbol in backticks** (`` `Task.persist` ``, `` `RunResult.summary()` ``), never
   prose. Agents grep this file for the symbol in their traceback.
 
+## [Unreleased]
+### Fixed
+- `built` in `tasks_export.py` lists only builds the exported class can still select. An entry recorded under other parameters (one since removed, renamed or added) is dropped when the producer regenerates the file, so `X.bind(**X.built[i])` no longer raises `TypeError: bind(): no parameter ...` for a listed entry. The producer is told once, when it happens: `UserWarning: 2 built entries dropped for ReturnsMarket: parameters no longer on the class: source_run`, also in `RunResult.warnings` and as an `export_warning` event (`export_failed` stays for failed updates). The outputs stay on disk. Before, removed-parameter entries stayed listed and renamed ones vanished without a word. Design: `docs/todo/20261107-export-stale-built-and-undefaulted-imports.md`.
+- `FlowImport` of a `tasks_export.py` written before 26.11.6, whose parameters may have no default, no longer fixes such a parameter to nothing: it stays unbound and copies through from the requiring task as before (`@oryxflow.requires(exported.X.bind(sector='retail'))` keeps `period` on your task), and the import warns `X: parameter period has no default, ... -- re-run the producer on oryxflow >= 26.11.6 to write defaults`. Before, `period` silently left your task and the error came at instantiation.
+
 ## [26.11.6] - 2026-11-06
 ### Added
 - `oryxflow.codehash.strip_docstrings`, the public name of the docstring normalizer that code hashes use.
