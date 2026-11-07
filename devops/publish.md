@@ -44,7 +44,9 @@ gh run watch                                  # the Release run; done when publi
    `cd ../oryxlib-docs && devops/sync-release.sh --push` (Windows:
    `devops\sync-release.ps1 -Push`). It syncs both changelogs and the oryxflow pin, builds
    with the doc tests, commits and pushes (the push redeploys docs.oryxflow.dev via
-   Cloudflare). Details in `../oryxlib-docs/MAINTAINING.md`.
+   Cloudflare). The build needs the docs build env with the just-released oryxflow installed
+   (`pip install ../oryxflow` in that env, or the oryxlib-docs README setup), because the API
+   page is generated from the installed package. Details in `../oryxlib-docs/MAINTAINING.md`.
 
 ## Draft, published, pre-release
 
