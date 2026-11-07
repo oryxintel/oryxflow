@@ -56,7 +56,7 @@ If you use [Claude Code](https://claude.com/claude-code), the official plugin ca
 project and wire task dependencies for you:
 
 ```text
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 See [Build with Claude Code](claude-plugin/index.md) for what it sets up.

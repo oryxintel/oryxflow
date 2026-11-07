@@ -33,7 +33,7 @@ an LLM prompt, and suggests the commands; it never runs one.
 Install the plugin, and the library in the environment that runs your production code:
 
 ```text
-/plugin install oryxeval@oryxflow
+/plugin install oryxeval@oryxintel
 pip install oryxeval
 ```
 

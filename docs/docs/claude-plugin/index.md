@@ -39,7 +39,7 @@ own work. Three things follow, in the order they matter:
 
 ```text
 /plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 Once installed, the `oryxflow` skill **auto-activates** whenever you work in an oryxflow project
@@ -97,7 +97,7 @@ than a data connector or a notebook runner, is the piece that carries this disci
 
 -   :material-scale-balance: **[Scaffold an LLM eval](evals.md)**
 
-    Four commands in the `oryxeval` plugin (`/plugin install oryxeval@oryxflow`) that turn "is this prompt better?" into a number you can defend — a plan, a
+    Four commands in the `oryxeval` plugin (`/plugin install oryxeval@oryxintel`) that turn "is this prompt better?" into a number you can defend — a plan, a
     scaffold wired to it, a real case set, and a run that prints its bill before it spends.
 
 -   :material-file-tree: **[Data-science project structure](project-structure.md)**

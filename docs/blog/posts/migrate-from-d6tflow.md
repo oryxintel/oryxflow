@@ -163,7 +163,7 @@ rename plan before touching anything, and offers to commit the result as one cle
 
 ```text
 /plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 Then, in your d6tflow project: *"migrate from d6tflow to oryxflow using the plugin's d6tflow

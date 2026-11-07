@@ -116,7 +116,7 @@ from then on:
 
 ```text
 /plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 After that, describe the analysis you want. The skill works in the background — you don't call

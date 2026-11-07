@@ -44,7 +44,7 @@ of them and pick up later:
   the gap beats the run-to-run noise, and whether the winner broke the guardrail. The projected
   bill prints before anything is spent.
 
-These four ship in the separate `oryxeval` plugin (`/plugin install oryxeval@oryxflow`), and need
+These four ship in the separate `oryxeval` plugin (`/plugin install oryxeval@oryxintel`), and need
 the library (`pip install oryxeval`). Every cell is cached, so a re-run of an
 unchanged arm costs nothing and editing a prompt re-runs only the arms that read it.
 

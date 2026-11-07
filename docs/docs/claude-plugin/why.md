@@ -92,7 +92,7 @@ no cliff between the exploratory script and the pipeline it becomes.
 
 ```text
 /plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 - **[Commands](commands.md)** — scaffold, migrate, and maintain a project.

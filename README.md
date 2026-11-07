@@ -181,7 +181,7 @@ commands), not an MCP server.
 
 ```text
 /plugin marketplace add oryxintel/oryxflow-claude-plugin
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 The `oryxflow` skill auto-activates whenever you work in a pipeline project. The slash commands:

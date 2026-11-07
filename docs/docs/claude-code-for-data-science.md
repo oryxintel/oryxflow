@@ -102,7 +102,7 @@ rerun every time you want to be sure. See [Why oryxflow](why-oryxflow.md) for th
 
 ```text
 /plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 Once installed, the `oryxflow` skill **auto-activates** whenever you work in an oryxflow project —
@@ -233,7 +233,7 @@ Ready to build?
 
 ```text
 /plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 - **[Build with Claude Code](claude-plugin/index.md)** — the full plugin section: commands,

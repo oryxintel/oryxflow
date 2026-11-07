@@ -89,7 +89,7 @@ drive the restructuring:
 
 ```text
 /plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
-/plugin install oryxflow@oryxflow
+/plugin install oryxflow@oryxintel
 ```
 
 Order matters — there are two commands, and migrate builds *into* what init-project creates:
