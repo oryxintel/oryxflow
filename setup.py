@@ -7,7 +7,7 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='oryxflow',
-    version='26.11.0',
+    version='26.11.6',
     packages=['oryxflow','oryxflow.targets','oryxflow.tasks'],
     url='https://github.com/oryxintel/oryxflow',
     project_urls={
@@ -29,7 +29,7 @@ setup(
         'gcs': ['gcsfs','universal_pathlib'],
         's3': ['s3fs','universal_pathlib'],
         'notebook': ['papermill', 'nbconvert', 'nbformat', 'ipykernel', 'jinja2'],
-        'evals': ['oryxeval>=26.11.0; python_version>="3.10"']},
+        'evals': ['oryxeval>=26.11.6; python_version>="3.10"']},
 include_package_data=True,
     python_requires='>=3.9',
     keywords=['oryxflow', 'data workflow', 'data pipelines'],

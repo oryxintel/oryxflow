@@ -12,7 +12,7 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - **Name the actual symbol in backticks** (`` `Task.persist` ``, `` `RunResult.summary()` ``), never
   prose. Agents grep this file for the symbol in their traceback.
 
-## [Unreleased]
+## [26.11.6] - 2026-11-06
 ### Added
 - `oryxflow.codehash.strip_docstrings`, the public name of the docstring normalizer that code hashes use.
 - `task_ran` and `task_failed` events carry lineage in OpenLineage vocabulary, kept flat: `project` (the job namespace: the project folder's name), `inputs` and, on `task_ran`, `outputs`. Each entry is one dataset `{namespace, name, datasetVersion}`: `namespace` is the project that owns it, `name` its path relative to that project's root (`None` for a dependency without file outputs), and `datasetVersion` the `output_id` of that materialization (`None` when the task's code is not tracked). Inputs also carry the dependency's `task_id` and `family`. An input's `datasetVersion` equals the `datasetVersion` in the dependency's own `task_ran` outputs, across `FlowImport` too, so `jq '.inputs[] | {name, datasetVersion}'` answers "which build fed this", and the log converts to OpenLineage RunEvents without re-running. Events written before this change have none of these fields. Design: `docs/todo/20261028-sys-runlog-lineage.md`.
