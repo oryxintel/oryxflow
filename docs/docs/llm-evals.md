@@ -5,9 +5,21 @@ description: Run an LLM eval as a cached parameter sweep — one cached cell per
 
 # LLM evals
 
+!!! note "The harness is the `oryxeval` package"
+
+    The harness is the `oryxeval` package (it shipped as `oryxflow.evals` until oryxflow 26.11).
+    **Migrating an existing eval:** change only the import lines (`import oryxflow.evals as ev` ->
+    `import oryxeval as ev`, `from oryxflow.evals.X import Y` -> `from oryxeval.X import Y`). Keep
+    `import oryxflow` and leave every function body as it is: `code_version()`, `case()` and their
+    helpers are hashed into the cache key, so any edit there (even `oryxflow.hash_files` ->
+    `ev.hash_files`) re-runs every arm. The next run reuses the cache but prints StalenessWarnings;
+    clear them once, from `evals/`: `python -c "import oryxflow; oryxflow.accept_code()"` (the
+    `accept_code(<Eval>)` the warning names covers only the scoring stage). New evals use
+    `ev.hash_files`.
+
 You changed a prompt. Is it better?
 
-`oryxflow.evals` answers that in six lines and one command. It runs your cases across every arm
+`oryxeval` answers that in six lines and one command. It runs your cases across every arm
 you want to compare, keeps one cached result per arm, and prints a verdict that will not name a
 winner when the gap is inside the run-to-run noise, and will not call one a *clean* win when it
 broke a guardrail.
@@ -20,18 +32,18 @@ cached separately, so rewriting a scorer or a judge rubric re-scores what you al
 without calling the model again.
 
 ```
-pip install "oryxflow[evals]>=26.10.5"
+pip install oryxeval
 ```
 
 Read [What pydantic-evals already gives you](#what-pydantic-evals-already-gives-you) before writing
 a scorer of your own: judges, tool-call checks, confusion matrices and per-case setup all ship
 there.
 
-Nothing in `oryxflow.evals` is loaded by `import oryxflow`, so if you never run evals it costs
-you nothing. Import it on purpose:
+`oryxeval` is its own package (Python 3.10+), so if you never run evals it costs you nothing.
+Import it on purpose:
 
 ```python
-import oryxflow.evals as ev
+import oryxeval as ev
 ```
 
 !!! tip "In a hurry?"
@@ -45,7 +57,7 @@ No class, no scaffold, no output directory to configure. Write the async functio
 compare — it takes one case's inputs plus whatever you are varying — and hand it to `ev.sweep`:
 
 ```python
-import oryxflow.evals as ev
+import oryxeval as ev
 from pydantic import BaseModel
 
 
@@ -851,7 +863,7 @@ cannot quietly turn into "nothing ever changed".
 belongs there too:
 
 ```python
-watch=lambda: oryxflow.hash_files('prompts/*.jinja2', 'agent.py', root=HERE)
+watch=lambda: ev.hash_files('prompts/*.jinja2', 'agent.py', root=HERE)
 ```
 
 You are not flying blind if you forget one: oryxflow fingerprints the code a task imports, and
@@ -870,7 +882,7 @@ anywhere, anchor them:
 ```python
 HERE = pathlib.Path(__file__).parent
 r = ev.sweep(run_turn, cases=cases,
-             watch=lambda: oryxflow.hash_files('prompts/*.md', root=HERE), ...)
+             watch=lambda: ev.hash_files('prompts/*.md', root=HERE), ...)
 ```
 
 ## When one function is not enough
@@ -880,7 +892,7 @@ outputs, or a cache that covers the files your function reads:
 
 ```python
 import oryxflow
-import oryxflow.evals as ev
+import oryxeval as ev
 from pydantic_evals import Dataset
 
 
@@ -900,7 +912,7 @@ class TurnEval(ev.TaskEval):
     model_id = oryxflow.Parameter(default='small')
 
     def code_version(self):
-        return oryxflow.hash_files('prompts/*.md')     # edit a prompt -> this arm re-runs
+        return ev.hash_files('prompts/*.md')     # edit a prompt -> this arm re-runs
 
     async def case(self, inputs):
         return await my_assistant(inputs.question, prompt=self.prompt_version,
@@ -1034,7 +1046,7 @@ yourself and get the full verdict out of it.
 ## Read next
 
 - **[LLM eval quickstart](llm-evals-quickstart.md)** — a complete eval in one file, line by line.
-- **[Classes and functions](llm-evals-api.md)** — everything `oryxflow.evals` exports, grouped by
+- **[Classes and functions](llm-evals-api.md)** — everything `oryxeval` exports, grouped by
   when you meet it.
 - **[Prompts as files](llm-evals-prompts.md)** — one file per prompt, git as the version
   store, and how to get a prompt out of a Python string constant.

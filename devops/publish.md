@@ -7,6 +7,13 @@ in GitHub secrets.
 Docs deployment is a separate pipeline (Cloudflare Pages builds `./site` on every push to `main`);
 it is not covered here.
 
+## quickstart
+
+git tag v26.10.8
+git push github main --tags
+gh release create v26.10.8 --generate-notes
+
+
 ## Release checklist
 
 1. **Bump the version** in `setup.py` (`version=`). Calver, `YY.M.D` — e.g. `26.7.21`.

@@ -1,11 +1,11 @@
 ---
 title: Plugin commands
-description: The oryxflow Claude Code plugin's slash commands — scaffold a project, migrate an existing analysis into a cached pipeline, check house standards, put data under Git LFS, and build an LLM eval that measures a prompt change instead of guessing.
+description: The oryxflow Claude Code plugin's slash commands — scaffold a project, migrate an existing analysis into a cached pipeline, check house standards, put data under Git LFS. The four LLM-eval commands live in the separate oryxeval plugin.
 ---
 
 # Plugin commands
 
-The plugin adds nine slash commands. Most of the time you won't need them explicitly — the
+The plugin adds five slash commands. Most of the time you won't need them explicitly — the
 `oryxflow` skill activates on its own inside a project — but they're the fast path for the common
 setup and maintenance jobs.
 
@@ -27,24 +27,25 @@ setup and maintenance jobs.
 
 ## Measure a prompt change
 
-Four more commands turn "is this prompt better?" into a number you can defend. They are **one
+Four more commands, in the separate `oryxeval` plugin, turn "is this prompt better?" into a number you can defend. They are **one
 pipeline, in this order** — each reads what the one before it wrote, and you can stop after any
 of them and pick up later:
 
-- **`/oryxflow:eval-plan`** — *step 1 of 4.* Decide what the eval measures before any code
+- **`/oryxeval:eval-plan`** — *step 1 of 4.* Decide what the eval measures before any code
   exists: what counts as better, what must not get worse, what you're comparing against, and
   which cases. Writes the plan, spends nothing.
-- **`/oryxflow:eval-init`** — *step 2 of 4.* Scaffold the eval from that plan into
+- **`/oryxeval:eval-init`** — *step 2 of 4.* Scaffold the eval from that plan into
   `evals/<name>/`, so you fill in judgement calls instead of boilerplate. Ends in a three-call
   smoke run that proves the wiring without a bill.
-- **`/oryxflow:eval-cases`** — *step 3 of 4.* Grow the three placeholder cases into a real 15-25,
+- **`/oryxeval:eval-cases`** — *step 3 of 4.* Grow the three placeholder cases into a real 15-25,
   harvested from your own material and worked across the axes that matter — so the case set is
   evidence rather than whatever came to mind first.
-- **`/oryxflow:eval-run`** — *step 4 of 4.* Run it and read the verdict: which arm won, whether
+- **`/oryxeval:eval-run`** — *step 4 of 4.* Run it and read the verdict: which arm won, whether
   the gap beats the run-to-run noise, and whether the winner broke the guardrail. The projected
   bill prints before anything is spent.
 
-Evals need the extra (`pip install "oryxflow[evals]"`). Every cell is cached, so a re-run of an
+These four ship in the separate `oryxeval` plugin (`/plugin install oryxeval@oryxflow`), and need
+the library (`pip install oryxeval`). Every cell is cached, so a re-run of an
 unchanged arm costs nothing and editing a prompt re-runs only the arms that read it.
 
 [Scaffold an LLM eval](evals.md) walks through all four, and documents the files they write.

@@ -25,6 +25,8 @@ and executor all live in `oryxflow/core.py` + `oryxflow/parameter.py`.
 
 ## Layout
 
+LLM evals live in the oryxeval repo (`../oryxeval`), not here.
+
 ```
 oryxflow/
   __init__.py        # public API: run, preview, Workflow, WorkflowMulti, FlowExport/Import (from export.py),
@@ -93,6 +95,8 @@ instead of reinventing them.
 **`input()` indexing gotcha.** `self.input()` mirrors `requires()`: a single Target for a single-output dep, a `{persist: target}` **dict** for a multi-`persists` dep, and — for multiple deps — either a positional **list** (`requires(T0, T1)`) or a **dict** keyed by your names (`requires({'features0': T0, 'features1': T1})`). Integer indexing `[0]`/`[1]` is *only* the positional case; **prefer the named-dict form** so you select deps by meaningful name (`self.input()['features0']` / `self.inputLoad(task='features0')`) instead of by position. A persist output is always selected **by name**, never by index: `self.input()['train'].load()` (single dep), `self.input()['features0']['train'].load()` (named multi-dep), or `self.input()[0]['train'].load()` (positional). `self.input().load(keys=...)` does NOT work for a multi-`persists` dep — there `self.input()` is a dict, not a target. Equivalent high-level: `self.inputLoad(keys='train')`.
 
 Outputs are declared with **`persists`** (plural) — e.g. `persists = ['x', 'y']`. `persist` (singular) is a backwards-compatible alias folded into the internal `self.persist` in `TaskData.__init__`; engine code reads `self.persist`, but docs/examples standardize on `persists`.
+
+**Used by oryxeval** — the separate `oryxeval` package (the LLM-eval harness; eval work happens in its repo) imports `codehash.callable_code_hash` / `task_code_hash` / `strip_docstrings`, `hash_files`, the `Parameter` classes (also from `oryxflow.parameter`), `tasks.TaskJson` / `TaskPqPandas`, `WorkflowMulti`, `runIterConcat`, `state.clear_cache`, `core._code_warned` and `settings.dir` / `dirpath` / `eventspath`. Changing their output moves every oryxeval cache key (users re-pay for model calls).
 
 ## Architecture notes that bite
 

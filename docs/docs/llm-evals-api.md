@@ -1,18 +1,18 @@
 ---
 title: Classes and functions
-description: Everything oryxflow.evals exports, grouped by when you meet it — the six names you use every time, then arms and baselines, judge validation, statistics, and errors.
+description: Everything oryxeval exports, grouped by when you meet it — the six names you use every time, then arms and baselines, judge validation, statistics, and errors.
 ---
 
 # Classes and functions
 
-Everything `oryxflow.evals` exports, grouped by **when you meet it** rather than alphabetically.
+Everything `oryxeval` exports, grouped by **when you meet it** rather than alphabetically.
 Six names cover an ordinary eval; the rest are there when a specific question comes up.
 
 ```python
-import oryxflow.evals as ev
+import oryxeval as ev
 ```
 
-Nothing here is imported by `import oryxflow`. It needs the extra: `pip install "oryxflow[evals]"`.
+`oryxeval` is its own package (Python 3.10+): `pip install oryxeval`.
 
 ## The six you use every time
 

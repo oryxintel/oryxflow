@@ -121,7 +121,7 @@ r = ev.sweep(run_case, cases=cases, watch='myapp/prompts/*.md',
              metric=ev.Metric('sections verbatim', 'all_verbatim'))
 ```
 
-and in the class form it is `code_version()` returning `oryxflow.hash_files('myapp/prompts/*.md',
+and in the class form it is `code_version()` returning `ev.hash_files('myapp/prompts/*.md',
 root=ROOT)`. Either way, editing a prompt now re-runs the arms that read it and nothing else.
 
 ### Until you extract it
@@ -130,7 +130,7 @@ You do not have to extract before you can run anything. While the prompt is stil
 the module, hash the **module**:
 
 ```python
-watch=lambda: oryxflow.hash_files('myapp/extract.py', root=ROOT)
+watch=lambda: ev.hash_files('myapp/extract.py', root=ROOT)
 ```
 
 That is correct — the prompt cannot change without the file changing — and it is honest about
@@ -236,7 +236,7 @@ directory, and then a case-generation prompt ends up shipped as application beha
 - **[LLM evals](llm-evals.md)** — the full guide: arms and baselines, what caching is keyed on,
   and reading the verdict.
 - **[Classes and functions](llm-evals-api.md)** — `PromptArm`, `git_tree`, `git_sha` and
-  everything else `oryxflow.evals` exports.
+  everything else `oryxeval` exports.
 - **[What an eval plan must contain](llm-evals-checklist.md)** — the six sections a plan needs
   before anyone can run it.
 - **[Scaffold an LLM eval](claude-plugin/evals.md)** — the plugin commands that write the arms
