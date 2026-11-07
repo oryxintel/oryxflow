@@ -178,8 +178,12 @@ class TestBind:
                 self.save(self.inputLoad())
         oryxflow.Workflow(Uses).run()
         assert oryxflow.Workflow(Uses).run().ran == []
-        # the producer rewrites the same build: no record there, the file time says so
+        # a new file time alone (a sync, a byte-identical rewrite) is not a change
         _set_mtime(Returns(), 3_000_000_000_000_000_000)
+        assert oryxflow.Workflow(Uses).run().ran == []
+        # the producer rewrites the same build: no record there, the content says so
+        pd.DataFrame({'sector': ['office'], 'refresh': [str(D10)], 'v': [2]}).to_parquet(
+            Returns().output().path)
         assert oryxflow.Workflow(Uses).run().did_run(Uses)
 
 

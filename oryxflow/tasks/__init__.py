@@ -45,6 +45,44 @@ def _output_mtime(task):
         return ''
 
 
+def _output_digest(task):
+    """Content digest of a task's local output files ('md5=<hex>'), '' when unknown.
+
+    Names are relative to the task's data dir and a directory output counts every file under
+    it, so the same output gives the same digest on another machine, after a sync that kept
+    the bytes but not the file times."""
+    from oryxflow.utils import _digest_files
+    try:
+        root = pathlib.Path(task._resolved_dirpath() if hasattr(task, '_resolved_dirpath')
+                            else settings.dirpath).resolve()
+        keyed = []
+        for o in core.flatten(task.output()):
+            p = pathlib.Path(o.path)
+            files = sorted(f for f in p.rglob('*') if f.is_file()) if p.is_dir() else [p]
+            for f in files:
+                try:
+                    key = f.resolve().relative_to(root).as_posix()
+                except ValueError:
+                    key = f.name
+                keyed.append((key, f))
+        return 'md5=' + _digest_files(keyed) if keyed else ''
+    except Exception:
+        return ''
+
+
+# a synced copy keeps whole seconds at best (FAT and zip: 2 s)
+_SYNC_SLACK_NS = 2 * 10 ** 9
+
+
+def _same_time(recorded, now):
+    if recorded == now:
+        return True
+    if not isinstance(now, int):
+        return False
+    lossy = recorded % 10 ** 9 == 0 or now % 10 ** 9 == 0
+    return lossy and abs(recorded - now) <= _SYNC_SLACK_NS
+
+
 class TaskData(core.Task):
     """
     Task which has data as input and output
@@ -179,11 +217,37 @@ class TaskData(core.Task):
                 return True
         if not self._own_code_ok(rec):
             return False
+        return self._deps_ok(rec, older)
+
+    def _deps_ok(self, rec, older=False):
         stored = rec.get('dep_state')
+        current = self._dep_ids()
+        if stored == _fold(current.values()):
+            return True
         # a record from before untracked deps were folded by file time matches the old fold
         # once; build()'s advisory sweep then re-stamps it (no mass rerun on upgrade)
-        return stored == self._dep_state() or (older
-                                               and stored == self._dep_state(legacy=True))
+        if older and stored == self._dep_state(legacy=True):
+            return True
+        # one from before they were folded by content: the same, per dependency
+        ids = rec.get('dep_ids')
+        if not isinstance(ids, dict) or set(ids) != set(current)                 or _fold(v or '' for v in ids.values()) != stored:
+            return False
+        return all(self._same_dep_id(t, ids[t], current[t]) for t in current)
+
+    def _same_dep_id(self, task_id, old, new):
+        # old: a record's id for this dependency, new: the current one. An id written as
+        # ext:<task_id>:<mtime_ns> (before content digests) still matches while the output
+        # has that time; to the second, give or take 2 s, when one side lost the fraction
+        if old == new:
+            return True
+        prefix = 'ext:{}:'.format(task_id)
+        if not (isinstance(old, str) and old.startswith(prefix) and new.startswith(prefix)):
+            return False
+        stamp = old[len(prefix):]
+        if not stamp.isdigit():
+            return False
+        dep = next((d for d in self.deps() if d.task_id == task_id), None)
+        return dep is not None and _same_time(int(stamp), _output_mtime(dep))
 
     def _own_code_ok(self, rec):
         # own dimension, mode-aware: a pin (code_version) is THE version while present;
@@ -239,10 +303,11 @@ class TaskData(core.Task):
                                            or d._code_fingerprint is None):
                 # a dep that never gets a record here -- another project's output whose code
                 # tracking is off, or an untracked task (code_version_auto = False, no pin):
-                # fold which output it is and when it was written, so this task still reruns
-                # when that output is rewritten (or a binding picks another build). A '' here
-                # left a tracked task (a TaskNotebook, a pinned task) stale behind it.
-                oid = 'ext:{}:{}'.format(d.task_id, _output_mtime(d))
+                # fold which output it is and its content, so this task still reruns when
+                # that output changes (or a binding picks another build). A '' here left a
+                # tracked task (a TaskNotebook, a pinned task) stale behind it. Content, not
+                # file time: a synced data dir keeps the bytes but not always the times.
+                oid = 'ext:{}:{}'.format(d.task_id, _output_digest(d))
             ids[d.task_id] = oid or ''
         return ids
 
