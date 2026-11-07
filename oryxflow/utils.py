@@ -350,7 +350,7 @@ def warn_if_nested_data_dir(dirpath):
 _EXCEL_DEFAULTS = dict(formats=None, format_float=None, index=False, filters=True, freeze=True, widths='auto',
                        width_min=8, width_max=60, header_style=True,
                        title=None, notes=(), highlight={}, colorscale=(), banded=False,
-                       wrap_columns=(), group_starts=(), id_columns=())
+                       wrap_columns=(), group_starts=(), id_columns=(), formulas=())
 _EXCEL_FILLS = {'green': ('C6EFCE', '006100'), 'yellow': ('FFEB9C', '9C6500'),
                 'red': ('FFC7CE', '9C0006'), 'grey': ('E7E6E6', '3F3F3F')}
 _EXCEL_TITLE_COLS = 6
@@ -472,7 +472,7 @@ def _excel_check_styling(sheet_name, df, opts):
                 "use df[{!r}].dt.tz_localize(None) first".format(sheet_name, col, col))
     have = {str(c) for c in df.columns}
     names = list(opts['highlight']) + list(opts['colorscale']) + list(opts['wrap_columns']) \
-        + list(opts['group_starts']) + list(opts['id_columns'])
+        + list(opts['group_starts']) + list(opts['id_columns']) + list(opts['formulas'])
     for col in names:
         if str(col) not in have:
             raise KeyError("sheet {!r}: column {!r} not found in the frame".format(sheet_name, col))
@@ -508,10 +508,32 @@ def _excel_widths(cols, filters, widths, width_min, width_max):
     return out
 
 
+def _excel_as_text(cell):
+    # openpyxl stores any string starting with '=' as a formula; one Excel cannot parse makes
+    # the whole workbook fail to open
+    if cell.data_type == 'f' and isinstance(cell.value, str):
+        cell.data_type = 's'
+
+
+def _excel_text_not_formula(ws, cols, row_header, first, last_row, formula_pos):
+    '''
+    Write strings starting with '=' as text, in headers, index and data, except the data cells
+    of the formula_pos columns.
+    '''
+    for c, (header, values, _) in enumerate(cols, start=1):
+        _excel_as_text(ws.cell(row=row_header, column=c))
+        if c in formula_pos or (values.dtype.kind not in 'OSU' and str(values.dtype) != 'string'):
+            continue
+        if not values.map(lambda v: isinstance(v, str) and v.startswith('=')).any():
+            continue
+        for r in range(first, last_row + 1):
+            _excel_as_text(ws.cell(row=r, column=c))
+
+
 def _excel_format_sheet(ws, df, row_header, index=False, formats=None, format_float=None,
                         filters=True, freeze=True, widths='auto', width_min=8, width_max=60,
                         header_style=True, title=None, notes=(), highlight={}, colorscale=(),
-                        banded=False, wrap_columns=(), group_starts=(), id_columns=()):
+                        banded=False, wrap_columns=(), group_starts=(), id_columns=(), formulas=()):
     '''
     Style a worksheet written from df (as written, columns already flattened).
     row_header is the 1-based sheet row holding the column headers; a title and notes
@@ -538,7 +560,9 @@ def _excel_format_sheet(ws, df, row_header, index=False, formats=None, format_fl
 
     if title or notes:
         if title:
-            ws.cell(row=1, column=1, value=title).font = Font(bold=True, size=14)
+            cell = ws.cell(row=1, column=1, value=title)
+            cell.font = Font(bold=True, size=14)
+            _excel_as_text(cell)
             if ncols > 1:
                 ws.merge_cells(start_row=1, start_column=1, end_row=1,
                                end_column=min(ncols, _EXCEL_TITLE_COLS))
@@ -546,9 +570,12 @@ def _excel_format_sheet(ws, df, row_header, index=False, formats=None, format_fl
             cell = ws.cell(row=2 + i, column=1, value=note)
             cell.font = Font(italic=True, size=9)
             cell.alignment = Alignment(wrap_text=True, vertical='top')
+            _excel_as_text(cell)
             if ncols > 1:
                 ws.merge_cells(start_row=2 + i, start_column=1, end_row=2 + i,
                                end_column=min(ncols, _EXCEL_NOTE_COLS))
+
+    _excel_text_not_formula(ws, cols, row_header, first, last_row, positions(formulas))
 
     if header_style:
         for c in range(1, ncols + 1):
@@ -670,7 +697,8 @@ def _excel_sheet_specs(data, options):
     return out
 
 
-_EXCEL_COLUMN_OPTIONS = ('highlight', 'colorscale', 'wrap_columns', 'group_starts', 'id_columns')
+_EXCEL_COLUMN_OPTIONS = ('highlight', 'colorscale', 'wrap_columns', 'group_starts', 'id_columns',
+                         'formulas')
 
 
 def _excel_shared_columns(df, opts, shared, seen):
@@ -714,6 +742,8 @@ def excel_write(path, data, **options):
         (green, yellow, red, grey) or {'bg', 'font'};
         colorscale, wrap_columns, group_starts (lists of columns); banded (bool);
         id_columns are written as text so codes keep leading zeros.
+        Text starting with '=' is written as text, not a formula; formulas (list of columns)
+        writes those columns' strings starting with '=' as Excel formulas.
         Given for the whole workbook, these column options apply to the sheets that have the
         column (a column no sheet has raises KeyError); given in a sheet spec, every column
         must exist in that sheet.

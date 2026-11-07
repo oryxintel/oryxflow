@@ -12,6 +12,12 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - **Name the actual symbol in backticks** (`` `Task.persist` ``, `` `RunResult.summary()` ``), never
   prose. Agents grep this file for the symbol in their traceback.
 
+## [Unreleased]
+### Added
+- `oryxflow.utils.excel_write(..., formulas=[col, ...])` (also a per-sheet option, and passed through `save(formatted=True)`): the columns whose strings starting with `=` are written as Excel formulas. Like `wrap_columns`, a workbook-level list applies to the sheets that have the column.
+### Fixed
+- BREAKING: `oryxflow.utils.excel_write` (and `save(formatted=True)`) writes strings starting with `=` as text, in data, headers, index, `title` and `notes`. Before, openpyxl stored them as formulas, and one Excel could not parse (a definitions column holding `'= Market quarterly (raw) x 4; ...'`) made Excel refuse to open the whole workbook, while the run succeeded. Strings starting with `+`, `-` or `@` were already text. Migration: list the columns that hold deliberate formulas in `formulas=[...]`. Design: `docs/todo/20261107-utils-excel-text-not-formula.md`.
+
 ## [26.11.6] - 2026-11-06
 ### Added
 - `oryxflow.codehash.strip_docstrings`, the public name of the docstring normalizer that code hashes use.
