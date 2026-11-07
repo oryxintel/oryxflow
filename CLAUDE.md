@@ -9,8 +9,8 @@ scale: more projects, markets and sectors, more people and agents on the same da
 hand-holding. Prioritize by real user pain, as logged by the downstream analysis projects in
 their feedback notes (tracked outside this repo, `feedback-<date>/*.md`; local locations in
 `CLAUDE.local.md`): silent wrong results and stale outputs first, then friction that recurs across projects, then polish. Fix
-root causes with tests; keep the public API small and CHANGELOG, docs and the plugin skill in
-sync. Work mostly autonomously, but surface every major decision the user might want to
+root causes with tests; keep the public API small and CHANGELOG, docs (in the sibling `../oryxlib-docs` repo) and
+the plugin skill in sync. Work mostly autonomously, but surface every major decision the user might want to
 weigh in on or reverse (API design and naming, new semantics, breaking changes, deferring or
 dropping a reported issue) in a "Decisions" list in your report, and stop to ask before
 releases, pushes or anything irreversible.
@@ -47,12 +47,20 @@ oryxflow/
   functional.py      # decorator-based functional Workflow API (uses only oryxflow.requires)
   export.py          # export = True tasks -> tasks_export.py (FlowExport, auto_export from run()), FlowImport
 tests/               # pytest suite (see tests/setup.md)
-docs/                # examples + docs/todo/ design notes
+docs/                # docs/todo/ design notes, docs/system/ (the user docs live in ../oryxlib-docs)
 ```
 
 Ignore `bak/`, `build/`, `dist/`, `*.egg-info/`, `data/`, `models/`, `tests-data/` — local
 artifacts / backups, not source. (`oryxflow/core/` is an empty stale dir; the real module is
 `oryxflow/core.py`.)
+
+## Docs
+
+User-facing docs live in the sibling repo `../oryxlib-docs` (site docs.oryxflow.dev), not here
+(only `docs/todo/` and `docs/system/` stay). Read `../oryxlib-docs/MAINTAINING.md` before editing
+pages. Any user-facing change here (API, parameter, behaviour, install) needs a docs update there,
+committed in that repo. The changelog stays HERE (`CHANGELOG.md`); it is synced into the docs at
+release.
 
 ## Public API (what exists — check here before adding new code)
 
@@ -134,7 +142,7 @@ non-obvious decisions. Highlights:
 ## Logging (dev notes)
 
 loguru-based, designed to a plan: `docs/todo/20260606-sys-logging.md` (read it before changing
-logging). User-facing docs: `docs/docs/logging.md`. Key facts for working on it:
+logging). User-facing docs: `docs/docs/logging.md` in `../oryxlib-docs`. Key facts for working on it:
 
 - **`oryxflow/log.py` owns everything.** It holds the single `logger`, calls
   `logger.disable("oryxflow")` at import (library pattern: silent until the app opts in), and
@@ -265,7 +273,7 @@ baseline: **86 passing**. Needs `pandas`, `pyarrow`, `openpyxl`, `scikit-learn`,
   added lines hold a local path or a listed client name. The names stay off the repo: list
   them, one per line, in `~/.oryx-private-terms` or a gitignored `.private-terms` at the repo
   root (without either, only paths are checked). `--all` audits every tracked file.
-- **User docs (`docs/docs/*.md`) are written for data scientists, not library developers.**
+- **User docs (`docs/docs/*.md` in `../oryxlib-docs`) are written for data scientists, not library developers.**
   They were deliberately rewritten from a user-benefits perspective (commit 316a9fb): say what
   the reader gets and what to type ("lists each distinct warning once, so its length answers
   'how many pending warnings do I have?'"), never how it's computed. No jargon or library
