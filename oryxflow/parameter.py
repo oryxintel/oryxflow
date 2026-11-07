@@ -62,6 +62,9 @@ class Parameter:
         :param bool positional: if ``True`` the parameter may be set positionally. Default ``True``.
         """
         self._default = default
+        # whether the default was written out (BoolParameter fills in an implicit False, which
+        # an exported task must not rely on -- see export._check_defaults)
+        self._default_explicit = default is not _no_value
         self.significant = significant
         self.description = description
         self.positional = positional

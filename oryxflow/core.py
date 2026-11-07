@@ -798,19 +798,73 @@ def _apply_spec(cls):
     # excluded is the exact bug @requires_each exists to prevent, and it would be silent.
     # Parameters bound on an imported task (its exported defaults, or bind()) stay on that
     # task only.
+    # The FIRST source (in spec order) that declares a name wins; `first` remembers it so (d) can
+    # flag a later source whose default differs.
+    first = {}
     for entry in spec:
         for src in _entry_sources(entry):
             bound = getattr(src, '_oryxflow_bound', ())
             for pname, pobj in src.get_params():
-                if pname in excluded or pname in bound or hasattr(cls, pname):
+                if pname in excluded or pname in bound:
+                    continue
+                first.setdefault(pname, []).append((src, pobj))
+                if hasattr(cls, pname):
                     continue
                 setattr(cls, pname, pobj)
                 injected.add(pname)
 
     cls._requires_injected = injected
 
+    # (d) two upstreams declaring one name with different defaults: the task gets the first one's
+    # and clone() passes that value to the other upstream too, overriding its own default --
+    # silently, and which one wins depends on decorator/argument order. Warn once per conflict.
+    _warn_default_conflicts(cls, first, injected)
+
     if any(entry['kind'] != 'inherit' for entry in spec):
         cls.requires = _spec_requires
+
+
+class ParameterDefaultConflictWarning(UserWarning):
+    """Two upstream tasks declare one parameter with different defaults (see ``_apply_spec``)."""
+
+
+def _default_repr(p):
+    try:
+        return p.serialize(p.task_value())
+    except Exception:
+        return repr(p._default)
+
+
+def _warn_default_conflicts(cls, sources, injected):
+    warned = cls.__dict__.get('_requires_conflicts_warned')
+    if warned is None:
+        warned = cls._requires_conflicts_warned = set()
+    for pname, found in sorted(sources.items()):
+        # only a parameter the task took from an upstream; one declared in the class body is
+        # an explicit choice that every upstream receives
+        if pname not in injected or len(found) < 2:
+            continue
+        src0, p0 = found[0]
+        if getattr(cls, pname) is not p0 or not p0.has_task_value():
+            continue
+        for src, p in found[1:]:
+            if p is p0 or not p.has_task_value() or src is src0:
+                continue
+            d0, d = _default_repr(p0), _default_repr(p)
+            if d0 == d:
+                continue
+            key = (pname, src0, src)
+            if key in warned:
+                continue
+            warned.add(key)
+            _stdwarnings.warn(
+                "{}: '{}' has different defaults upstream -- {}.{} = {} and {}.{} = {}. {} gets "
+                "{} (the first one required) and passes it to {} as well, so {} runs with {}, "
+                "not its own default. Give both the same default (one shared Parameter object "
+                "assigned on both), or declare '{}' on {} to choose explicitly.".format(
+                    cls.__name__, pname, src0.__name__, pname, d0, src.__name__, pname, d,
+                    cls.__name__, d0, src.__name__, src.__name__, d0, pname, cls.__name__),
+                ParameterDefaultConflictWarning, stacklevel=2)
 
 
 def _add_spec(cls, entry):

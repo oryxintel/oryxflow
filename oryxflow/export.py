@@ -134,11 +134,27 @@ def _defaults(cls):
     return out
 
 
+_DEFAULT_HINT = (
+    " If the prod value comes from Workflow(params=...) or flow_params.py, make it the "
+    "default instead ({name} = oryxflow.{kind}(default=...)) and drop it from the workflow "
+    "params. When several tasks declare '{name}', define the Parameter once in a module "
+    "(params_prod.{name} = oryxflow.{kind}(default=...)) and assign it on each "
+    "({name} = params_prod.{name}): @requires then carries the one default everywhere.")
+
+
 def _check_defaults(cls):
     for name, p in sorted(cls.get_params(), key=lambda item: item[0]):
+        hint = _DEFAULT_HINT.format(name=name, kind=type(p).__name__)
         if not p.has_task_value():
             raise ValueError('{}.{}: exported parameters need a default -- the value consumers '
-                             'should get (prod)'.format(cls.__name__, name))
+                             'should get (prod).{}'.format(cls.__name__, name, hint))
+        if not getattr(p, '_default_explicit', True):
+            # BoolParameter() is False implicitly: a prod value of True supplied only through
+            # the workflow params would pass a has-a-default check and publish False
+            raise ValueError('{}.{}: exported parameters need an explicit default -- the value '
+                             'consumers should get (prod); {}() is False only implicitly. Write '
+                             '{}(default=False) or (default=True).{}'.format(
+                                 cls.__name__, name, type(p).__name__, type(p).__name__, hint))
 
 
 def check_exported_defaults(tasks):
@@ -668,6 +684,7 @@ def bind(cls, **values):
     for name, value in values.items():
         p = copy.copy(params[name])      # keeps its declaration order
         p._default = p.parse(value) if isinstance(value, str) else value
+        p._default_explicit = True
         p.task_value()                   # validates now, not at a far-away instantiation
         attrs[name] = p
     return type(cls)(cls.__name__, (cls,), attrs)

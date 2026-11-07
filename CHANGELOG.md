@@ -12,6 +12,14 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - **Name the actual symbol in backticks** (`` `Task.persist` ``, `` `RunResult.summary()` ``), never
   prose. Agents grep this file for the symbol in their traceback.
 
+## [Unreleased]
+### Added
+- `oryxflow.core.ParameterDefaultConflictWarning`, at class definition: a task that `@oryxflow.requires` two upstreams declaring the same parameter with different defaults (`UpA.refresh = 2026-11-05`, `UpB.refresh = 2026-09-01`) warns, naming both. The task takes the first upstream's parameter and passes that value to the second, which then runs with it instead of its own default; which one wins depends on decorator and argument order. Nothing changes in what runs. Fix: give both the same default (one shared Parameter object), or declare the parameter on the requiring task. No warning when the defaults agree, the object is shared, or the requiring task declares it.
+### Changed
+- Supported and tested: one Parameter object assigned on many task classes (`refresh = params_prod.refresh`, with `params_prod.refresh = oryxflow.DateParameter(default=...)` defined once). Every class gets the one default, `@oryxflow.requires` carries it, `Workflow(params=...)` still overrides it, and task ids are the same as with a separate declaration per class. This is how a project that kept prod values in `flow_params.py` moves them to defaults for exported tasks.
+- The `exported parameters need a default` `ValueError` says how to fix it when prod values were passed through `Workflow(params=...)` / `flow_params.py`: make the value the default, through a shared Parameter object when several tasks declare it, and drop it from the workflow params.
+- BREAKING: an exported task's `BoolParameter()` needs an explicit default. Its implicit `False` passed the defaults check, so a project whose prod value was `True`, passed only through the workflow params, published `False` as prod. `flow.run()` and `FlowExport.generate()` now stop with `ValueError: <Task>.<param>: exported parameters need an explicit default`. Migration: write `oryxflow.BoolParameter(default=False)` (or `default=True`) on exported tasks; task ids don't change. Non-exported tasks keep the implicit `False`.
+
 ## [26.11.6] - 2026-11-06
 ### Added
 - `oryxflow.codehash.strip_docstrings`, the public name of the docstring normalizer that code hashes use.
