@@ -12,7 +12,7 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - **Name the actual symbol in backticks** (`` `Task.persist` ``, `` `RunResult.summary()` ``), never
   prose. Agents grep this file for the symbol in their traceback.
 
-## [Unreleased]
+## [26.11.7] - 2026-11-07
 ### Added
 - `oryxflow.core.ParameterDefaultConflictWarning`, at class definition: a task that `@oryxflow.requires` two upstreams declaring the same parameter with different defaults (`UpA.refresh = 2026-11-05`, `UpB.refresh = 2026-09-01`) warns, naming both. The task takes the first upstream's parameter and passes that value to the second, which then runs with it instead of its own default; which one wins depends on decorator and argument order. Nothing changes in what runs. Fix: give both the same default (one shared Parameter object), or declare the parameter on the requiring task. No warning when the defaults agree, the object is shared, or the requiring task declares it.
 - `oryxflow.utils.excel_write(..., formulas=[col, ...])` (also a per-sheet option, and passed through `save(formatted=True)`): the columns whose strings starting with `=` are written as Excel formulas. Like `wrap_columns`, a workbook-level list applies to the sheets that have the column.

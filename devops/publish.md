@@ -11,8 +11,8 @@ its `main`); the release step for it is the last item of the checklist below.
 
 ```bash
 git push github main
-git tag v26.11.6 && git push github v26.11.6
-gh release create v26.11.6 --generate-notes   # run ONCE; this is what uploads to PyPI
+git tag v26.11.7 && git push github v26.11.7
+gh release create v26.11.7 --generate-notes   # run ONCE; this is what uploads to PyPI
 gh run watch                                  # the Release run; done when publish is green
 ```
 
