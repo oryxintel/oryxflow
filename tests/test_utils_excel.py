@@ -637,3 +637,64 @@ def test_format_float_none_is_default(tmp_path):
     a, b = sheet(p), sheet(p2)
     for c in 'ABCDEF':
         assert a[c + '2'].number_format == b[c + '2'].number_format
+
+
+def test_text_starting_with_equals_stays_text(tmp_path):
+    text = '= Market quarterly (raw) x 4; annualized = ...'
+    df = pd.DataFrame({'signal': ['a', 'b'], 'definition': [text, '=SUM(1,2)'],
+                       '=head': ['+1 x', '@y']}, index=pd.Index(['=i', 'j'], name='=idx'))
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, df, index=True, title='= title', notes=['= note'])
+    ws = sheet(p)
+    assert not [c.coordinate for row in ws.iter_rows() for c in row if c.data_type == 'f']
+    assert ws['A1'].value == '= title' and ws['A2'].value == '= note'
+    out = pd.read_excel(p, skiprows=3, index_col=0)
+    assert out['definition'].tolist() == [text, '=SUM(1,2)']
+    assert list(out.columns) == ['signal', 'definition', '=head']
+    assert out.index.tolist() == ['=i', 'j'] and out.index.name == '=idx'
+    assert out['=head'].tolist() == ['+1 x', '@y']
+
+
+def test_formulas_column_keeps_formula(tmp_path):
+    df = pd.DataFrame({'a': [1, 2], 'calc': ['=A2*2', '=A3*2'], 'note': ['=text', 'x']})
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, df, formulas=['calc'])
+    ws = sheet(p)
+    assert (ws['B2'].value, ws['B2'].data_type) == ('=A2*2', 'f')
+    assert (ws['C2'].value, ws['C2'].data_type) == ('=text', 's')
+    assert (ws['B1'].value, ws['B1'].data_type) == ('calc', 's')
+
+
+def test_formulas_workbook_and_sheet_level(tmp_path):
+    df = pd.DataFrame({'a': [1], 'calc': ['=A2*2']})
+    other = pd.DataFrame({'note': ['=text']})
+    p = tmp_path / 'a.xlsx'
+    excel_write(p, {'x': df, 'y': other}, formulas=['calc'])    # only sheets with the column
+    wb = openpyxl.load_workbook(p)
+    assert wb['x']['B2'].data_type == 'f' and wb['y']['A2'].data_type == 's'
+    p2 = tmp_path / 'b.xlsx'
+    excel_write(p2, {'x': {'df': df, 'formulas': ['calc']}, 'y': df})
+    wb = openpyxl.load_workbook(p2)
+    assert wb['x']['B2'].data_type == 'f' and wb['y']['B2'].data_type == 's'
+    with pytest.raises(KeyError, match='nope'):
+        excel_write(tmp_path / 'c.xlsx', {'x': df, 'y': other}, formulas=['nope'])
+    with pytest.raises(KeyError, match='calc'):
+        excel_write(tmp_path / 'd.xlsx', {'y': {'df': other, 'formulas': ['calc']}})
+
+
+def test_task_formatted_save_formulas(tmp_path):
+    import oryxflow
+    import oryxflow.tasks
+
+    class TaskFmtFormulas(oryxflow.tasks.TaskExcelPandasSingle):
+        def run(self):
+            df = pd.DataFrame({'a': [1], 'calc': ['=A2*2'], 'note': ['= x 4']})
+            self.save(df, formatted=True, formulas=['calc'])
+
+    def go():
+        oryxflow.run(TaskFmtFormulas())
+        ws = openpyxl.load_workbook(TaskFmtFormulas().output().path)['Sheet1']
+        assert ws['B2'].data_type == 'f' and ws['C2'].data_type == 's'
+        assert ws['C2'].value == '= x 4'
+
+    _with_dir(tmp_path, go)
