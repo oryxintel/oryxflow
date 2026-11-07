@@ -12,6 +12,8 @@ Import discipline: ``core`` imports this module at top level, so everything here
 ``core`` lazily (call time only).
 """
 
+import importlib.util
+import inspect
 import os
 import uuid
 import warnings as _stdwarnings
@@ -48,6 +50,42 @@ def code_state(task):
     if fp is None or not hasattr(task, '_resolved_dirpath'):
         return None, None
     return fp, task._resolved_dirpath()
+
+
+_stale_said = set()
+
+
+def stale_bytecode_files(task, hashes):
+    """The project files of ``task``'s code (its module + the files its hash keys name) whose cached bytecode is
+    stale (``codehash.stale_bytecode``): this process may have run their OLD code. Each stale cache file is removed,
+    so the next import compiles the source, and a warning names the file once."""
+    files = set()
+    try:
+        files.add(os.path.abspath(inspect.getsourcefile(type(task))))
+    except (TypeError, OSError):
+        pass
+    try:
+        root = codehash.root_for(task)
+        for k in hashes or {}:
+            rel = k.split('::', 1)[0]
+            if rel and rel != '*' and root is not None:
+                files.add(os.path.abspath(os.path.join(str(root), rel)))
+    except Exception:
+        pass
+    stale = sorted(f for f in files if f.endswith('.py') and codehash.stale_bytecode(f))
+    for f in stale:
+        try:
+            os.remove(importlib.util.cache_from_source(f))
+        except OSError:
+            pass
+        if f not in _stale_said:
+            _stale_said.add(f)
+            msg = ('oryxflow: {} changed in the same second as its last compile, at the same size, so Python may have '
+                   'run its OLD code for {}. Its cached bytecode is removed; the next run redoes the task with the '
+                   'current code'.format(os.path.basename(f), task.task_family))
+            logger.warning("{}", msg)
+            _stdwarnings.warn(msg, UserWarning)
+    return stale
 
 
 def hashes_of(task):

@@ -4,8 +4,8 @@ Maintainer-facing. Releases are built and uploaded by **GitHub Actions**, not fr
 machine, using **PyPI Trusted Publishing** (OIDC) — there is no API token anywhere in the repo or
 in GitHub secrets.
 
-Docs deployment is a separate pipeline (Cloudflare Pages builds `./site` on every push to `main`);
-it is not covered here.
+The docs site is a separate repo, `../oryxlib-docs` (Cloudflare Pages builds it on every push to
+its `main`); the release step for it is the last item of the checklist below.
 
 ## quickstart
 
@@ -40,6 +40,11 @@ gh run watch                                  # the Release run; done when publi
    Publish it outright; see *Draft, published, pre-release* below for why.
 5. **Verify** (below), then delete the tag and yank the version if something is wrong — PyPI never
    allows re-uploading the same version number.
+6. **Update the docs site.** After the PyPI release lands, run
+   `cd ../oryxlib-docs && devops/sync-release.sh --push` (Windows:
+   `devops\sync-release.ps1 -Push`). It syncs both changelogs and the oryxflow pin, builds
+   with the doc tests, commits and pushes (the push redeploys docs.oryxflow.dev via
+   Cloudflare). Details in `../oryxlib-docs/MAINTAINING.md`.
 
 ## Draft, published, pre-release
 
@@ -118,7 +123,7 @@ workflow from `main`, not from the tag.
 Installers do not verify attestations today, so a failure here is a provenance/trust-signal
 problem, not an install problem.
 
-Once a release has landed attested, add the provenance claim to `docs/docs/supply-chain.md` —
+Once a release has landed attested, add the provenance claim to `../oryxlib-docs/docs/docs/supply-chain.md` —
 that page deliberately does not claim it until it is true.
 
 ## Emergency fallback: manual upload
@@ -154,6 +159,6 @@ uploads nothing.
 - `.github/workflows/release.yml` — the pipeline.
 - `docs/todo/20260721-release-supply-chain-trust-signals.md` — why this exists (the design record,
   including what was rejected).
-- `docs/docs/supply-chain.md` — the user-facing page for teams vetting oryxflow through a package
+- `../oryxlib-docs/docs/docs/supply-chain.md` — the user-facing page for teams vetting oryxflow through a package
   firewall.
 - `docs/todo/runbook-allowlist.md` — what to do when a customer's firewall quarantines the package.

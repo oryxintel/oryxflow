@@ -265,10 +265,10 @@ Worth reading:
 
 Runnable examples in this repo:
 
-- [Minimal example](docs/example-minimal.py)
-- [Multi-parameter workflow](docs/example-flow-multi.py)
-- [Full ML model comparison](docs/example-ml-compare.py)
-- [Functions-only API](docs/example-functional.ipynb) — most of the benefit, barely any change to
+- [Minimal example](https://github.com/oryxintel/oryxlib-docs/blob/main/docs/example-minimal.py)
+- [Multi-parameter workflow](https://github.com/oryxintel/oryxlib-docs/blob/main/docs/example-flow-multi.py)
+- [Full ML model comparison](https://github.com/oryxintel/oryxlib-docs/blob/main/docs/example-ml-compare.py)
+- [Functions-only API](https://github.com/oryxintel/oryxlib-docs/blob/main/docs/example-functional.ipynb) — most of the benefit, barely any change to
   your code
 
 ## Installation
