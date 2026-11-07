@@ -12,6 +12,10 @@ coding agents diagnosing regressions after an upgrade, so the format is load-bea
 - **Name the actual symbol in backticks** (`` `Task.persist` ``, `` `RunResult.summary()` ``), never
   prose. Agents grep this file for the symbol in their traceback.
 
+## [Unreleased]
+### Fixed
+- A task module edited in the same second as its last compile, at the same size (`FACTOR = 1` -> `2`), passes Python's bytecode check, so the next process ran the OLD code while the engine saw the new source. `run()` recorded that output as built by the new code, so it was never redone. Now the run warns (`<file>.py changed in the same second as its last compile, at the same size, so Python may have run its OLD code for <Task>...`), removes the stale cached bytecode, and the next run redoes the task and everything downstream with the current code. Design: `docs/todo/20261107-engine-stale-bytecode.md`.
+
 ## [26.11.6] - 2026-11-06
 ### Added
 - `oryxflow.codehash.strip_docstrings`, the public name of the docstring normalizer that code hashes use.

@@ -1534,6 +1534,10 @@ def build(tasks, workers=1, detailed_summary=False, flow=None, **ignored):
         fp, dirpath = _codecheck.code_state(task)
         hashes = _codecheck.hashes_of(task) if (fp is not None
                                                 or getattr(_settings, 'events', True)) else {}
+        if fp is not None and _codecheck.stale_bytecode_files(task, hashes):
+            # the run may have used the OLD code (stale bytecode): never record it as built by the current
+            # source; a hash that matches no source makes the next build redo it with fresh bytecode
+            hashes = dict(hashes, **{'<stale bytecode>': 'rerun'})
         output_id = None
         if fp is not None:
             # fresh output_id: this task actually rematerialized, downstream

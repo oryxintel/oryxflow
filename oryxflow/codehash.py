@@ -269,6 +269,26 @@ def _strip_docstrings(tree):
 strip_docstrings = _strip_docstrings  # public: oryxeval hashes eval sources with it
 
 
+def stale_bytecode(path):
+    """Whether ``path``'s cached bytecode (``__pycache__/*.pyc``) is older than the source yet still passes CPython's
+    check. That check compares the source's mtime in WHOLE seconds and its size, so an edit made in the same second
+    as the previous compile, at the same size (``FACTOR = 1`` -> ``2``), imports the OLD code. A fresh cache is
+    always written after the source it was compiled from; this one was written before the source's last change."""
+    try:
+        src = os.stat(path)
+        pyc = importlib.util.cache_from_source(str(path))
+        with open(pyc, 'rb') as f:
+            head = f.read(16)
+        cached = os.stat(pyc)
+    except (OSError, ValueError, NotImplementedError):
+        return False
+    if len(head) < 16 or int.from_bytes(head[4:8], 'little') != 0:
+        return False                        # unreadable, or hash-checked bytecode (validated by content)
+    mtime, size = int.from_bytes(head[8:12], 'little'), int.from_bytes(head[12:16], 'little')
+    return (mtime == (int(src.st_mtime) & 0xFFFFFFFF) and size == (src.st_size & 0xFFFFFFFF)
+            and cached.st_mtime_ns < src.st_mtime_ns)
+
+
 def file_hash(path):
     """Normalized hash of one source file; raw-bytes fallback on SyntaxError.
 
