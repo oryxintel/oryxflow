@@ -203,7 +203,10 @@ def run(tasks, forced=None, forced_all=False, forced_all_upstream=False, confirm
             result.warnings.append(msg)
             try:
                 from oryxflow import events as _events
-                _events.append('export_failed', {'error': msg}, run_id=result.run_id)
+                if msg.startswith(_export.FAILED_PREFIX):
+                    _events.append('export_failed', {'error': msg}, run_id=result.run_id)
+                else:
+                    _events.append('export_warning', {'message': msg}, run_id=result.run_id)
             except Exception:
                 pass
     success = result.scheduling_succeeded
