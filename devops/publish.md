@@ -9,9 +9,14 @@ it is not covered here.
 
 ## quickstart
 
-git tag v26.10.8
-git push github main --tags
-gh release create v26.10.8 --generate-notes
+```bash
+git push github main
+git tag v26.11.6 && git push github v26.11.6
+gh release create v26.11.6 --generate-notes   # run ONCE; this is what uploads to PyPI
+gh run watch                                  # the Release run; done when publish is green
+```
+
+ Then approve the deployment: Actions → the Release run → Review deployments → Approve
 
 
 ## Release checklist
@@ -49,9 +54,14 @@ what decides whether anything ships:
 **Publish directly.** The release notes are already curated in `CHANGELOG.md` before the tag
 exists, so a draft only buys a chance to hand-edit GitHub's auto-generated commit list — which is
 not the source of truth anyway. Use `--draft` only when writing substantial notes by hand in the
-web editor; then the *Publish release* button is what ships. If a deliberate "am I sure" gate is
-wanted, a required reviewer on the `pypi` environment is the better one — it gates the upload
-itself rather than conflating notes-editing with shipping.
+web editor; then the *Publish release* button is what ships. Publishing the release IS the
+"am I sure" step: there is no second approval. (A required reviewer on the `pypi` environment was
+tried and removed: an unapproved run waits silently and GitHub cancels it after 30 days, which
+lost 26.10.5 and 26.10.8 without anyone noticing.)
+
+If `gh release create` fails with `Release.tag_name already exists`, the release was already
+created by an earlier attempt: do not make another one. Re-run the failed run instead
+(`gh run rerun <run-id> --failed`); the build artifact is kept, so only the upload repeats.
 
 **"Set as a pre-release" is not a dry run.** A pre-release is still published, still fires the
 event, still uploads to PyPI for real; it only gets a badge and is excluded from "latest". This
@@ -88,10 +98,12 @@ Recorded here so it can be reproduced if the repo or project is ever recreated.
 | Environment | `pypi` |
 
 **On GitHub** — *Settings* → *Environments* → an environment named exactly `pypi`. It must match
-the workflow's `environment: pypi` and the value registered above. Protection rules on that
-environment (required reviewer, or *Deployment branches and tags* restricted to tags) are the
-reason the workflow names an environment at all — they are what stops an unattended
-`workflow_dispatch` from shipping to PyPI.
+the workflow's `environment: pypi` and the value registered above. Its one protection rule is
+*Deployment branches and tags* → *Selected branches and tags* → a **Tag** rule `v*` (a *Branch*
+rule `v*` rejects every release). That rule is the reason the workflow names an environment at
+all: it stops a `workflow_dispatch` from a branch shipping to PyPI. **No required reviewers** (see
+*Draft, published, pre-release*). Changing the environment's rules while a run is waiting on it
+fails that run; re-run it with `gh run rerun <run-id> --failed`.
 
 `release.yml` must exist on the **default branch**: the `release: published` trigger runs the
 workflow from `main`, not from the tag.
@@ -132,7 +144,9 @@ uploads nothing.
 | Publish job fails at the OIDC exchange | Publisher not registered, or a field mismatch — owner, repo, workflow **filename** (`release.yml`, not a path), or environment name. A blank environment on PyPI accepts any; a *different* one rejects. |
 | Workflow never runs | Release was saved as a draft, or `release.yml` is not on `main`. |
 | `File already exists` | That version was already uploaded. PyPI has no overwrite — bump and re-release. |
-| Job stuck on "Waiting for approval" | The `pypi` environment has a required reviewer. Expected; approve it. |
+| Job stuck on "Waiting for approval" | Someone re-added a required reviewer to the `pypi` environment. Remove it (see *One-time setup*), then `gh run rerun <run-id> --failed`. Left alone, GitHub cancels the run after 30 days. |
+| Publish fails: "The deployment was rejected or didn't satisfy other protection rules" | The tag does not match the environment's tag rule (e.g. a *Branch* rule instead of a *Tag* rule), or the rules changed while the run waited. Fix the rule, then `gh run rerun <run-id> --failed`. |
+| `gh release create`: `Release.tag_name already exists` | The release exists from an earlier attempt. Don't create another; re-run the failed run. |
 | Files uploaded but no attestations | Something set `attestations: false`, or the upload did not go through Trusted Publishing (e.g. a manual `twine` upload). |
 
 ## Related files
