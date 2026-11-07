@@ -33,9 +33,12 @@ an LLM prompt, and suggests the commands; it never runs one.
 Install the plugin, and the library in the environment that runs your production code:
 
 ```text
+/plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
 /plugin install oryxeval@oryxintel
 pip install oryxeval
 ```
+
+When `/plugin` asks where to install, pick **Install for you (user scope)** so the plugin works in every project, not just this one. From a shell, `claude plugin install oryxeval@oryxintel` installs at user scope by default.
 
 Migrating an existing eval? See [the note on the guide page](../llm-evals.md).
 

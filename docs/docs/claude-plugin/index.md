@@ -42,6 +42,8 @@ own work. Three things follow, in the order they matter:
 /plugin install oryxflow@oryxintel
 ```
 
+When `/plugin` asks where to install, pick **Install for you (user scope)** so the plugin works in every project, not just this one. From a shell, `claude plugin install oryxflow@oryxintel` installs at user scope by default.
+
 Once installed, the `oryxflow` skill **auto-activates** whenever you work in an oryxflow project
 (editing `tasks.py` / `flow.py` / `run.py` / `cfg.py` / `flow_params.py`) — you don't invoke it,
 it's just on.

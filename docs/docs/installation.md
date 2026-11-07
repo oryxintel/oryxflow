@@ -56,8 +56,11 @@ If you use [Claude Code](https://claude.com/claude-code), the official plugin ca
 project and wire task dependencies for you:
 
 ```text
+/plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
 /plugin install oryxflow@oryxintel
 ```
+
+When `/plugin` asks where to install, pick **Install for you (user scope)** so the plugin works in every project, not just this one. From a shell, `claude plugin install oryxflow@oryxintel` installs at user scope by default.
 
 See [Build with Claude Code](claude-plugin/index.md) for what it sets up.
 

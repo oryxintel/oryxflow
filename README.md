@@ -180,9 +180,11 @@ discipline costs you less time and fewer tokens, not more. It's a plugin (a skil
 commands), not an MCP server.
 
 ```text
-/plugin marketplace add oryxintel/oryxflow-claude-plugin
+/plugin marketplace add https://github.com/oryxintel/oryxflow-claude-plugin.git
 /plugin install oryxflow@oryxintel
 ```
+
+When `/plugin` asks where to install, pick **Install for you (user scope)** so the plugin works in every project, not just this one. From a shell, `claude plugin install oryxflow@oryxintel` installs at user scope by default.
 
 The `oryxflow` skill auto-activates whenever you work in a pipeline project. The slash commands:
 
