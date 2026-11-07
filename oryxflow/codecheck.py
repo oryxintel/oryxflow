@@ -121,7 +121,9 @@ def _moved_deps(stored, task):
     current = task._dep_ids()
     new = sorted(t for t in current if t not in stored)
     old = sorted(t for t in stored if t not in current)
-    rewritten = sorted(t for t in current if t in stored and stored[t] != current[t])
+    same = getattr(task, '_same_dep_id', lambda t, a, b: a == b)
+    rewritten = sorted(t for t in current if t in stored
+                       and not same(t, stored[t], current[t]))
     parts = []
     if new or old:
         parts.append('now {}'.format(', '.join(new)) + (' (was {})'.format(', '.join(old))
@@ -361,9 +363,11 @@ class Advisor:
                         task.task_family),
                     changed)
         elif (old_version or rec.get('fingerprint') != fp
-                or rec.get('code_version') != own):
+                or rec.get('code_version') != own
+                or (rec.get('dep_state') != task._dep_state() and task._deps_ok(rec))):
             # hashes match but the record predates a mode flip (pin added/removed with
-            # unchanged code), an upstream toggle or this record version -- converge
+            # unchanged code), an upstream toggle, this record version or content ids for
+            # untracked inputs (the task is complete, so its inputs matched) -- converge
             # silently, preserving output_id and run cost
             self._put(dirpath, tid,
                       make_record(task, current,

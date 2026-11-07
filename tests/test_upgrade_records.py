@@ -1,6 +1,9 @@
 """Code-status records written by an older oryxflow are compared exactly, not blessed; class
 metadata (`export = True`) is not a code change; a new code_version() method reruns."""
+import os
 import sys
+import shutil
+import pathlib
 import importlib.util
 
 import pytest
@@ -9,6 +12,7 @@ import oryxflow
 import oryxflow.state
 import oryxflow.codehash
 import oryxflow.events
+import oryxflow.tasks
 
 
 @pytest.fixture
@@ -247,9 +251,11 @@ def test_auto_off_warning_names_the_setting(env, monkeypatch):
 UNTRACKED_UP = '''
 import oryxflow
 
+VALUE = 1
+
 class Raw(oryxflow.tasks.TaskPickle):
     def run(self):
-        self.save({'v': 1})
+        self.save({'v': VALUE})
 
 @oryxflow.requires(Raw)
 class Report(oryxflow.tasks.TaskPickle):
@@ -269,6 +275,7 @@ class TestTrackedBelowUntracked:
         assert mod.Raw()._code_fingerprint is None
         oryxflow.run(mod.Report())
         oryxflow.Workflow(mod.Report).reset(mod.Raw)
+        mod.VALUE = 2
         r = oryxflow.run(mod.Raw())                 # upstream recomputes on its own
         assert r.did_run(mod.Raw)
         assert oryxflow.run(mod.Report()).did_run(mod.Report)
@@ -287,6 +294,93 @@ class TestTrackedBelowUntracked:
         rec2 = oryxflow.state.get_record(dirpath, tid)
         assert rec2['v'] == oryxflow.state.RECORD_V
         assert rec2['dep_state'] == mod.Report()._dep_state()
+
+
+def _raw_file(mod):
+    return pathlib.Path(mod.Raw().output().path)
+
+
+def _as_mtime_record(mod, mtime_ns):
+    """Rewrite Report's record the way 26.11.6 folded its untracked input: by file time."""
+    dirpath, tid = oryxflow.settings.dirpath, mod.Report().task_id
+    rec = dict(oryxflow.state.get_record(dirpath, tid))
+    raw = mod.Raw().task_id
+    rec['dep_ids'] = {raw: 'ext:{}:{}'.format(raw, mtime_ns)}
+    rec['dep_state'] = oryxflow.tasks._fold(rec['dep_ids'].values())
+    oryxflow.state.put_record(dirpath, tid, rec)
+
+
+class TestSyncedDataDir:
+    # a data dir built on one machine and synced to another (cloud drive, zip, network share)
+    # keeps the bytes but can drop the sub-second part of the file times
+
+    def _built(self, env, monkeypatch, name):
+        monkeypatch.setattr(oryxflow.settings, 'code_version_auto', False)
+        mod, _ = _load(env, name, UNTRACKED_UP)
+        oryxflow.run(mod.Report())
+        return mod
+
+    def test_whole_second_file_time_stays_complete(self, env, monkeypatch):
+        mod = self._built(env, monkeypatch, 'synced_secs')
+        f = _raw_file(mod)
+        secs = f.stat().st_mtime_ns // 10 ** 9
+        os.utime(f, ns=(secs * 10 ** 9, secs * 10 ** 9))
+        assert mod.Report().complete()
+        assert oryxflow.run(mod.Report()).ran == []
+
+    def test_byte_identical_rewrite_does_not_rerun(self, env, monkeypatch):
+        mod = self._built(env, monkeypatch, 'synced_same')
+        oryxflow.Workflow(mod.Report).reset(mod.Raw)
+        assert oryxflow.run(mod.Raw()).did_run(mod.Raw)
+        assert oryxflow.run(mod.Report()).ran == []
+
+    def test_changed_content_reruns_and_says_which(self, env, monkeypatch):
+        mod = self._built(env, monkeypatch, 'synced_changed')
+        oryxflow.Workflow(mod.Report).reset(mod.Raw)
+        mod.VALUE = 2
+        oryxflow.run(mod.Raw())
+        r = oryxflow.run(mod.Report())
+        assert r.did_run(mod.Report)
+        assert r.reasons[mod.Report().task_id] == \
+            'upstream output changed since last run: rewritten ' + mod.Raw().task_id
+
+    def test_file_time_record_matches_and_is_rebased(self, env, monkeypatch):
+        mod = self._built(env, monkeypatch, 'synced_old')
+        _as_mtime_record(mod, _raw_file(mod).stat().st_mtime_ns)
+        assert oryxflow.run(mod.Report()).ran == []
+        rec = oryxflow.state.get_record(oryxflow.settings.dirpath, mod.Report().task_id)
+        assert rec['dep_state'] == mod.Report()._dep_state()
+        assert list(rec['dep_ids'].values())[0].split(':')[-1].startswith('md5=')
+
+    def test_file_time_record_matches_after_a_sync(self, env, monkeypatch):
+        # the reported case: recorded ...952067735200 ns, the synced copy has ...952.000000000
+        mod = self._built(env, monkeypatch, 'synced_old_secs')
+        f = _raw_file(mod)
+        secs = f.stat().st_mtime_ns // 10 ** 9
+        _as_mtime_record(mod, secs * 10 ** 9 + 67735200)
+        os.utime(f, ns=(secs * 10 ** 9, secs * 10 ** 9))
+        assert oryxflow.run(mod.Report()).ran == []
+
+    def test_file_time_record_reruns_when_the_file_moved(self, env, monkeypatch):
+        mod = self._built(env, monkeypatch, 'synced_old_moved')
+        f = _raw_file(mod)
+        recorded = f.stat().st_mtime_ns
+        _as_mtime_record(mod, recorded)
+        later = recorded + 5 * 10 ** 9 + 123
+        os.utime(f, ns=(later, later))
+        assert not mod.Report().complete()
+        r = oryxflow.run(mod.Report())
+        assert r.reasons[mod.Report().task_id] == \
+            'upstream output changed since last run: rewritten ' + mod.Raw().task_id
+
+    def test_digest_ignores_where_the_data_dir_is(self, env, monkeypatch):
+        mod = self._built(env, monkeypatch, 'synced_moved_dir')
+        before = mod.Report()._dep_ids()
+        moved = env / 'elsewhere'
+        shutil.copytree(oryxflow.settings.dirpath, moved)
+        monkeypatch.setattr(oryxflow.settings, 'dirpath', moved)
+        oryxflow.state.clear_cache()
+        assert mod.Report()._dep_ids() == before
 
 
 SIBLINGS = '''

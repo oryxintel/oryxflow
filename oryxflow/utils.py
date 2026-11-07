@@ -250,8 +250,13 @@ def hash_files(*patterns, root=None):
         except ValueError:
             key = f.as_posix()
         keyed.append((key, f))
+    return _digest_files(keyed)
 
-    keyed.sort(key=lambda kv: kv[0])
+
+def _digest_files(keyed):
+    """Content digest of ``[(name, path), ...]``: names and bytes, in name order. Cached by
+    each file's size and modification time, so an unchanged file is not re-read."""
+    keyed = sorted(keyed, key=lambda kv: kv[0])
     # runs on every completeness check: an unchanged file set (same names, sizes, mtimes) is
     # not re-read -- a large data file would otherwise be read in full every time
     stamp = []
